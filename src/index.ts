@@ -1,12 +1,10 @@
 import { CLEAN, CHECK, DIRTY } from './symbols';
-import { State } from './types';
+import { Queue, State } from './types';
 import obj from './obj';
 
 
 let index = 0,
-    queue: Reactive<any>[] = [],
     reaction: Reactive<any> | null = null,
-    running: boolean = false,
     stack: Reactive<any>[] | null = null;
 
 
@@ -14,6 +12,7 @@ class Reactive<T> {
     private effect: boolean;
     private fn?: (onCleanup: (fn: VoidFunction) => void) => T;
     private observers: Reactive<any>[] | null = null;
+    private queue: Queue | null = null;
     private sources: Reactive<any>[] | null = null;
     private state: State;
     private value: T;
@@ -22,7 +21,7 @@ class Reactive<T> {
     cleanup: ((old: T) => void)[] | null = null;
 
 
-    constructor(_: ((fn: VoidFunction) => T) | T, effect: boolean = false) {
+    constructor(_: ((fn: VoidFunction) => T) | T, queue: Queue | null = null, effect: boolean = false) {
         this.effect = effect;
 
         if (typeof _ === 'function') {
@@ -31,6 +30,7 @@ class Reactive<T> {
             this.value = undefined as any;
 
             if (effect) {
+                this.queue = queue;
                 this.update();
             }
         }
@@ -63,7 +63,7 @@ class Reactive<T> {
         return this.value;
     }
 
-    set(value: T): void {
+    set(value: T) {
         if (this.observers && this.value !== value) {
             for (let i = 0; i < this.observers.length; i++) {
                 this.observers[i].mark(DIRTY);
@@ -74,11 +74,17 @@ class Reactive<T> {
     }
 
 
-    private mark(state: typeof CHECK | typeof DIRTY): void {
+    private mark(state: typeof CHECK | typeof DIRTY) {
         if (this.state < state) {
             // If previous state was clean we need to update effects
             if (this.state === CLEAN && this.effect) {
-                queue.push(this);
+                if (!this.queue) {
+                    throw new Error('Effects cannot be updated without a queue');
+                }
+
+                this.queue.add(async () => {
+                    await this.get();
+                });
             }
 
             this.state = state;
@@ -94,7 +100,7 @@ class Reactive<T> {
     }
 
     // We don't actually delete sources here because we're replacing the entire array soon
-    private removeParentObservers(): void {
+    private removeParentObservers() {
         if (!this.sources) {
             return;
         }
@@ -108,7 +114,7 @@ class Reactive<T> {
     }
 
     // Update if dirty or if a parent is dirty
-    private sync(): void {
+    private sync() {
         // If we are potentially dirty, see if we have a parent who has actually changed value
         if (this.state === CHECK && this.sources) {
             for (let i = 0, n = this.sources.length; i < n; i++) {
@@ -132,7 +138,7 @@ class Reactive<T> {
         this.state = CLEAN;
     }
 
-    private update(): void {
+    private update() {
         let previous = {
                 index: index,
                 reaction: reaction,
@@ -217,9 +223,10 @@ class Reactive<T> {
 }
 
 
-
-const effect = <T>(value: () => T) => {
-    new Reactive(value, true);
+const effect = (queue: Queue) => {
+    return <T>(value: () => T) => {
+        new Reactive(value, queue, true);
+    };
 };
 
 const reactive = <T>(value: T): T => {
@@ -230,22 +237,5 @@ const reactive = <T>(value: T): T => {
     return new Reactive(value) as T;
 };
 
-const tick = () => {
-    if (running) {
-        return;
-    }
 
-    running = true;
-
-    for (let i = 0, n = queue.length; i < n; i++) {
-        queue[i].get();
-    }
-
-    queue.length = 0;
-    running = false;
-};
-
-
-export { effect, reactive, tick };
-
-
+export default { effect, reactive };

@@ -1,7 +1,21 @@
 import { reactive } from './index';
 
 
-const factory = <T>(values: T) => {
+function setup(value: any) {
+    // if (Array.isArray(value)) {
+    // TODO: Need a solution
+    // }
+    // TODO: Can remove isArray once solution is found ^
+    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+        return factory(value);
+    }
+
+    return reactive(value);
+}
+
+
+// TODO: Typecheck on values tro get rid of lazy var
+const factory = <T = Record<string, any>>(values: T) => {
     let lazy: Record<string, any> = {},
         properties: PropertyDescriptorMap = {};
 
@@ -9,23 +23,16 @@ const factory = <T>(values: T) => {
         properties[key] = {
             get() {
                 if (!lazy[key]) {
-                    let value = values[key];
-
-                    // if (Array.isArray(value)) {
-                    // TODO: Need a solution
-                    // }
-                    // TODO: Can remove isArray once solution is found ^
-                    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-                        lazy[key] = factory(value as Record<string, unknown>);
-                    }
-                    else {
-                        lazy[key] = reactive(value);
-                    }
+                    lazy[key] = setup(values[key]);
                 }
 
-                return lazy[key]?.get() || lazy[key];
+                return lazy[key].get();
             },
             set(value: unknown) {
+                if (!lazy[key]) {
+                    lazy[key] = setup(values[key]);
+                }
+
                 lazy[key].set(value);
             }
         };
