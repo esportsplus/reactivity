@@ -239,3 +239,4 @@ const reactive = <T>(value: T): T => {
 
 
 export default { effect, reactive };
+export { effect, reactive };
