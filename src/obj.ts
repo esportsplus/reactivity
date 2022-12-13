@@ -1,7 +1,7 @@
 import { reactive } from './index';
 
 
-const factory = (values: Record<string, unknown>) => {
+const factory = <T>(values: T) => {
     let lazy: Record<string, any> = {},
         properties: PropertyDescriptorMap = {};
 
@@ -31,7 +31,7 @@ const factory = (values: Record<string, unknown>) => {
         };
     }
 
-    return Object.defineProperties({}, properties);
+    return Object.defineProperties({}, properties) as T;
 };
 
 

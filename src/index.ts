@@ -219,15 +219,15 @@ class Reactive<T> {
 
 
 const effect = <T>(value: () => T) => {
-    return new Reactive(value, true);
+    new Reactive(value, true);
 };
 
-const reactive = <T>(value: T) => {
+const reactive = <T>(value: T): T => {
     if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-        return obj(value as Record<string, unknown>);
+        return obj(value);
     }
 
-    return new Reactive(value);
+    return new Reactive(value) as T;
 };
 
 const tick = () => {
