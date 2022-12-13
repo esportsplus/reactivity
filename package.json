@@ -1,0 +1,19 @@
+{
+    "author": "ICJR",
+    "description": "Reactivity",
+    "devDependencies": {
+        "tsc-alias": "^1.8.1",
+        "typescript": "^4.9.3"
+    },
+    "main": "./build/index.js",
+    "name": "@esportsplus/reactivity",
+    "private": false,
+    "scripts": {
+        "build": "tsc && tsc-alias",
+        "-": "-",
+        "prepare": "npm run build",
+        "prepublishOnly": "npm run build"
+    },
+    "types": "./build/index.d.ts",
+    "version": "0.0.1"
+}
