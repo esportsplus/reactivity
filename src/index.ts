@@ -3,13 +3,13 @@ import { Queue, State } from './types';
 import obj from './obj';
 
 
+// We only unwrap the top level function
 type Infer<T> =
     T extends (...args: any[]) => any
-        ? Infer<ReturnType<T>>
-        : T extends Record<string, any>
-            ? { [K in keyof T]: Infer<T[K]> }
-            // Requires class type
-            : Reactive<T>;
+        ? InferValue<ReturnType<T>>
+        : InferValue<T>;
+
+type InferValue<T> = T extends Record<string, any> ? T : Reactive<T>;
 
 
 let index = 0,
@@ -241,7 +241,12 @@ const effect = (queue: Queue) => {
 const reactive = <T>(value: T) => {
     let v;
 
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
+    if (typeof value === 'function') {
+        let fn = new Reactive(value);
+
+        v = (...args: any[]) => fn.get()(...args);
+    }
+    else if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
         v = obj(value);
     }
     else {
