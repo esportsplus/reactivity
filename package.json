@@ -2,8 +2,8 @@
     "author": "ICJR",
     "description": "Reactivity",
     "devDependencies": {
-        "tsc-alias": "^1.8.1",
-        "typescript": "^4.9.3"
+        "tsc-alias": "^1.8.2",
+        "typescript": "^4.9.4"
     },
     "main": "./build/index.js",
     "name": "@esportsplus/reactivity",

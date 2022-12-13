@@ -3,6 +3,15 @@ import { Queue, State } from './types';
 import obj from './obj';
 
 
+type Infer<T> =
+    T extends (...args: any[]) => any
+        ? Infer<ReturnType<T>>
+        : T extends Record<string, any>
+            ? { [K in keyof T]: Infer<T[K]> }
+            // Requires class type
+            : Reactive<T>;
+
+
 let index = 0,
     reaction: Reactive<any> | null = null,
     stack: Reactive<any>[] | null = null;
@@ -21,11 +30,11 @@ class Reactive<T> {
     cleanup: ((old: T) => void)[] | null = null;
 
 
-    constructor(_: ((fn: VoidFunction) => T) | T, queue: Queue | null = null, effect: boolean = false) {
+    constructor(input: ((fn: VoidFunction) => T) | T, queue: Queue | null = null, effect: boolean = false) {
         this.effect = effect;
 
-        if (typeof _ === 'function') {
-            this.fn = _ as (onCleanup: (fn: VoidFunction) => void) => T;
+        if (typeof input === 'function') {
+            this.fn = input as (onCleanup: (fn: VoidFunction) => void) => T;
             this.state = DIRTY;
             this.value = undefined as any;
 
@@ -36,7 +45,7 @@ class Reactive<T> {
         }
         else {
             this.state = CLEAN;
-            this.value = _;
+            this.value = input;
         }
     }
 
@@ -229,12 +238,17 @@ const effect = (queue: Queue) => {
     };
 };
 
-const reactive = <T>(value: T): T => {
+const reactive = <T>(value: T) => {
+    let v;
+
     if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-        return obj(value);
+        v = obj(value);
+    }
+    else {
+        v = new Reactive(value);
     }
 
-    return new Reactive(value) as T;
+    return v as Infer<T>;
 };
 
 

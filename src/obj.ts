@@ -1,7 +1,7 @@
 import { reactive } from './index';
 
 
-function setup(value: any) {
+function setup(value: unknown) {
     // if (Array.isArray(value)) {
     // TODO: Need a solution
     // }
@@ -15,7 +15,7 @@ function setup(value: any) {
 
 
 // TODO: Typecheck on values tro get rid of lazy var
-const factory = <T = Record<string, any>>(values: T) => {
+const factory = <T extends Record<string, any>>(values: T) => {
     let lazy: Record<string, any> = {},
         properties: PropertyDescriptorMap = {};
 
@@ -38,7 +38,7 @@ const factory = <T = Record<string, any>>(values: T) => {
         };
     }
 
-    return Object.defineProperties({}, properties) as T;
+    return Object.defineProperties({}, properties);
 };
 
 
