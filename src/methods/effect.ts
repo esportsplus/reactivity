@@ -1,6 +1,6 @@
 import Reactive from '~/reactive';
 
 
-export default <T>(value: () => T): void => {
-    new Reactive(value, true);
+export default <T>(fn: () => T): void => {
+    new Reactive(fn, true);
 };

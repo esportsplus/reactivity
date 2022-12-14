@@ -18,9 +18,12 @@ async function task() {
 }
 
 
+type Fn<T> = (onCleanup?: (fn: VoidFunction) => void) => T;
+
+
 class Reactive<T> {
     private effect: boolean;
-    private fn?: (onCleanup: (fn: VoidFunction) => void) => T;
+    private fn?: Fn<T>;
     private observers: Reactive<any>[] | null = null;
     private sources: Reactive<any>[] | null = null;
     private state: State;
@@ -30,11 +33,11 @@ class Reactive<T> {
     cleanup: ((old: T) => void)[] | null = null;
 
 
-    constructor(input: ((fn: VoidFunction) => T) | T, effect: boolean = false) {
+    constructor(data: Fn<T> | T, effect: boolean = false) {
         this.effect = effect;
 
-        if (typeof input === 'function') {
-            this.fn = input as (onCleanup: (fn: VoidFunction) => void) => T;
+        if (typeof data === 'function') {
+            this.fn = data as Fn<T>;
             this.state = DIRTY;
             this.value = undefined as any;
 
@@ -44,12 +47,12 @@ class Reactive<T> {
         }
         else {
             this.state = CLEAN;
-            this.value = input;
+            this.value = data;
         }
     }
 
 
-    get(): T {
+    get() {
         if (reaction) {
             if (!stack && reaction.sources && reaction.sources[index] == this) {
                 index++;
@@ -68,7 +71,7 @@ class Reactive<T> {
             this.sync();
         }
 
-        return this.value;
+        return this.value as T extends (...args: any[]) => any ? ReturnType<T> : T;
     }
 
     set(value: T) {
