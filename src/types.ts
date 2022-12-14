@@ -11,10 +11,12 @@ type Infer<T> =
                 ? InferNested<T>
                 : Reactive<T>;
 
+type Primitives = any[] | boolean | number | string | null | undefined | ((...args: any[]) => any);
+
 type InferNested<T> =
     T extends (...args: any[]) => any
         ? ReturnType<T>
-        : T extends Record<string, any>
+        : T extends Record<string, Primitives>
             ? { [K in keyof T]: InferNested<T[K]> }
             : T;
 
