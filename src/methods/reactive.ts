@@ -11,14 +11,14 @@ function obj<T>(values: T) {
         properties[key] = {
             get() {
                 if (!lazy[key]) {
-                    lazy[key] = setup(values[key]);
+                    lazy[key] = reactive(values[key]);
                 }
 
                 return lazy[key].get();
             },
             set(value: unknown) {
                 if (!lazy[key]) {
-                    lazy[key] = setup(values[key]);
+                    lazy[key] = reactive(values[key]);
                 }
 
                 lazy[key].set(value);
@@ -29,7 +29,7 @@ function obj<T>(values: T) {
     return Object.defineProperties({}, properties) as T;
 };
 
-function setup<T>(value: T) {
+function reactive<T>(value: T) {
     // if (Array.isArray(value)) {
     // TODO
     // }
@@ -38,22 +38,8 @@ function setup<T>(value: T) {
         return obj(value);
     }
 
-    return reactive(value) as T;
+    return new Reactive(value) as T;
 }
 
 
-const reactive = <T>(value: T) => {
-    let v: unknown;
-
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-        v = obj(value);
-    }
-    else {
-        v = new Reactive(value);
-    }
-
-    return v as Infer<T>;
-};
-
-
-export default reactive;
+export default <T>(value: T) => reactive(value) as Infer<T>;
