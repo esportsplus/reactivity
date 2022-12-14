@@ -13,7 +13,7 @@ type Infer<T> =
 
 type InferNested<T> =
     T extends (...args: any[]) => any
-        ? InferNested< ReturnType<T> >
+        ? ReturnType<T>
         : T extends Record<string, any>
             ? { [K in keyof T]: InferNested<T[K]> }
             : T;
