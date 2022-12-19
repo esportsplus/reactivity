@@ -1,4 +1,3 @@
-import { Infer } from '~/types';
 import Reactive from '~/reactive';
 
 
@@ -73,4 +72,4 @@ function obj<T>(values: T) {
 };
 
 
-export default <T>(value: T) => factory(value, true) as Infer<T>;
+export default <T>(value: T) => factory(value, true);
