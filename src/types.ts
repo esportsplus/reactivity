@@ -20,6 +20,8 @@ type InferNested<T> =
             ? { [K in keyof T]: InferNested<T[K]> }
             : T;
 
+type ReactiveFn<T> = (onCleanup?: (fn: VoidFunction) => void) => T;
+
 type Scheduler = {
     schedule(): void;
     tasks: {
@@ -31,4 +33,4 @@ type Scheduler = {
 type State = typeof CHECK | typeof CLEAN | typeof DIRTY;
 
 
-export { Infer, Scheduler, State };
+export { Infer, ReactiveFn, Scheduler, State };

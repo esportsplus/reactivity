@@ -2,7 +2,35 @@ import { Infer } from '~/types';
 import Reactive from '~/reactive';
 
 
-// TODO: Typecheck on `values` to get rid of lazy var
+function factory<T>(value: T) {
+    if (typeof value === 'function') {
+        return fn(value);
+    }
+
+    if (typeof value === 'object' && value !== null && (value.constructor === Object)) {
+        return obj(value);
+    }
+
+    return new Reactive(value) as T;
+}
+
+function fn<T>(value: T) {
+    let fn = new Reactive(value);
+
+    return (...args: any[]) => {
+        let value = fn.get();
+
+        if (args.length && typeof value === 'function') {
+            value = value(...args);
+        }
+
+        return value as typeof value extends (...args: any[]) => any
+            ? ReturnType<typeof value>
+            : typeof value;
+    };
+}
+
+// TODO: Typecheck on `values` to get rid of lazy var?
 function obj<T>(values: T) {
     let lazy: Record<string, any> = {},
         properties: PropertyDescriptorMap = {};
@@ -11,17 +39,26 @@ function obj<T>(values: T) {
         properties[key] = {
             get() {
                 if (!lazy[key]) {
-                    lazy[key] = reactive(values[key]);
+                    lazy[key] = factory(values[key]);
                 }
 
-                return lazy[key].get();
+                if (lazy[key] instanceof Reactive) {
+                    return lazy[key].get();
+                }
+
+                return lazy[key];
             },
             set(value: unknown) {
                 if (!lazy[key]) {
-                    lazy[key] = reactive(values[key]);
+                    lazy[key] = factory(values[key]);
                 }
 
-                lazy[key].set(value);
+                if (lazy[key] instanceof Reactive) {
+                    lazy[key].set(value);
+                }
+                else {
+                    lazy[key] = factory(value);
+                }
             }
         };
     }
@@ -29,17 +66,5 @@ function obj<T>(values: T) {
     return Object.defineProperties({}, properties) as T;
 };
 
-function reactive<T>(value: T) {
-    // if (Array.isArray(value)) {
-    // TODO
-    // }
-    // TODO: Can remove isArray implementation is created
-    if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
-        return obj(value);
-    }
 
-    return new Reactive(value) as T;
-}
-
-
-export default <T>(value: T) => reactive(value) as Infer<T>;
+export default <T>(value: T) => factory(value) as Infer<T>;

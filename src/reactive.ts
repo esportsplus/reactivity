@@ -1,13 +1,45 @@
 import { CLEAN, CHECK, DIRTY } from './symbols';
-import { Scheduler, State } from './types';
+import { ReactiveFn, Scheduler, State } from './types';
 
 
 let index = 0,
     reaction: Reactive<any> | null = null,
     queue: Reactive<any>[] = [],
+    scheduled = false,
     schedulers = new Set<Scheduler>,
     stack: Reactive<any>[] | null = null;
 
+
+function mark(instances: Reactive<any>[] | null, state: typeof CHECK | typeof DIRTY) {
+    if (!instances) {
+        return;
+    }
+
+    for (let i = 0, n = instances.length; i < n; i++) {
+        let instance = instances[i];
+
+        if (instance.state < state) {
+            // If previous state was clean we need to update effects
+            if (instance.effect && instance.state === CLEAN) {
+                queue.push(instance);
+
+                if (!scheduled) {
+                    for (let scheduler of schedulers) {
+                        scheduler.schedule();
+                    }
+
+                    scheduled = true;
+                }
+            }
+
+            instance.state = state;
+
+            if (instance.observers) {
+                mark(instance.observers, CHECK);
+            }
+        }
+    }
+}
 
 async function task() {
     for (let i = 0, n = queue.length; i < n; i++) {
@@ -15,29 +47,27 @@ async function task() {
     }
 
     queue.length = 0;
+    scheduled = false;
 }
 
 
-type Fn<T> = (onCleanup?: (fn: VoidFunction) => void) => T;
-
-
 class Reactive<T> {
-    private effect: boolean;
-    private fn?: Fn<T>;
-    private observers: Reactive<any>[] | null = null;
-    private sources: Reactive<any>[] | null = null;
-    private state: State;
+    private fn?: ReactiveFn<T>;
     private value: T;
 
 
+    effect: boolean;
     cleanup: ((old: T) => void)[] | null = null;
+    observers: Reactive<any>[] | null = null;
+    sources: Reactive<any>[] | null = null;
+    state: State;
 
 
-    constructor(data: Fn<T> | T, effect: boolean = false) {
+    constructor(data: ReactiveFn<T> | T, effect: boolean = false) {
         this.effect = effect;
 
         if (typeof data === 'function') {
-            this.fn = data as Fn<T>;
+            this.fn = data as ReactiveFn<T>;
             this.state = DIRTY;
             this.value = undefined as any;
 
@@ -75,37 +105,11 @@ class Reactive<T> {
     }
 
     set(value: T) {
-        if (this.observers && this.value !== value) {
-            for (let i = 0; i < this.observers.length; i++) {
-                this.observers[i].mark(DIRTY);
-            }
+        if (this.value !== value) {
+            mark(this.observers, DIRTY);
         }
 
         this.value = value;
-    }
-
-
-    private mark(state: typeof CHECK | typeof DIRTY) {
-        if (this.state < state) {
-            // If previous state was clean we need to update effects
-            if (this.effect && this.state === CLEAN) {
-                queue.push(this);
-
-                for (let scheduler of schedulers) {
-                    scheduler.schedule();
-                }
-            }
-
-            this.state = state;
-
-            if (!this.observers) {
-                return;
-            }
-
-            for (let i = 0; i < this.observers.length; i++) {
-                this.observers[i].mark(CHECK);
-            }
-        }
     }
 
     // We don't actually delete sources here because we're replacing the entire array soon
