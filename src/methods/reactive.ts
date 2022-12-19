@@ -2,9 +2,9 @@ import { Infer } from '~/types';
 import Reactive from '~/reactive';
 
 
-function factory<T>(value: T) {
+function factory<T>(value: T, wrap = false) {
     if (typeof value === 'function') {
-        return fn(value);
+        return fn(value, wrap);
     }
 
     if (typeof value === 'object' && value !== null && (value.constructor === Object)) {
@@ -14,9 +14,15 @@ function factory<T>(value: T) {
     return new Reactive(value) as T;
 }
 
-function fn<T>(value: T) {
+function fn<T>(value: T, wrap: boolean) {
     let fn = new Reactive(value);
 
+    // We're inside an object, it will unwrap reactive values
+    if (!wrap) {
+        return fn;
+    }
+
+    // Factory functions are wrapped to remove '.get' usage
     return (...args: any[]) => {
         let value = fn.get();
 
@@ -40,10 +46,6 @@ function obj<T>(values: T) {
             get() {
                 if (!lazy[key]) {
                     lazy[key] = factory(values[key]);
-                }
-
-                if (typeof values[key] === 'function') {
-                    return lazy[key]();
                 }
 
                 if (lazy[key] instanceof Reactive) {
@@ -71,4 +73,4 @@ function obj<T>(values: T) {
 };
 
 
-export default <T>(value: T) => factory(value) as Infer<T>;
+export default <T>(value: T) => factory(value, true) as Infer<T>;
