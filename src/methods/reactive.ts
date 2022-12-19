@@ -42,6 +42,10 @@ function obj<T>(values: T) {
                     lazy[key] = factory(values[key]);
                 }
 
+                if (typeof values[key] === 'function') {
+                    return lazy[key]();
+                }
+
                 if (lazy[key] instanceof Reactive) {
                     return lazy[key].get();
                 }
