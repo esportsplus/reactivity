@@ -1,24 +1,16 @@
 import { CLEAN, CHECK, DIRTY } from './symbols';
-import Reactive from './reactive';
 
 
 type Fn = () => Promise<unknown> | unknown;
 
 type Infer<T> =
     T extends (...args: any[]) => any
-        ? Reactive<T>
-        : T extends Record<string, any>
-                ? InferNested<T>
-                : Reactive<T>;
-
-type Primitives = any[] | boolean | number | string | null | undefined | ((...args: any[]) => any);
-
-type InferNested<T> =
-    T extends (...args: any[]) => any
         ? ReturnType<T>
         : T extends Record<string, Primitives>
-            ? { [K in keyof T]: InferNested<T[K]> }
+            ? { [K in keyof T]: Infer<T[K]> }
             : T;
+
+type Primitives = any[] | boolean | number | string | null | undefined | ((...args: any[]) => any);
 
 type ReactiveFn<T> = (onCleanup?: (fn: VoidFunction) => void) => T;
 
