@@ -24,11 +24,7 @@ function mark(instances: Reactive<any>[] | null, state: typeof CHECK | typeof DI
                 queue.push(instance);
 
                 if (!scheduled) {
-                    for (let scheduler of schedulers) {
-                        scheduler.schedule();
-                    }
-
-                    scheduled = true;
+                    schedule();
                 }
             }
 
@@ -41,13 +37,32 @@ function mark(instances: Reactive<any>[] | null, state: typeof CHECK | typeof DI
     }
 }
 
-async function task() {
-    for (let i = 0, n = queue.length; i < n; i++) {
-        await queue[i].get();
+function schedule() {
+    if (scheduled) {
+        return;
     }
 
+    for (let scheduler of schedulers) {
+        scheduler.schedule();
+    }
+
+    scheduled = true;
+}
+
+async function task() {
+    let tasks = queue;
+
     queue.length = 0;
+
+    for (let i = 0, n = tasks.length; i < n; i++) {
+        await tasks[i].get();
+    }
+
     scheduled = false;
+
+    if (queue.length) {
+        schedule();
+    }
 }
 
 
