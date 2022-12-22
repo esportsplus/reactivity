@@ -50,14 +50,13 @@ function schedule() {
 }
 
 async function task() {
-    let tasks = queue;
+    let n = queue.length;
 
-    queue.length = 0;
-
-    for (let i = 0, n = tasks.length; i < n; i++) {
-        await tasks[i].get();
+    for (let i = 0; i < n; i++) {
+        await queue[i].get();
     }
 
+    queue.splice(0, n);
     scheduled = false;
 
     if (queue.length) {
