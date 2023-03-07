@@ -1,28 +1,49 @@
-import { CLEAN, CHECK, DIRTY } from './symbols';
+import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, NODE, NODES, SIGNAL } from './symbols';
+import S from './signal';
 
 
-type Fn = () => Promise<unknown> | unknown;
+type Changed = (a: unknown, b: unknown) => boolean;
+
+type Computed<T = unknown> = {
+    fn: NonNullable<Signal<T>['fn']>
+} & Signal<T>;
+
+type Effect<T = unknown> = {
+    root: NonNullable<Signal<T>['root']>;
+    task: NonNullable<Signal<T>['task']>
+} & Computed<T>;
+
+type Fn<T> = () => T;
 
 type Infer<T> =
     T extends (...args: any[]) => any
         ? ReturnType<T>
-        : T extends Record<string, Primitives>
+        : T extends Record<string, unknown>
             ? { [K in keyof T]: Infer<T[K]> }
             : T;
 
-type Primitives = any[] | boolean | number | string | null | undefined | ((...args: any[]) => any);
+type Listener = <T>(value: T) => void;
 
-type ReactiveFn<T> = (onCleanup?: (fn: VoidFunction) => void) => T;
-
-type Scheduler = {
-    schedule(): void;
-    tasks: {
-        add: (fn: Fn) => void;
-        delete: (fn: Fn) => void;
-    }
+type Options = {
+    changed?: Changed;
 };
 
-type State = typeof CHECK | typeof CLEAN | typeof DIRTY;
+type Root = {
+    scheduler: Scheduler
+};
+
+type Scheduler = (fn: (...args: unknown[]) => Promise<unknown> | unknown) => unknown;
+
+type Signal<T = unknown> = S<T>;
+
+type State = typeof CHECK | typeof CLEAN | typeof DIRTY | typeof DISPOSED;
+
+type Type = typeof COMPUTED | typeof EFFECT | typeof SIGNAL;
+
+type Wrapper = {
+    [NODE]?: Signal,
+    [NODES]?: Signal[]
+};
 
 
-export { Infer, ReactiveFn, Scheduler, State };
+export { Changed, Computed, Effect, Fn, Infer, Listener, Options, Root, Scheduler, Signal, State, Type, Wrapper };

@@ -1,6 +1,3 @@
-import { scheduler } from './reactive';
-import { effect, reactive } from './methods';
-
-
-export default { effect, reactive, scheduler };
-export { effect, reactive, scheduler };
+export * from './primitives';
+export { default as core } from './core';
+export { DISPOSE, RESET, UPDATE } from './symbols';
