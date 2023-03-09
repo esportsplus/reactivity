@@ -1,13 +1,8 @@
-import { effect, on } from '~/core';
-import { NODE } from '~/symbols';
-import { Listener, Options } from '~/types';
+import { assign } from '~/context';
+import { effect } from '~/core';
+import { Options } from '~/types';
 
 
-export default (fn: () => unknown, options: Options = {}) => {
-    let node = effect(fn, options);
-
-    return node.context = {
-        [NODE]: node,
-        on: (event: symbol, listener: Listener) => on(event, listener, node)
-    };
+export default (fn: Parameters<typeof effect>[0], options: Options = {}) => {
+    return assign({}, effect(fn, options));
 };

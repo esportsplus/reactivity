@@ -14,11 +14,6 @@ const EFFECT = 1;
 const SIGNAL = 2;
 
 
-const NODE = Symbol();
-
-const NODES = Symbol();
-
-
 const DISPOSE = Symbol();
 
 const RESET = Symbol();
@@ -26,4 +21,4 @@ const RESET = Symbol();
 const UPDATE = Symbol();
 
 
-export { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, DISPOSE, EFFECT, NODE, NODES, RESET, SIGNAL, UPDATE };
+export { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, DISPOSE, EFFECT, RESET, SIGNAL, UPDATE };

@@ -1,28 +1,41 @@
-import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, NODE, NODES, SIGNAL } from './symbols';
-import S from './signal';
+import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, SIGNAL } from './symbols';
+import Signal from './signal';
 
 
 type Changed = (a: unknown, b: unknown) => boolean;
 
-type Computed<T = unknown> = {
+type Computed<T> = {
     fn: NonNullable<Signal<T>['fn']>
 } & Signal<T>;
 
-type Effect<T = unknown> = {
+type Context<T> = {
+    node: Signal<T>;
+
+    dispose(): void;
+    on(event: Event, listener: Listener): void;
+    once(event: Event, listener: Listener): void;
+    reset(): void;
+};
+
+type Effect<T> = {
     root: NonNullable<Signal<T>['root']>;
     task: NonNullable<Signal<T>['task']>
 } & Computed<T>;
 
-type Fn<T> = () => T;
+type Event = symbol;
 
 type Infer<T> =
     T extends (...args: any[]) => any
         ? ReturnType<T>
-        : T extends Record<string, unknown>
+        : T extends Record<PropertyKey, unknown>
             ? { [K in keyof T]: Infer<T[K]> }
             : T;
 
-type Listener = <T>(value: T) => void;
+type Listener = {
+    once?: boolean;
+
+    <T>(value: T): void;
+};
 
 type Options = {
     changed?: Changed;
@@ -34,16 +47,9 @@ type Root = {
 
 type Scheduler = (fn: (...args: unknown[]) => Promise<unknown> | unknown) => unknown;
 
-type Signal<T = unknown> = S<T>;
-
 type State = typeof CHECK | typeof CLEAN | typeof DIRTY | typeof DISPOSED;
 
 type Type = typeof COMPUTED | typeof EFFECT | typeof SIGNAL;
 
-type Wrapper = {
-    [NODE]?: Signal,
-    [NODES]?: Signal[]
-};
 
-
-export { Changed, Computed, Effect, Fn, Infer, Listener, Options, Root, Scheduler, Signal, State, Type, Wrapper };
+export { Changed, Computed, Context, Effect, Event, Infer, Listener, Options, Root, Scheduler, Signal, State, Type };

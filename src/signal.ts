@@ -1,21 +1,22 @@
-import { Changed, Fn, Listener, Options, Root, Scheduler, State, Type, Wrapper } from './types';
+import { Changed, Context, Listener, Options, Root, Scheduler, State, Type } from '~/types';
 
 
-class Signal<T = unknown> {
+class Signal<T> {
     changed: Changed | null = null;
-    context: any & Wrapper | null = null;
-    fn: Fn<T> | null = null;
-    listeners: Record<symbol, Listener[]> | null = null;
-    observers: Signal[] | null = null;
+    context: Context<T> | null = null;
+    fn: ((previous: T) => Promise<T> | T) | null = null;
+    listeners: Record<symbol, (Listener | null)[]> | null = null;
+    observers: Signal<T>[] | null = null;
     root: Root | null = null;
-    sources: Signal[] | null = null;
+    sources: Signal<T>[] | null = null;
+    state: State;
     task: Parameters<Scheduler>[0] | null = null;
     type: Type;
-    state: State;
+    updating: boolean | null = null;
     value: T;
 
 
-    constructor(data: T, state: Signal['state'], type: Signal['type'], options: Options = {}) {
+    constructor(data: T, state: Signal<T>['state'], type: Signal<T>['type'], options: Options = {}) {
         if (options?.changed) {
             this.changed = options.changed;
         }

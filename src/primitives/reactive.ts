@@ -1,43 +1,33 @@
-import { computed as c, read, signal as s, write } from '~/core';
-import { NODES } from '~/symbols';
-import { Fn, Infer, Options, Signal } from '~/types';
-import computed from './computed';
-import signal from './signal';
+import { computed, read, signal, write } from '~/core';
+import { Computed, Infer, Options, Signal } from '~/types';
 
 
-export default <T>(value: Fn<T> | T, options: Options = {}) => {
-    if (typeof value === 'object' && value !== null && (value.constructor === Object)) {
-        let nodes: Record<string, Signal> = {},
-            properties: PropertyDescriptorMap = {};
+export default <T>(value: Record<PropertyKey, Computed<T>['fn'] | Signal<T>['value']>, options: Options = {}) => {
+    let instance = {};
 
-        for (let key in value) {
-            if (typeof value[key] === 'function') {
-                nodes[key] = c(value[key] as Parameters<typeof c>[0], options);
-                properties[key] = {
-                    get() {
-                        return read(nodes[key]);
-                    }
-                };
-            }
-            else {
-                nodes[key] = s(value[key], options);
-                properties[key] = {
-                    get() {
-                        return read(nodes[key]);
-                    },
-                    set(value) {
-                        write(nodes[key], value);
-                    }
-                };
-            }
+    for (let key in value) {
+        if (typeof value[key] === 'function') {
+            let node = computed(value[key] as Computed<T>['fn'], options);
+
+            Object.defineProperty(instance, key, {
+                get() {
+                    return read(node);
+                }
+            });
         }
+        else {
+            let node = signal(value[key], options);
 
-        return Object.defineProperties({ [NODES]: Object.values(nodes) }, properties) as Infer<typeof value>;
+            Object.defineProperty(instance, key, {
+                get() {
+                    return read(node);
+                },
+                set(value) {
+                    write(node, value);
+                }
+            });
+        }
     }
 
-    if (typeof value === 'function') {
-        return computed(value as Parameters<typeof computed>[0], options);
-    }
-
-    return signal(value, options);
+    return instance as Infer<typeof value>;
 };
