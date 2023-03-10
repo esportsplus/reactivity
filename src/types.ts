@@ -5,12 +5,11 @@ import Signal from './signal';
 type Changed = (a: unknown, b: unknown) => boolean;
 
 type Computed<T> = {
-    fn: NonNullable<Signal<T>['fn']>
-} & Signal<T>;
+    fn: T extends Promise<unknown> ? never : ((this: Context, previous: T) => T);
+    value: ReturnType<Computed<T>['fn']>;
+} & Omit<Signal<T>, 'fn' | 'value'>;
 
-type Context<T> = {
-    node: Signal<T>;
-
+type Context = {
     dispose(): void;
     on(event: Event, listener: Listener): void;
     once(event: Event, listener: Listener): void;
@@ -18,9 +17,10 @@ type Context<T> = {
 };
 
 type Effect<T> = {
+    fn: (this: Context, previous: T) => T;
     root: NonNullable<Signal<T>['root']>;
     task: NonNullable<Signal<T>['task']>
-} & Computed<T>;
+} & Omit<Computed<T>, 'fn' | 'root' | 'task'>;
 
 type Event = symbol;
 
