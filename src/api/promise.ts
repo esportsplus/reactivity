@@ -2,6 +2,9 @@ import { computed, read, root, signal, write } from '~/signal';
 import context from '~/context';
 
 
+// TODO:
+// - Add status value
+// - Add reject/stop method
 export default (fn: <A, R extends Promise<any>>(...args: A[]) => R, options: Parameters<typeof computed>[1] = {}) => {
     let input: unknown,
         nodes = {

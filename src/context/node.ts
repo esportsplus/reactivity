@@ -1,5 +1,5 @@
 import { NODE } from '~/symbols';
-import { Context, Event, Listener, Signal } from '~/types';
+import { Context, Event, Listener, Prettify, Signal } from '~/types';
 
 
 type Internals = {
@@ -32,5 +32,5 @@ export default <T>(host: T & Partial<Context>, node: Internals[typeof NODE]) => 
     host.once = once;
     host.reset = reset;
 
-    return host as Required<typeof host>;
+    return host as Prettify< Required<typeof host> >;
 };

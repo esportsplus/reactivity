@@ -1,22 +1,27 @@
 import { computed, read, signal, write } from '~/signal';
-import { Computed, Context, Infer, Signal } from '~/types';
+import { Context, Signal } from '~/types';
 import context from '~/context';
 
 
-type Data = {
-    [key in keyof Context]: never
-} & Record<PropertyKey, Parameters<typeof computed>[0] | Parameters<typeof signal>[0]>;
+type Infer<T> =
+    T extends (...args: unknown[]) => unknown
+        ? ReturnType<T>
+        : T extends Record<PropertyKey, unknown>
+            ? { [K in keyof T]: Infer<T[K]> }
+            : T;
+
+type Never = { [K in keyof Context]?: never };
 
 type Options = Parameters<typeof computed>[1] | Parameters<typeof signal>[1];
 
 
-export default <T>(data: Data, options: Options = {}) => {
+export default <T extends Record<PropertyKey, unknown>>(data: T & Never, options: Options = {}) => {
     let host = {},
-        nodes: Record<PropertyKey, Signal<any>> = {};
+        nodes: Record<PropertyKey, Signal<unknown>> = {};
 
-    for (let key in data) {
+    for (let key in (data as T)) {
         if (typeof data[key] === 'function') {
-            nodes[key] = computed(data[key] as Computed<T>['fn'], options);
+            nodes[key] = computed(data[key] as Parameters<typeof computed>[0], options);
 
             Object.defineProperty(host, key, {
                 get() {
@@ -38,5 +43,5 @@ export default <T>(data: Data, options: Options = {}) => {
         }
     }
 
-    return context.nodes(host as Infer<typeof data>, nodes);
+    return context.nodes(host as Infer<T> & Context, nodes);
 };

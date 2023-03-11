@@ -24,13 +24,6 @@ type Effect<T> = {
 
 type Event = symbol;
 
-type Infer<T> =
-    T extends (...args: any[]) => any
-        ? ReturnType<T>
-        : T extends Record<PropertyKey, unknown>
-            ? { [K in keyof T]: Infer<T[K]> }
-            : T;
-
 type Listener = {
     once?: boolean;
 
@@ -45,6 +38,10 @@ type Root = {
     scheduler: Scheduler
 };
 
+type Prettify<T> = {
+    [K in keyof T]: T[K];
+} & {};
+
 type Scheduler = (fn: (...args: unknown[]) => Promise<unknown> | unknown) => unknown;
 
 type State = typeof CHECK | typeof CLEAN | typeof DIRTY | typeof DISPOSED;
@@ -52,4 +49,4 @@ type State = typeof CHECK | typeof CLEAN | typeof DIRTY | typeof DISPOSED;
 type Type = typeof COMPUTED | typeof EFFECT | typeof SIGNAL;
 
 
-export { Changed, Computed, Context, Effect, Event, Infer, Listener, Options, Root, Scheduler, Signal, State, Type };
+export { Changed, Computed, Context, Effect, Event, Listener, Options, Prettify, Root, Scheduler, Signal, State, Type };
