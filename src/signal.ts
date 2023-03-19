@@ -274,7 +274,7 @@ const effect = <T>(fn: Effect<T>['fn'], options: Options = {}) => {
     node.root = scope;
     node.task = () => read(node);
 
-    update(node);
+    node.root.scheduler(node.task);
 
     return node as Effect<void>;
 };
