@@ -2,7 +2,7 @@
     "author": "ICJR",
     "description": "Reactivity",
     "devDependencies": {
-        "@esportsplus/rspack": "^0.0.1"
+        "@esportsplus/rspack": "^0.0.15"
     },
     "main": "build/index.js",
     "name": "@esportsplus/reactivity",
