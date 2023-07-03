@@ -7,7 +7,7 @@ type Infer<T> =
     T extends (...args: unknown[]) => unknown
         ? ReturnType<T>
         : T extends Record<PropertyKey, unknown>
-            ? { [K in keyof T]: Infer<T[K]> }
+            ? { [K in keyof T]: T[K] }
             : T;
 
 type Never = { [K in keyof Context]?: never };
