@@ -1,6 +1,6 @@
-import { computed, read } from '~/signal';
-import { Computed } from '~/types';
-import context from '~/context';
+import { computed, read } from './signal';
+import { Computed } from './types';
+import context from './context';
 
 
 export default <T extends <A, R>(...args: A[]) => R>(fn: Computed<T>['fn'], options: Parameters<typeof computed>[1] = {}) => {

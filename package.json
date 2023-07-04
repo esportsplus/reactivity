@@ -1,6 +1,5 @@
 {
     "author": "ICJR",
-    "description": "Reactivity",
     "devDependencies": {
         "@esportsplus/rspack": "^0.0.15"
     },

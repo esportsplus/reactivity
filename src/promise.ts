@@ -1,5 +1,5 @@
-import { computed, read, root, signal, write } from '~/signal';
-import context from '~/context';
+import { computed, read, root, signal, write } from './signal';
+import context from './context';
 
 
 // TODO:

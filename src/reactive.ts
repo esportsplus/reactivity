@@ -1,6 +1,6 @@
-import { computed, read, signal, write } from '~/signal';
-import { Context, Signal } from '~/types';
-import context from '~/context';
+import { computed, read, signal, write } from './signal';
+import { Context, Signal } from './types';
+import context from './context';
 
 
 type Infer<T> =
