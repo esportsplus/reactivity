@@ -1,7 +1,7 @@
 {
     "author": "ICJR",
     "devDependencies": {
-        "@esportsplus/rspack": "^0.0.15"
+        "@esportsplus/typescript": "^0.0.1"
     },
     "main": "build/index.js",
     "name": "@esportsplus/reactivity",
