@@ -1,4 +1,4 @@
-import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, DISPOSE, EFFECT, RESET, SIGNAL, UPDATE } from '~/symbols';
+import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, DISPOSE, EFFECT, RESET, SIGNAL, UPDATE } from '~/constants';
 import { Changed, Computed, Context, Effect, Event, Listener, Options, Root, Scheduler, State, Type } from '~/types';
 
 

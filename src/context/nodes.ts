@@ -1,4 +1,4 @@
-import { NODES } from '~/symbols';
+import { NODES } from '~/constants';
 import { Context, Event, Listener, Prettify, Signal } from '~/types';
 
 
