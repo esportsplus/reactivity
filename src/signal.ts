@@ -23,7 +23,7 @@ class Signal<T> {
 
 
     constructor(data: T, state: Signal<T>['state'], type: Signal<T>['type'], options: Options = {}) {
-        if (options?.changed) {
+        if (options.changed !== undefined) {
             this.changed = options.changed;
         }
 
@@ -49,7 +49,7 @@ class Signal<T> {
             listener.once = true;
         }
 
-        if (!this.listeners?.[event]) {
+        if (this.listeners === null || !(event in this.listeners)) {
             this.listeners ??= {};
             this.listeners[event] = [listener];
         }
@@ -98,7 +98,7 @@ function changed(a: unknown, b: unknown) {
 }
 
 function dispatch<T>(event: Event, node: Signal<T>) {
-    if (!node.listeners?.[event]) {
+    if (node.listeners === null || !(event in node.listeners)) {
         return;
     }
 
@@ -114,7 +114,7 @@ function dispatch<T>(event: Event, node: Signal<T>) {
 
         listener(value);
 
-        if (listener?.once) {
+        if (listener.once !== undefined) {
             listeners[i] = null;
         }
     }
@@ -157,7 +157,7 @@ function removeSourceObservers<T>(node: Signal<T>, start: number) {
     for (let i = start, n = node.sources.length; i < n; i++) {
         let source = node.sources[i];
 
-        if (!source?.observers) {
+        if (source.observers === null) {
             continue;
         }
 
@@ -202,7 +202,7 @@ function update<T>(node: Signal<T>) {
 
         node.updating = true;
 
-        let value = node.fn!.call(node as Context, node?.value);
+        let value = node.fn!.call(node as Context, node.value);
 
         node.updating = null;
 
@@ -256,7 +256,7 @@ function update<T>(node: Signal<T>) {
 
 
 const computed = <T>(fn: Computed<T>['fn'], options: Options & { value?: unknown } = {}) => {
-    let node = new Signal(options?.value as any, DIRTY, COMPUTED, options);
+    let node = new Signal(options.value as any, DIRTY, COMPUTED, options);
 
     node.fn = fn;
 
@@ -286,7 +286,7 @@ const read = <T>(node: Signal<T>): typeof node['value'] => {
 
     if (observer) {
         if (!observers) {
-            if (observer?.sources?.[index] == node) {
+            if (observer.sources !== null && observer.sources[index] == node) {
                 index++;
             }
             else {
@@ -309,10 +309,12 @@ const root = <T>(fn: () => T, properties: { scheduler?: Scheduler } = {}) => {
     let o = observer,
         s = scope;
 
-    properties.scheduler = properties?.scheduler || scope?.scheduler;
+    if (properties.scheduler === undefined) {
+        properties.scheduler = scope?.scheduler;
 
-    if (!properties.scheduler) {
-        throw new Error('Reactivity: `root` cannot be created without a task scheduler');
+        if (properties.scheduler === undefined) {
+            throw new Error('Reactivity: `root` cannot be created without a task scheduler');
+        }
     }
 
     observer = null;
@@ -331,7 +333,7 @@ const signal = <T>(data: T, options: Options = {}) => {
 };
 
 const write = <T>(node: Signal<T>, value: unknown) => {
-    if ((node?.changed || changed)(node.value, value)) {
+    if ((node.changed === null ? changed : node.changed)(node.value, value)) {
         node.value = value as T;
         notify(node.observers, DIRTY);
     }

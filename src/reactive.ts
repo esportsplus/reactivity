@@ -36,8 +36,8 @@ export default <T extends Record<PropertyKey, unknown>>(data: T & Never, options
                 get() {
                     return read(nodes[key]);
                 },
-                set(data) {
-                    write(nodes[key], data);
+                set(value) {
+                    write(nodes[key], value);
                 }
             });
         }
