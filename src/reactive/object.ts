@@ -5,7 +5,7 @@ import { ReactiveArray, ReactiveObjectArray } from './array';
 
 
 class ReactiveObject<T extends Object> {
-    nodes: Record<PropertyKey, Computed<unknown> | ReactiveObjectArray<Object> | ReactiveArray<unknown> | Signal<unknown>> = {};
+    nodes: Record<PropertyKey, Computed<unknown> | ReactiveArray<unknown> | ReactiveObjectArray<Object> | Signal<unknown>> = {};
 
 
     constructor(data: T, options: Options = {}) {
