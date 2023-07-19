@@ -1,27 +1,15 @@
 import { computed, read, signal, write } from '~/signal';
-import { Computed, Options, Signal } from '~/types';
+import { Computed, Object, Options, Signal } from '~/types';
 import { defineProperty, isArray } from '~/utilities';
 import { ReactiveArray, ReactiveObjectArray } from './array';
 
 
-type Node<T> =
-    T extends (...args: unknown[]) => unknown
-        ? Computed<T>
-        : T extends unknown[]
-            ? T extends Object[] ? ReactiveObjectArray<T[0]> : ReactiveArray<T>
-            : Signal<T>;
-
-type Nodes<T extends Object> = { [K in keyof T]: Node<T[K]> };
-
-type Object = Record<PropertyKey, unknown>;
-
-
 class ReactiveObject<T extends Object> {
-    nodes: Nodes<T>;
+    nodes: Record<PropertyKey, Computed<unknown> | ReactiveObjectArray<Object> | ReactiveArray<unknown> | Signal<unknown>> = {};
 
 
     constructor(data: T, options: Options = {}) {
-        let nodes: Object = {};
+        let nodes = this.nodes;
 
         for (let key in data) {
             let input = data[key];
@@ -67,8 +55,6 @@ class ReactiveObject<T extends Object> {
                 });
             }
         }
-
-        this.nodes = nodes as typeof this.nodes;
     }
 
 

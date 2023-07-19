@@ -1,5 +1,5 @@
 import { dispose, read, signal, write } from '~/signal';
-import { Listener, Options, Signal } from '~/types';
+import { Listener, Object, Options, Signal } from '~/types';
 import { ReactiveObject } from './object';
 
 
@@ -14,10 +14,10 @@ type Events<T> = {
     unshift: { items: T[] };
 };
 
-type Node<T extends Record<PropertyKey, unknown>> = ReactiveObject<T>;
+type Node<T extends Object> = ReactiveObject<T>;
 
 
-function factory<T extends Record<PropertyKey, unknown>>(data: T[], options: Options = {}) {
+function factory<T extends Object>(data: T[], options: Options = {}) {
     let signals = [];
 
     for (let i = 0, n = data.length; i < n; i++) {
@@ -169,7 +169,7 @@ class ReactiveArray<T> extends Array<T> {
 // REMINDER:
 // - @ts-ignore flags are supressing a type mismatch error
 // - Input values are being transformed by this class into nodes
-class ReactiveObjectArray<T extends Record<PropertyKey, unknown>>  extends ReactiveArray<Node<T>> {
+class ReactiveObjectArray<T extends Object>  extends ReactiveArray<Node<T>> {
     #options: Options;
 
 

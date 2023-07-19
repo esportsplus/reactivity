@@ -1,4 +1,5 @@
-import { Object, Options, Prettify } from '~/types';
+import { Computed, Object, Options, Prettify, Signal } from '~/types';
+import { ReactiveArray, ReactiveObjectArray } from './array';
 import { ReactiveObject } from './object';
 
 
@@ -20,7 +21,18 @@ type Infer<T> =
 
 type Never<K,V> = K extends keyof ReactiveObject<Object> ? never : V;
 
+type Node<T> =
+    T extends (...args: unknown[]) => unknown
+        ? Computed<T>
+        : T extends unknown[]
+            ? T extends Object[] ? ReactiveObjectArray<T[0]> : ReactiveArray<T>
+            : Signal<T>;
+
+type Nodes<T extends Object> = { [K in keyof T]: Node<T[K]> };
+
 
 export default <T extends Object>(data: Guard<T>, options: Options = {}) => {
-    return new ReactiveObject(data, options) as any as Prettify< { [K in keyof T]: Infer<T[K]> } & ReactiveObject<T> >;
+    return new ReactiveObject(data, options) as any as Prettify<
+        { [K in keyof T]: Infer<T[K]> } & Omit<ReactiveObject<T>, 'nodes'> & { nodes: Nodes<T> }
+    >;
 };
