@@ -1,7 +1,10 @@
 {
     "author": "ICJR",
+    "dependencies": {
+        "@esportsplus/custom-function": "^0.0.1"
+    },
     "devDependencies": {
-        "@esportsplus/typescript": "^0.0.1"
+        "@esportsplus/typescript": "^0.0.3"
     },
     "main": "build/index.js",
     "name": "@esportsplus/reactivity",

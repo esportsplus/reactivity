@@ -1,5 +1,7 @@
-import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, DISPOSE, EFFECT, RESET, SIGNAL, UPDATE } from '~/constants';
-import { Changed, Computed, Context, Effect, Event, Listener, Options, Root, Scheduler, State, Type } from '~/types';
+import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, SIGNAL } from './constants';
+import { Changed, Computed, Effect, Event, Listener, Options, Root, Scheduler, State, Type } from './types';
+import { isArray } from './utilities';
+
 
 
 let index = 0,
@@ -11,7 +13,7 @@ let index = 0,
 class Signal<T> {
     changed: Changed | null = null;
     fn: Computed<T>['fn'] | null = null;
-    listeners: Record<symbol, (Listener | null)[]> | null = null;
+    listeners: Record<Event, (Listener<any> | null)[]> | null = null;
     observers: Signal<T>[] | null = null;
     root: Root | null = null;
     sources: Signal<T>[] | null = null;
@@ -33,6 +35,35 @@ class Signal<T> {
     }
 
 
+    dispatch<D>(event: Event, data?: D) {
+        if (this.listeners === null || !(event in this.listeners)) {
+            return;
+        }
+
+        let listeners = this.listeners[event],
+            value = this.value;
+
+        for (let i = 0, n = listeners.length; i < n; i++) {
+            let listener = listeners[i];
+
+            if (listener === null) {
+                continue;
+            }
+
+            try {
+                // @ts-ignore
+                listener( listener.length === 0 ? null : { data, value } );
+            }
+            catch {
+                listeners[i] = null;
+            }
+
+            if (listener.once !== undefined) {
+                listeners[i] = null;
+            }
+        }
+    }
+
     dispose() {
         if (this.state === DISPOSED) {
             return;
@@ -40,11 +71,11 @@ class Signal<T> {
 
         this.state = DISPOSED;
 
-        dispatch(DISPOSE, this);
+        this.dispatch('dispose', this);
         flush(this);
     }
 
-    on(event: Event, listener: Listener) {
+    on(event: Event, listener: Listener<any>) {
         if (this.updating) {
             listener.once = true;
         }
@@ -69,13 +100,13 @@ class Signal<T> {
         }
     }
 
-    once(event: Event, listener: Listener) {
+    once(event: Event, listener: Listener<any>) {
         listener.once = true;
         this.on(event, listener);
     }
 
     reset() {
-        dispatch(RESET, this);
+        this.dispatch('reset', this);
         flush(this);
 
         if (this.type === COMPUTED) {
@@ -97,31 +128,8 @@ function changed(a: unknown, b: unknown) {
     return a !== b;
 }
 
-function dispatch<T>(event: Event, node: Signal<T>) {
-    if (node.listeners === null || !(event in node.listeners)) {
-        return;
-    }
-
-    let listeners = node.listeners[event],
-        value = node.value;
-
-    for (let i = 0, n = listeners.length; i < n; i++) {
-        let listener = listeners[i];
-
-        if (!listener) {
-            continue;
-        }
-
-        listener(value);
-
-        if (listener.once !== undefined) {
-            listeners[i] = null;
-        }
-    }
-}
-
 function flush<T>(node: Signal<T>) {
-    if (node.sources) {
+    if (node.sources !== null) {
         removeSourceObservers(node, 0);
     }
 
@@ -131,7 +139,7 @@ function flush<T>(node: Signal<T>) {
 }
 
 function notify<T>(nodes: Signal<T>[] | null, state: typeof CHECK | typeof DIRTY) {
-    if (!nodes) {
+    if (nodes === null) {
         return;
     }
 
@@ -150,7 +158,7 @@ function notify<T>(nodes: Signal<T>[] | null, state: typeof CHECK | typeof DIRTY
 }
 
 function removeSourceObservers<T>(node: Signal<T>, start: number) {
-    if (!node.sources) {
+    if (node.sources === null) {
         return;
     }
 
@@ -167,7 +175,7 @@ function removeSourceObservers<T>(node: Signal<T>, start: number) {
 }
 
 function sync<T>(node: Signal<T>) {
-    if (node.state === CHECK && node.sources) {
+    if (node.state === CHECK && node.sources !== null) {
         for (let i = 0, n = node.sources.length; i < n; i++) {
             sync(node.sources[i]);
 
@@ -198,18 +206,17 @@ function update<T>(node: Signal<T>) {
     observers = null as typeof observers;
 
     try {
-        dispatch(UPDATE, node);
-
+        node.dispatch('update');
         node.updating = true;
 
-        let value = node.fn!.call(node as Context, node.value);
+        let value = node.fn!.call(node, node.value);
 
         node.updating = null;
 
         if (observers) {
             removeSourceObservers(node, index);
 
-            if (node.sources && index > 0) {
+            if (node.sources !== null && index > 0) {
                 node.sources.length = index + observers.length;
 
                 for (let i = 0, n = observers.length; i < n; i++) {
@@ -231,7 +238,7 @@ function update<T>(node: Signal<T>) {
                 }
             }
         }
-        else if (node.sources && index < node.sources.length) {
+        else if (node.sources !== null && index < node.sources.length) {
             removeSourceObservers(node, index);
             node.sources.length = index;
         }
@@ -255,7 +262,7 @@ function update<T>(node: Signal<T>) {
 }
 
 
-const computed = <T>(fn: Computed<T>['fn'], options: Options & { value?: unknown } = {}) => {
+const computed = <T>(fn: Computed<T>['fn'], options: Options = {}) => {
     let node = new Signal(options.value as any, DIRTY, COMPUTED, options);
 
     node.fn = fn;
@@ -263,7 +270,22 @@ const computed = <T>(fn: Computed<T>['fn'], options: Options & { value?: unknown
     return node as Computed<T>;
 };
 
-const effect = <T>(fn: Effect<T>['fn'], options: Options = {}) => {
+const dispose = <T extends { dispose: () => void }>(dispose?: T[] | T) => {
+    if (dispose === undefined) {
+    }
+    else if (isArray(dispose)) {
+        for (let i = 0, n = dispose.length; i < n; i++) {
+            dispose[i].dispose();
+        }
+    }
+    else {
+        dispose.dispose();
+    }
+
+    return dispose;
+};
+
+const effect = <T>(fn: Effect<T>['fn'], options: Omit<Options, 'value'> = {}) => {
     if (!scope) {
         throw new Error('Reactivity: `effects` cannot be created without a reactive root');
     }
@@ -305,6 +327,21 @@ const read = <T>(node: Signal<T>): typeof node['value'] => {
     return node.value;
 };
 
+const reset = <T extends { reset: () => void }>(reset?: T[] | T) => {
+    if (reset === undefined) {
+    }
+    else if (isArray(reset)) {
+        for (let i = 0, n = reset.length; i < n; i++) {
+            reset[i].reset();
+        }
+    }
+    else {
+        reset.reset();
+    }
+
+    return reset;
+};
+
 const root = <T>(fn: () => T, properties: { scheduler?: Scheduler } = {}) => {
     let o = observer,
         s = scope;
@@ -328,7 +365,7 @@ const root = <T>(fn: () => T, properties: { scheduler?: Scheduler } = {}) => {
     return result;
 };
 
-const signal = <T>(data: T, options: Options = {}) => {
+const signal = <T>(data: T, options: Omit<Options, 'value'> = {}) => {
     return new Signal(data, CLEAN, SIGNAL, options);
 };
 
@@ -343,4 +380,4 @@ const write = <T>(node: Signal<T>, value: unknown) => {
 
 
 export default Signal;
-export { computed, effect, read, root, signal, write };
+export { computed, dispose, effect, read, reset, root, signal, write };

@@ -1,15 +1,35 @@
+import CustomFunction from '@esportsplus/custom-function';
 import { computed, read } from './signal';
 import { Computed } from './types';
-import context from './context';
 
 
-export default <T extends <A, R>(...args: A[]) => R>(fn: Computed<T>['fn'], options: Parameters<typeof computed>[1] = {}) => {
-    let node = computed(fn, options);
+type Fn<A extends unknown[], R> = Parameters<typeof computed<(...args: A) => R>>[0];
 
-    return context.node(
-        (...args: Parameters<ReturnType<typeof fn>>) => {
-            return (read(node) as ReturnType<typeof fn>)(...args);
-        },
-        node
-    );
+type Options = Parameters<typeof computed>[1];
+
+
+class Macro<A extends unknown[], R> extends CustomFunction {
+    #factory: Computed< ReturnType<Fn<A,R>> >;
+
+
+    constructor(fn: Fn<A,R>, options: Options = {}) {
+        super((...args: A) => {
+            return read(this.#factory)(...args);
+        });
+        this.#factory = computed(fn, options);
+    }
+
+
+    dispose() {
+        this.#factory.dispose();
+    }
+
+    reset() {
+        this.#factory.reset();
+    }
+}
+
+
+export default <A extends unknown[], R>(fn: Fn<A,R>, options: Options = {}) => {
+    return new Macro(fn, options);
 };
