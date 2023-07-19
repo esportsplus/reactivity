@@ -4,8 +4,11 @@ import { defineProperty, isArray } from '~/utilities';
 import { ReactiveArray, ReactiveObjectArray } from './array';
 
 
+type Node = Computed<unknown> | ReactiveArray<unknown> | ReactiveObjectArray<Object> | Signal<unknown>;
+
+
 class ReactiveObject<T extends Object> {
-    nodes: Record<PropertyKey, Computed<unknown> | ReactiveArray<unknown> | ReactiveObjectArray<Object> | Signal<unknown>> = {};
+    nodes: Record<PropertyKey, Node> = {};
 
 
     constructor(data: T, options: Options = {}) {
@@ -27,7 +30,7 @@ class ReactiveObject<T extends Object> {
                 let node: ReactiveArray<unknown> | ReactiveObjectArray<Object>,
                     test = input[0];
 
-                if (typeof test === 'object' && test !== null && test.constructor.name === 'Object') {
+                if (typeof test === 'object' && test !== null && test?.constructor?.name === 'Object') {
                     node = nodes[key] = new ReactiveObjectArray(input, options);
                 }
                 else {
