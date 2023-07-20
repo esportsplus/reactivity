@@ -21,6 +21,7 @@ class ReactiveObject<T extends Object> {
                 let node = nodes[key] = computed(input as Computed<unknown>['fn'], options);
 
                 defineProperty(this, key, {
+                    enumerable: true,
                     get() {
                         return read(node);
                     }
@@ -38,6 +39,7 @@ class ReactiveObject<T extends Object> {
                 }
 
                 defineProperty(this, key, {
+                    enumerable: true,
                     get() {
                         node.track();
 
@@ -49,6 +51,7 @@ class ReactiveObject<T extends Object> {
                 let node = nodes[key] = signal(input, options);
 
                 defineProperty(this, key, {
+                    enumerable: true,
                     get() {
                         return read(node);
                     },
