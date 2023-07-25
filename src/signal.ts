@@ -286,14 +286,19 @@ const dispose = <T extends { dispose: () => void }>(dispose?: T[] | T) => {
 };
 
 const effect = <T>(fn: Effect<T>['fn'], options: Omit<Options, 'value'> = {}) => {
-    if (scope === null) {
-        throw new Error('Reactivity: `effect` cannot be created without a reactive root');
-    }
-
     let node = new Signal(undefined as any, DIRTY, EFFECT, options);
 
+    if (scope !== null) {
+        node.root = scope;
+    }
+    else if (observer !== null && observer.type === EFFECT && observer.root !== null) {
+        node.root = observer.root;
+    }
+    else {
+        throw new Error('Reactivity: `effects` cannot be created without a reactive root');
+    }
+
     node.fn = fn;
-    node.root = scope;
     node.task = () => read(node);
 
     node.root.scheduler(node.task);
@@ -306,8 +311,8 @@ const read = <T>(node: Signal<T>): typeof node['value'] => {
         return node.value;
     }
 
-    if (observer) {
-        if (!observers) {
+    if (observer !== null) {
+        if (observers === null) {
             if (observer.sources !== null && observer.sources[index] == node) {
                 index++;
             }
@@ -320,7 +325,7 @@ const read = <T>(node: Signal<T>): typeof node['value'] => {
         }
     }
 
-    if (node.fn) {
+    if (node.fn !== null) {
         sync(node);
     }
 
