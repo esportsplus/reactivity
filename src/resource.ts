@@ -42,8 +42,8 @@ class Resource<A extends unknown[], R extends Promise<unknown>> extends CustomFu
                 });
         });
         this.#data = signal(options.value as Awaited<R>, options),
-        this.#input = signal(null, options),
-        this.#ok = signal(null, options)
+        this.#input = signal<A | null>(null, options),
+        this.#ok = signal<boolean | null>(null, options)
     }
 
 

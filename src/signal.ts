@@ -1,5 +1,5 @@
 import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, SIGNAL } from './constants';
-import { Changed, Computed, Effect, Event, Listener, Options, Root, Scheduler, State, Type } from './types';
+import { Changed, Computed, Effect, Event, Listener, PreventPromise, Options, Root, Scheduler, State, Type } from './types';
 import { isArray } from './utilities';
 
 
@@ -291,7 +291,7 @@ const effect = <T>(fn: Effect<T>['fn'], options: Omit<Options, 'value'> = {}) =>
     if (scope !== null) {
         node.root = scope;
     }
-    else if (observer !== null && observer.type === EFFECT && observer.root !== null) {
+    else if (observer !== null && observer.type === EFFECT) {
         node.root = observer.root;
     }
     else {
@@ -301,7 +301,7 @@ const effect = <T>(fn: Effect<T>['fn'], options: Omit<Options, 'value'> = {}) =>
     node.fn = fn;
     node.task = () => read(node);
 
-    node.root.scheduler(node.task);
+    read(node);
 
     return node as Effect<void>;
 };
@@ -347,16 +347,16 @@ const reset = <T extends { reset: () => void }>(reset?: T[] | T) => {
     return reset;
 };
 
-const root = <T>(fn: () => T, properties: { scheduler?: Scheduler } = {}) => {
+const root = <T>(fn: PreventPromise<T, () => T>, properties: { scheduler?: Scheduler } = {}) => {
     let o = observer,
         s = scope;
 
     if (properties.scheduler === undefined) {
-        properties.scheduler = scope?.scheduler;
-
-        if (properties.scheduler === undefined) {
+        if (scope === null) {
             throw new Error('Reactivity: `root` cannot be created without a task scheduler');
         }
+
+        properties.scheduler = scope.scheduler;
     }
 
     observer = null;

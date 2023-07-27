@@ -6,12 +6,12 @@ import Signal from './signal';
 type Changed = (a: unknown, b: unknown) => boolean;
 
 type Computed<T> = {
-    fn: T extends Promise<unknown> ? never : ((previous: T) => T);
+    fn: PreventPromise<T, (previous: T) => T>;
     value: ReturnType<Computed<T>['fn']>;
 } & Omit<Signal<T>, 'fn' | 'value'>;
 
 type Effect<T> = {
-    fn: (node: Effect<T>) => void;
+    fn: PreventPromise<T, (node: Effect<T>) => void>;
     root: NonNullable<Signal<T>['root']>;
     task: NonNullable<Signal<T>['task']>
     value: void;
@@ -24,6 +24,8 @@ type Listener<D> = {
 
     <V>(event: { data?: D, value: V }): void;
 };
+
+type PreventPromise<T, R> = T extends Promise<unknown> ? never : R;
 
 type Object = Record<PropertyKey, unknown>;
 
@@ -43,4 +45,4 @@ type State = typeof CHECK | typeof CLEAN | typeof DIRTY | typeof DISPOSED;
 type Type = typeof COMPUTED | typeof EFFECT | typeof SIGNAL;
 
 
-export { Changed, Computed, Effect, Event, Listener, Object, Options, Prettify, Root, Scheduler, Signal, State, Type };
+export { Changed, Computed, Effect, Event, Listener, PreventPromise, Object, Options, Prettify, Root, Scheduler, Signal, State, Type };

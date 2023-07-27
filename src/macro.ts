@@ -3,7 +3,7 @@ import { computed, read } from './signal';
 import { Computed } from './types';
 
 
-type Fn<A extends unknown[], R> = Parameters<typeof computed<(...args: A) => R>>[0];
+type Fn<A extends unknown[], R> = Computed<(...args: A) => R>['fn'];
 
 type Options = Parameters<typeof computed>[1];
 
