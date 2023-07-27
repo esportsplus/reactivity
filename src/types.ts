@@ -25,14 +25,14 @@ type Listener<D> = {
     <V>(event: { data?: D, value: V }): void;
 };
 
-type PreventPromise<T, R> = T extends Promise<unknown> ? never : R;
-
 type Object = Record<PropertyKey, unknown>;
 
 type Options = {
     changed?: Changed;
     value?: unknown;
 };
+
+type PreventPromise<T, R> = T extends Promise<unknown> ? never : R;
 
 type Root = {
     scheduler: Scheduler
@@ -45,4 +45,4 @@ type State = typeof CHECK | typeof CLEAN | typeof DIRTY | typeof DISPOSED;
 type Type = typeof COMPUTED | typeof EFFECT | typeof SIGNAL;
 
 
-export { Changed, Computed, Effect, Event, Listener, PreventPromise, Object, Options, Prettify, Root, Scheduler, Signal, State, Type };
+export { Changed, Computed, Effect, Event, Listener, Object, Options, Prettify, PreventPromise, Root, Scheduler, Signal, State, Type };

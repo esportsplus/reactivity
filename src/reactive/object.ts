@@ -48,7 +48,7 @@ class ReactiveObject<T extends Object> {
                 });
             }
             else {
-                let node = nodes[key] = signal(input, options);
+                let node = nodes[key] = signal<unknown>(input, options);
 
                 defineProperty(this, key, {
                     enumerable: true,
