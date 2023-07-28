@@ -208,8 +208,9 @@ function update<T>(node: Signal<T>) {
         node.dispatch('update');
         node.updating = true;
 
-        // @ts-ignore
-        let value = node.fn.call(node, node.value);
+        let value = (
+            node as typeof node extends Effect ? Effect : Computed<T>
+        ).fn.call(node, node.value);
 
         node.updating = null;
 
