@@ -208,9 +208,8 @@ function update<T>(node: Signal<T>) {
         node.dispatch('update');
         node.updating = true;
 
-        let value = (
-                node as typeof node extends Effect ? Effect : Computed<T>
-            ).fn.call(node, node.value);
+        // @ts-ignore
+        let value = node.fn.call(node, node.value);
 
         node.updating = null;
 
@@ -348,7 +347,7 @@ const reset = <T extends { reset: () => void }>(reset?: T[] | T) => {
     return reset;
 };
 
-function root<T>(fn: () => NeverAsync<T>, properties?: Root) {
+function root<T>(fn: NeverAsync<() => T>, properties?: Root) {
     let o = observer,
         s = scope;
 

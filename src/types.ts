@@ -6,11 +6,11 @@ import Signal from './signal';
 type Changed = (a: unknown, b: unknown) => boolean;
 
 type Computed<T> = {
-    fn: (previous: T) => NeverAsync<T>;
+    fn: NeverAsync<(previous: T) => T>;
 } & Omit<Signal<T>, 'fn'>;
 
 type Effect = {
-    fn: (node: Effect) => NeverAsync<void>;
+    fn: NeverAsync<(node: Effect) => void>;
     root: Root;
     task: Function
     value: void;
