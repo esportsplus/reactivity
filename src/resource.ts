@@ -1,11 +1,9 @@
 import CustomFunction from '@esportsplus/custom-function';
-import { computed, read, signal, write } from './signal';
-import { Signal } from './types';
+import { read, signal, write } from './signal';
+import { Options, Signal } from './types';
 
 
-type Fn<A extends unknown[], R extends Promise<unknown>> = (...args: A) => R;
-
-type Options = Parameters<typeof computed>[1];
+type Function<A extends unknown[], R extends Promise<unknown>> = (...args: A) => R;
 
 
 class Resource<A extends unknown[], R extends Promise<unknown>> extends CustomFunction {
@@ -16,7 +14,7 @@ class Resource<A extends unknown[], R extends Promise<unknown>> extends CustomFu
     stop: boolean | null = null;
 
 
-    constructor(fn: Fn<A,R>, options: Options = {}) {
+    constructor(fn: Function<A,R>, options: Options = {}) {
         super((...args: A) => {
             this.stop = null;
 
@@ -51,12 +49,12 @@ class Resource<A extends unknown[], R extends Promise<unknown>> extends CustomFu
         return read(this.#data);
     }
 
-    get ok() {
-        return read(this.#ok);
-    }
-
     get input() {
         return read(this.#input);
+    }
+
+    get ok() {
+        return read(this.#ok);
     }
 
 
@@ -74,6 +72,6 @@ class Resource<A extends unknown[], R extends Promise<unknown>> extends CustomFu
 }
 
 
-export default <A extends unknown[], R extends Promise<unknown>>(fn: Fn<A,R>, options: Options = {}) => {
+export default <A extends unknown[], R extends Promise<unknown>>(fn: Function<A,R>, options: Options = {}) => {
     return new Resource(fn, options);
 };

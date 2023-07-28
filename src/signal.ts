@@ -1,7 +1,6 @@
 import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, SIGNAL } from './constants';
-import { Changed, Computed, Effect, Event, Listener, PreventPromise, Options, Root, Scheduler, State, Type } from './types';
+import { Changed, Computed, Effect, Event, Listener, Options, Root, Scheduler, State, SyncFunction, Type } from './types';
 import { isArray } from './utilities';
-
 
 
 let index = 0,
@@ -12,7 +11,7 @@ let index = 0,
 
 class Signal<T> {
     changed: Changed | null = null;
-    fn: Computed<T>['fn'] | null = null;
+    fn: Computed<T>['fn'] | Effect['fn'] | null = null;
     listeners: Record<Event, (Listener<any> | null)[]> | null = null;
     observers: Signal<T>[] | null = null;
     root: Root | null = null;
@@ -21,7 +20,7 @@ class Signal<T> {
     task: Parameters<Scheduler>[0] | null = null;
     type: Type;
     updating: boolean | null = null;
-    value: Computed<T>['value'] | T;
+    value: T;
 
 
     constructor(data: T, state: Signal<T>['state'], type: Signal<T>['type'], options: Options = {}) {
@@ -209,7 +208,9 @@ function update<T>(node: Signal<T>) {
         node.dispatch('update');
         node.updating = true;
 
-        let value = node.fn!.call(node, node.value);
+        let value = (
+                node as typeof node extends Effect ? Effect : Computed<T>
+            ).fn.call(node, node.value);
 
         node.updating = null;
 
@@ -263,11 +264,11 @@ function update<T>(node: Signal<T>) {
 
 
 const computed = <T>(fn: Computed<T>['fn'], options: Options = {}) => {
-    let node = new Signal(options.value as any, DIRTY, COMPUTED, options);
+    let node = new Signal(options.value as T, DIRTY, COMPUTED, options) as Computed<T>;
 
     node.fn = fn;
 
-    return node as Computed<T>;
+    return node;
 };
 
 const dispose = <T extends { dispose: () => void }>(dispose?: T[] | T) => {
@@ -285,13 +286,13 @@ const dispose = <T extends { dispose: () => void }>(dispose?: T[] | T) => {
     return dispose;
 };
 
-const effect = <T>(fn: Effect<T>['fn'], options: Omit<Options, 'value'> = {}) => {
-    let node = new Signal(undefined as any, DIRTY, EFFECT, options);
+const effect = (fn: Effect['fn'], options: Omit<Options, 'value'> = {}) => {
+    let node = new Signal(void 0, DIRTY, EFFECT, options) as Effect;
 
     if (scope !== null) {
         node.root = scope;
     }
-    else if (observer !== null && observer.type === EFFECT) {
+    else if (observer !== null && observer.type === EFFECT && observer.root !== null) {
         node.root = observer.root;
     }
     else {
@@ -303,7 +304,7 @@ const effect = <T>(fn: Effect<T>['fn'], options: Omit<Options, 'value'> = {}) =>
 
     read(node);
 
-    return node as Effect<void>;
+    return node;
 };
 
 const read = <T>(node: Signal<T>): typeof node['value'] => {
@@ -347,20 +348,20 @@ const reset = <T extends { reset: () => void }>(reset?: T[] | T) => {
     return reset;
 };
 
-const root = <T>(fn: PreventPromise<T, () => T>, properties: { scheduler?: Scheduler } = {}) => {
+const root = <T>(fn: SyncFunction<() => T>, properties?: Root) => {
     let o = observer,
         s = scope;
 
-    if (properties.scheduler === undefined) {
+    if (properties === undefined) {
         if (scope === null) {
             throw new Error('Reactivity: `root` cannot be created without a task scheduler');
         }
 
-        properties.scheduler = scope.scheduler;
+        properties = scope;
     }
 
     observer = null;
-    scope = properties as Root;
+    scope = properties;
 
     let result = fn();
 

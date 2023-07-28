@@ -1,4 +1,4 @@
-import { Prettify } from '@esportsplus/typescript'
+import { Function, Prettify, SyncFunction } from '@esportsplus/typescript'
 import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, SIGNAL } from './constants';
 import Signal from './signal';
 
@@ -6,16 +6,15 @@ import Signal from './signal';
 type Changed = (a: unknown, b: unknown) => boolean;
 
 type Computed<T> = {
-    fn: PreventPromise<T, (previous: T) => T>;
-    value: ReturnType<Computed<T>['fn']>;
-} & Omit<Signal<T>, 'fn' | 'value'>;
+    fn: SyncFunction<(previous: T) => T>;
+} & Omit<Signal<T>, 'fn'>;
 
-type Effect<T> = {
-    fn: PreventPromise<T, (node: Effect<T>) => void>;
-    root: NonNullable<Signal<T>['root']>;
-    task: NonNullable<Signal<T>['task']>
+type Effect = {
+    fn: SyncFunction<(node: Effect) => void>;
+    root: Root;
+    task: Function
     value: void;
-} & Omit<Signal<T>, 'fn' | 'root' | 'task' | 'value'>;
+} & Omit<Signal<void>, 'fn' | 'root' | 'task' | 'value'>;
 
 type Event = string;
 
@@ -32,17 +31,15 @@ type Options = {
     value?: unknown;
 };
 
-type PreventPromise<T, R> = T extends Promise<unknown> ? never : R;
-
 type Root = {
     scheduler: Scheduler
 };
 
-type Scheduler = (fn: (...args: unknown[]) => Promise<unknown> | unknown) => unknown;
+type Scheduler = (fn: Function) => unknown;
 
 type State = typeof CHECK | typeof CLEAN | typeof DIRTY | typeof DISPOSED;
 
 type Type = typeof COMPUTED | typeof EFFECT | typeof SIGNAL;
 
 
-export { Changed, Computed, Effect, Event, Listener, Object, Options, Prettify, PreventPromise, Root, Scheduler, Signal, State, Type };
+export { Changed, Computed, Effect, Event, Listener, Object, Options, Prettify, Root, Scheduler, Signal, State, SyncFunction, Type };
