@@ -1,5 +1,5 @@
 import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, SIGNAL } from './constants';
-import { Changed, Computed, Effect, Event, Listener, Options, Root, Scheduler, State, SyncFunction, Type } from './types';
+import { Changed, Computed, Effect, Event, Listener, NeverAsync, Options, Root, Scheduler, State, Type } from './types';
 import { isArray } from './utilities';
 
 
@@ -348,7 +348,7 @@ const reset = <T extends { reset: () => void }>(reset?: T[] | T) => {
     return reset;
 };
 
-const root = <T>(fn: SyncFunction<() => T>, properties?: Root) => {
+function root<T>(fn: () => NeverAsync<T>, properties?: Root) {
     let o = observer,
         s = scope;
 

@@ -1,13 +1,13 @@
 import CustomFunction from '@esportsplus/custom-function';
 import { computed, read } from './signal';
-import { Computed, Options } from './types';
+import { Computed, NeverAsync, Options } from './types';
 
 
 type Function<A extends unknown[], R> = Computed<(...args: A) => R>['fn'];
 
 
 class Macro<A extends unknown[], R> extends CustomFunction {
-    #factory: Computed< ReturnType<Function<A,R>> >;
+    #factory: Computed<(...args: A) => R>;
 
 
     constructor(fn: Function<A,R>, options: Options = {}) {
@@ -31,3 +31,4 @@ class Macro<A extends unknown[], R> extends CustomFunction {
 export default <A extends unknown[], R>(fn: Function<A,R>, options: Options = {}) => {
     return new Macro(fn, options);
 };
+export { NeverAsync };
