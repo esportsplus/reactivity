@@ -1,4 +1,4 @@
-import { dispose } from '~/signal';
+import { dispose, signal } from '~/signal';
 import { Listener, Object, Options, Signal } from '~/types';
 import { ReactiveObject } from './object';
 
@@ -40,7 +40,7 @@ class ReactiveArray<T> extends Array<T> {
 
     constructor(data: T[]) {
         super(...data);
-        this.#signal = new Signal(false);
+        this.#signal = signal(false);
     }
 
 

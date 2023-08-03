@@ -1,6 +1,6 @@
 import CustomFunction from '@esportsplus/custom-function';
-import { Computed } from './signal';
-import { Options } from './types';
+import { computed } from './signal';
+import { Computed, Options } from './types';
 
 
 type Function<A extends unknown[], R> = Computed<(...args: A) => R>['fn'];
@@ -14,7 +14,7 @@ class Macro<A extends unknown[], R> extends CustomFunction {
         super((...args: A) => {
             return this.#factory.get()(...args);
         });
-        this.#factory = new Computed(fn, options);
+        this.#factory = computed(fn, options);
     }
 
 

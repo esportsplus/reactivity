@@ -1,6 +1,6 @@
 import CustomFunction from '@esportsplus/custom-function';
-import { Signal } from './signal';
-import { Options } from './types';
+import { signal } from './signal';
+import { Options, Signal } from './types';
 
 
 type Function<A extends unknown[], R extends Promise<unknown>> = (...args: A) => R;
@@ -39,9 +39,9 @@ class Resource<A extends unknown[], R extends Promise<unknown>> extends CustomFu
                     this.#ok.set(false);
                 });
         });
-        this.#data = new Signal(undefined as Awaited<R>, options);
-        this.#input = new Signal<A | null>(null, options);
-        this.#ok = new Signal<boolean | null>(null, options);
+        this.#data = signal(undefined as Awaited<R>, options);
+        this.#input = signal<A | null>(null, options);
+        this.#ok = signal<boolean | null>(null, options);
     }
 
 
