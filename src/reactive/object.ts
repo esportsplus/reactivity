@@ -71,14 +71,6 @@ class ReactiveObject<T extends Object> {
             nodes[key].dispose();
         }
     }
-
-    reset() {
-        let nodes = this.nodes;
-
-        for (let key in nodes) {
-            nodes[key].reset();
-        }
-    }
 }
 
 

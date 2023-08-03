@@ -103,10 +103,6 @@ class ReactiveArray<T> extends Array<T> {
         return n;
     }
 
-    reset() {
-        this.#signal.reset();
-    }
-
     reverse() {
         super.reverse();
 

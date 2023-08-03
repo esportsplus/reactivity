@@ -63,12 +63,6 @@ class Resource<A extends unknown[], R extends Promise<unknown>> extends CustomFu
         this.#input.dispose();
         this.#ok.dispose();
     }
-
-    reset() {
-        this.#data.reset();
-        this.#input.reset();
-        this.#ok.reset();
-    }
 }
 
 

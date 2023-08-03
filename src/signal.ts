@@ -87,7 +87,14 @@ class Core<T> {
             return;
         }
 
-        flush('dispose', this, DISPOSED, this.value);
+        this.dispatch('dispose', this);
+
+        removeSourceObservers(this, 0);
+
+        this.listeners = null;
+        this.observers = null;
+        this.sources = null;
+        this.state = DISPOSED;
     }
 
     on<T>(event: Event, listener: Listener<T>) {
@@ -143,10 +150,6 @@ class Computed<T> extends Core<T> {
     get() {
         return read(this);
     }
-
-    reset() {
-        flush('reset', this, DIRTY, undefined as T);
-    }
 }
 
 class Effect extends Core<null> {
@@ -165,12 +168,6 @@ class Effect extends Core<null> {
 
     get type(): Type {
         return EFFECT;
-    }
-
-
-    reset() {
-        flush('reset', this, DIRTY, null);
-        update(this);
     }
 }
 
@@ -210,10 +207,6 @@ class Signal<T> extends Core<T> {
         return read(this);
     }
 
-    reset() {
-        flush('reset', this, CLEAN, this.value);
-    }
-
     set(value: T): T {
         return write(this, value);
     }
@@ -222,18 +215,6 @@ class Signal<T> extends Core<T> {
 
 function changed(a: unknown, b: unknown) {
     return a !== b;
-}
-
-function flush<T>(event: Event, node: Core<T>, state: State, value: T) {
-    node.dispatch(event, node);
-
-    removeSourceObservers(node, 0);
-
-    node.listeners = null;
-    node.observers = null;
-    node.sources = null;
-    node.state = state;
-    node.value = value;
 }
 
 function notify<T>(nodes: Core<T>[] | null, state: typeof CHECK | typeof DIRTY) {
@@ -419,21 +400,6 @@ const effect = (fn: Effect['fn']) => {
     return new Effect(fn);
 };
 
-const reset = <T extends { reset: VoidFunction }>(reset?: T[] | T | null) => {
-    if (reset == null) {
-    }
-    else if (isArray(reset)) {
-        for (let i = 0, n = reset.length; i < n; i++) {
-            reset[i].reset();
-        }
-    }
-    else {
-        reset.reset();
-    }
-
-    return reset;
-};
-
 const root = <T>(fn: NeverAsync<(root: Root) => T>, scheduler?: Root['scheduler']) => {
     let o = observer,
         s = scope;
@@ -462,5 +428,5 @@ const signal = <T>(value: T, options?: Options) => {
 };
 
 
-export { computed, dispose, effect, reset, root, signal };
+export { computed, dispose, effect, root, signal };
 export { Computed, Effect, Signal };

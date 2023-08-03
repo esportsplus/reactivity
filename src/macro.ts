@@ -21,10 +21,6 @@ class Macro<A extends unknown[], R> extends CustomFunction {
     dispose() {
         this.#factory.dispose();
     }
-
-    reset() {
-        this.#factory.reset();
-    }
 }
 
 
