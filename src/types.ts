@@ -1,6 +1,6 @@
 import { Function, NeverAsync, Prettify } from '@esportsplus/typescript'
 import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, ROOT, SIGNAL } from './constants';
-import { Computed, Effect, Signal } from './signal';
+import { Computed, Effect, Root, Signal } from './signal';
 
 
 type Changed = (a: unknown, b: unknown) => boolean;
@@ -24,4 +24,4 @@ type State = typeof CHECK | typeof CLEAN | typeof DIRTY | typeof DISPOSED;
 type Type = typeof COMPUTED | typeof EFFECT | typeof ROOT | typeof SIGNAL;
 
 
-export { Changed, Computed, Effect, Event, Function, Listener, Object, Options, NeverAsync, Prettify, Signal, State, Type };
+export type { Changed, Computed, Effect, Event, Function, Listener, Object, Options, NeverAsync, Prettify, Root, Signal, State, Type };

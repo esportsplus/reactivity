@@ -429,4 +429,4 @@ const signal = <T>(value: T, options?: Options) => {
 
 
 export { computed, dispose, effect, root, signal };
-export { Computed, Effect, Signal };
+export { Computed, Effect, Root, Signal };
