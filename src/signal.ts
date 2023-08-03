@@ -313,8 +313,7 @@ function sync<T>(node: Core<T>) {
     }
 
     if (node.state === DIRTY) {
-        // @ts-ignore
-        update(node);
+        update(node as Computed<T> | Effect);
     }
     else {
         node.state = CLEAN;
@@ -463,4 +462,5 @@ const signal = <T>(value: T, options?: Options) => {
 };
 
 
-export { computed, dispose, effect, reset, root, signal, Computed, Effect, Signal };
+export { computed, dispose, effect, reset, root, signal };
+export { Computed, Effect, Signal };
