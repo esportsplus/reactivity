@@ -19,9 +19,11 @@ type Options = {
     changed?: Changed;
 };
 
+type Scheduler = (fn: Function) => unknown;
+
 type State = typeof CHECK | typeof CLEAN | typeof DIRTY | typeof DISPOSED;
 
 type Type = typeof COMPUTED | typeof EFFECT | typeof ROOT | typeof SIGNAL;
 
 
-export type { Changed, Computed, Effect, Event, Function, Listener, Object, Options, NeverAsync, Prettify, Root, Signal, State, Type };
+export type { Changed, Computed, Effect, Event, Function, Listener, Object, Options, NeverAsync, Prettify, Root, Scheduler, Signal, State, Type };

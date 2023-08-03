@@ -1,5 +1,5 @@
 import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, ROOT, SIGNAL } from './constants';
-import { Changed, Event, Function, Listener, NeverAsync, Options, State, Type } from './types';
+import { Changed, Event, Function, Listener, NeverAsync, Options, Scheduler, State, Type } from './types';
 import { isArray } from './utilities';
 
 
@@ -172,11 +172,11 @@ class Effect extends Core<null> {
 }
 
 class Root extends Core<null> {
-    scheduler: (fn: Function) => unknown;
+    scheduler: Scheduler;
     tracking: boolean;
 
 
-    constructor(scheduler: Root['scheduler'], tracking: boolean) {
+    constructor(scheduler: Scheduler, tracking: boolean) {
         super(CLEAN, null);
         this.scheduler = scheduler;
         this.tracking = tracking;
@@ -400,7 +400,7 @@ const effect = (fn: Effect['fn']) => {
     return new Effect(fn);
 };
 
-const root = <T>(fn: NeverAsync<(root: Root) => T>, scheduler?: Root['scheduler']) => {
+const root = <T>(fn: NeverAsync<(root: Root) => T>, scheduler?: Scheduler) => {
     let o = observer,
         s = scope;
 
