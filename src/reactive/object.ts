@@ -1,4 +1,3 @@
-import { computed, read, signal, write } from '~/signal';
 import { Computed, Object, Options, Signal } from '~/types';
 import { defineProperty, isArray } from '~/utilities';
 import { ReactiveArray, ReactiveObjectArray } from './array';
@@ -18,12 +17,12 @@ class ReactiveObject<T extends Object> {
             let input = data[key];
 
             if (typeof input === 'function') {
-                let node = nodes[key] = computed(input as Computed<unknown>['fn'], options);
+                let node = nodes[key] = new Computed(input as Computed<T>['fn'], options);
 
                 defineProperty(this, key, {
                     enumerable: true,
                     get() {
-                        return read(node);
+                        return node.get();
                     }
                 });
             }
@@ -48,15 +47,15 @@ class ReactiveObject<T extends Object> {
                 });
             }
             else {
-                let node = nodes[key] = signal<unknown>(input, options);
+                let node = nodes[key] = new Signal(input, options);
 
                 defineProperty(this, key, {
                     enumerable: true,
                     get() {
-                        return read(node);
+                        return node.get();
                     },
                     set(value) {
-                        write(node, value);
+                        node.set(value);
                     }
                 });
             }

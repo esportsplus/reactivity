@@ -1,6 +1,6 @@
 import CustomFunction from '@esportsplus/custom-function';
-import { read, signal, write } from './signal';
-import { Options, Signal } from './types';
+import { Signal } from './signal';
+import { Options } from './types';
 
 
 type Function<A extends unknown[], R extends Promise<unknown>> = (...args: A) => R;
@@ -18,8 +18,8 @@ class Resource<A extends unknown[], R extends Promise<unknown>> extends CustomFu
         super((...args: A) => {
             this.stop = null;
 
-            write(this.#input, args);
-            write(this.#ok, null);
+            this.#input.set(args);
+            this.#ok.set(null);
 
             fn(...args)
                 .then((value) => {
@@ -27,34 +27,34 @@ class Resource<A extends unknown[], R extends Promise<unknown>> extends CustomFu
                         return;
                     }
 
-                    write(this.#data, value);
-                    write(this.#ok, true);
+                    this.#data.set(value as Awaited<R>);
+                    this.#ok.set(true);
                 })
                 .catch(() => {
                     if (this.stop === true) {
                         return;
                     }
 
-                    write(this.#data, undefined);
-                    write(this.#ok, false);
+                    this.#data.set(undefined as Awaited<R>);
+                    this.#ok.set(false);
                 });
         });
-        this.#data = signal(options.value as Awaited<R>, options),
-        this.#input = signal<A | null>(null, options),
-        this.#ok = signal<boolean | null>(null, options)
+        this.#data = new Signal(undefined as Awaited<R>, options);
+        this.#input = new Signal<A | null>(null, options);
+        this.#ok = new Signal<boolean | null>(null, options);
     }
 
 
     get data() {
-        return read(this.#data);
+        return this.#data.get();
     }
 
     get input() {
-        return read(this.#input);
+        return this.#input.get();
     }
 
     get ok() {
-        return read(this.#ok);
+        return this.#ok.get();
     }
 
 

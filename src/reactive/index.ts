@@ -31,7 +31,7 @@ type Node<T> =
 type Nodes<T extends Object> = { [K in keyof T]: Node<T[K]> };
 
 
-export default <T extends Object>(data: Guard<T>, options: Options = {}) => {
+export default <T extends Object>(data: Guard<T>, options?: Options) => {
     return new ReactiveObject(data, options) as any as Prettify<
         { [K in keyof T]: Infer<T[K]> } & Omit<ReactiveObject<T>, 'nodes'> & { nodes: Nodes<T> }
     >;

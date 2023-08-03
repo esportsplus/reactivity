@@ -1,20 +1,9 @@
 import { Function, NeverAsync, Prettify } from '@esportsplus/typescript'
-import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, SIGNAL } from './constants';
-import Signal from './signal';
+import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, ROOT, SIGNAL } from './constants';
+import { Computed, Effect, Signal } from './signal';
 
 
 type Changed = (a: unknown, b: unknown) => boolean;
-
-type Computed<T> = {
-    fn: NeverAsync<(previous: T) => T>;
-} & Omit<Signal<T>, 'fn'>;
-
-type Effect = {
-    fn: NeverAsync<(node: Effect) => void>;
-    root: Root;
-    task: Function
-    value: void;
-} & Omit<Signal<void>, 'fn' | 'root' | 'task' | 'value'>;
 
 type Event = string;
 
@@ -28,18 +17,11 @@ type Object = Record<PropertyKey, unknown>;
 
 type Options = {
     changed?: Changed;
-    value?: unknown;
 };
-
-type Root = {
-    scheduler: Scheduler
-};
-
-type Scheduler = (fn: Function) => unknown;
 
 type State = typeof CHECK | typeof CLEAN | typeof DIRTY | typeof DISPOSED;
 
-type Type = typeof COMPUTED | typeof EFFECT | typeof SIGNAL;
+type Type = typeof COMPUTED | typeof EFFECT | typeof ROOT | typeof SIGNAL;
 
 
-export { Changed, Computed, Effect, Event, Listener, Object, Options, NeverAsync, Prettify, Root, Scheduler, Signal, State, Type };
+export { Changed, Computed, Effect, Event, Function, Listener, Object, Options, NeverAsync, Prettify, Signal, State, Type };

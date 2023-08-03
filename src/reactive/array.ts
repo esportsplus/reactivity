@@ -1,4 +1,4 @@
-import { dispose, read, signal, write } from '~/signal';
+import { dispose } from '~/signal';
 import { Listener, Object, Options, Signal } from '~/types';
 import { ReactiveObject } from './object';
 
@@ -40,7 +40,7 @@ class ReactiveArray<T> extends Array<T> {
 
     constructor(data: T[]) {
         super(...data);
-        this.#signal = signal(false);
+        this.#signal = new Signal(false);
     }
 
 
@@ -54,7 +54,7 @@ class ReactiveArray<T> extends Array<T> {
 
 
     private trigger() {
-        write(this.#signal, !this.#signal.value);
+        this.#signal.set(!this.#signal.value);
     }
 
 
@@ -152,7 +152,7 @@ class ReactiveArray<T> extends Array<T> {
     }
 
     track() {
-        read(this.#signal);
+        this.#signal.get();
     }
 
     unshift(...items: T[]) {

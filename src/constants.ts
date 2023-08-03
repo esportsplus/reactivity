@@ -11,7 +11,9 @@ const COMPUTED = 0;
 
 const EFFECT = 1;
 
-const SIGNAL = 2;
+const ROOT = 2;
+
+const SIGNAL = 3;
 
 
-export { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, SIGNAL };
+export { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, ROOT, SIGNAL };
