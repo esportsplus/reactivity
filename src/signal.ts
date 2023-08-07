@@ -15,7 +15,6 @@ class Core<T> {
     root: Root | null;
     sources: Core<any>[] | null = null;
     state: State;
-    updating: boolean = false;
     value: T;
 
 
@@ -98,7 +97,13 @@ class Core<T> {
     }
 
     on<T>(event: Event, listener: Listener<T>) {
-        if (this.updating) {
+        // Events set within `fn.call` are treated as init/destroy
+        // methods available for a single call.
+        if (this.state === DIRTY) {
+            if (event !== 'dispose' && event !== 'update') {
+                return;
+            }
+
             listener.once = true;
         }
 
@@ -312,12 +317,9 @@ function update<T>(node: Computed<T> | Effect) {
 
     try {
         node.dispatch('update');
-        node.updating = true;
 
         // @ts-ignore
         let value = node.fn.call(node);
-
-        node.updating = false;
 
         if (observers) {
             removeSourceObservers(node, index);
