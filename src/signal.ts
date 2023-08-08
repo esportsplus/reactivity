@@ -1,27 +1,32 @@
 import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, ROOT, SIGNAL } from './constants';
-import { Changed, Event, Function, Listener, NeverAsync, Options, Scheduler, State, Type } from './types';
+import { Computed, Changed, Effect, Event, Listener, NeverAsync, Options, Root, Scheduler, Signal, State, Type } from './types';
 import { isArray } from './utilities';
 
 
 let index = 0,
-    observer: Core<any> | null = null,
-    observers: Core<any>[] | null = null,
+    observer: Reactive<any> | null = null,
+    observers: Reactive<any>[] | null = null,
     scope: Root | null = null;
 
 
-class Core<T> {
+class Reactive<T> {
+    changed: Changed | null = null;
+    fn: Computed<T>['fn'] | Effect['fn'] | null = null;
     listeners: Record<Event, (Listener<any> | null)[]> | null = null;
-    observers: Core<any>[] | null = null;
+    observers: Reactive<any>[] | null = null;
     root: Root | null;
-    sources: Core<any>[] | null = null;
+    scheduler: Scheduler | null = null;
+    sources: Reactive<any>[] | null = null;
     state: State;
+    tracking: boolean | null = null;
+    type: Type;
     value: T;
 
 
-    constructor(state: State, value: T) {
+    constructor(state: State, type: Type, value: T) {
         let root = null;
 
-        if (this.type !== ROOT) {
+        if (type !== ROOT) {
             if (scope !== null) {
                 root = scope;
             }
@@ -30,7 +35,7 @@ class Core<T> {
             }
 
             if (root == null) {
-                if (this.type === EFFECT) {
+                if (type === EFFECT) {
                     throw new Error(`Reactivity: 'effect' cannot be created without a reactive root`);
                 }
             }
@@ -41,12 +46,8 @@ class Core<T> {
 
         this.root = root;
         this.state = state;
+        this.type = type;
         this.value = value;
-    }
-
-
-    get type(): Type | never {
-        throw new Error(`Reactivity: reactive primitives require 'type' getters`);
     }
 
 
@@ -56,7 +57,7 @@ class Core<T> {
         }
 
         let listeners = this.listeners[event],
-            parameter = {
+            values = {
                 data,
                 value: this.value
             };
@@ -69,7 +70,7 @@ class Core<T> {
             }
 
             try {
-                listener(parameter);
+                listener(values);
 
                 if (listener.once !== undefined) {
                     listeners[i] = null;
@@ -96,15 +97,36 @@ class Core<T> {
         this.state = DISPOSED;
     }
 
-    on<T>(event: Event, listener: Listener<T>) {
-        // Events set within `fn.call` are treated as init/destroy
-        // methods available for a single call.
-        if (this.state === DIRTY) {
-            if (event !== 'dispose' && event !== 'update') {
-                return;
-            }
+    get() {
+        if (this.state === DISPOSED) {
+            return this.value;
+        }
 
-            listener.once = true;
+        if (observer !== null) {
+            if (observers === null) {
+                if (observer.sources !== null && observer.sources[index] == this) {
+                    index++;
+                }
+                else {
+                    observers = [this];
+                }
+            }
+            else {
+                observers.push(this);
+            }
+        }
+
+        if (this.type === COMPUTED || this.type === EFFECT) {
+            sync(this);
+        }
+
+        return this.value;
+    }
+
+    on<T>(event: Event, listener: Listener<T>) {
+        // Events cannot be set within effects or computed's
+        if (this.state === DIRTY) {
+            return;
         }
 
         if (this.listeners === null) {
@@ -133,87 +155,18 @@ class Core<T> {
         listener.once = true;
         this.on(event, listener);
     }
-}
-
-class Computed<T> extends Core<T> {
-    changed: Changed;
-    fn: NeverAsync<() => T>;
-
-
-    constructor(fn: Computed<T>['fn'], options?: Options) {
-        super(DIRTY, undefined as T);
-        this.changed = options?.changed || changed;
-        this.fn = fn;
-    }
-
-
-    get type(): Type {
-        return COMPUTED;
-    }
-
-
-    get() {
-        return read(this);
-    }
-}
-
-class Effect extends Core<null> {
-    fn: NeverAsync<(node: Effect) => void>;
-    task: Function;
-
-
-    constructor(fn: Effect['fn']) {
-        super(DIRTY, null);
-        this.fn = fn;
-        this.task = () => read(this);
-
-        update(this);
-    }
-
-
-    get type(): Type {
-        return EFFECT;
-    }
-}
-
-class Root extends Core<null> {
-    scheduler: Scheduler;
-    tracking: boolean;
-
-
-    constructor(scheduler: Scheduler, tracking: boolean) {
-        super(CLEAN, null);
-        this.scheduler = scheduler;
-        this.tracking = tracking;
-    }
-
-
-    get type(): Type {
-        return ROOT;
-    }
-}
-
-class Signal<T> extends Core<T> {
-    changed: Changed;
-
-
-    constructor(data: T, options?: Options) {
-        super(CLEAN, data);
-        this.changed = options?.changed || changed;
-    }
-
-
-    get type(): Type {
-        return SIGNAL;
-    }
-
-
-    get() {
-        return read(this);
-    }
 
     set(value: T): T {
-        return write(this, value);
+        if (this.type !== SIGNAL && observer !== this) {
+            throw new Error(`Reactivity: 'set' method is only available on signals`);
+        }
+
+        if (this.changed!(this.value, value)) {
+            this.value = value;
+            notify(this.observers, DIRTY);
+        }
+
+        return this.value;
     }
 }
 
@@ -222,7 +175,7 @@ function changed(a: unknown, b: unknown) {
     return a !== b;
 }
 
-function notify<T>(nodes: Core<T>[] | null, state: typeof CHECK | typeof DIRTY) {
+function notify<T>(nodes: Reactive<T>[] | null, state: typeof CHECK | typeof DIRTY) {
     if (nodes === null) {
         return;
     }
@@ -241,33 +194,7 @@ function notify<T>(nodes: Core<T>[] | null, state: typeof CHECK | typeof DIRTY) 
     }
 }
 
-function read<T>(node: Core<T>) {
-    if (node.state === DISPOSED) {
-        return node.value;
-    }
-
-    if (observer !== null) {
-        if (observers === null) {
-            if (observer.sources !== null && observer.sources[index] == node) {
-                index++;
-            }
-            else {
-                observers = [node];
-            }
-        }
-        else {
-            observers.push(node);
-        }
-    }
-
-    if (node.type === COMPUTED || node.type === EFFECT) {
-        sync(node);
-    }
-
-    return node.value;
-}
-
-function removeSourceObservers<T>(node: Core<T>, start: number) {
+function removeSourceObservers<T>(node: Reactive<T>, start: number) {
     if (node.sources === null) {
         return;
     }
@@ -284,7 +211,7 @@ function removeSourceObservers<T>(node: Core<T>, start: number) {
     }
 }
 
-function sync<T>(node: Core<T>) {
+function sync<T>(node: Reactive<T>) {
     if (node.state === CHECK && node.sources !== null) {
         for (let i = 0, n = node.sources.length; i < n; i++) {
             sync(node.sources[i]);
@@ -299,14 +226,14 @@ function sync<T>(node: Core<T>) {
     }
 
     if (node.state === DIRTY) {
-        update(node as Computed<T> | Effect);
+        update(node);
     }
     else {
         node.state = CLEAN;
     }
 }
 
-function update<T>(node: Computed<T> | Effect) {
+function update<T>(node: Reactive<T>) {
     let i = index,
         o = observer,
         os = observers;
@@ -352,12 +279,7 @@ function update<T>(node: Computed<T> | Effect) {
         }
 
         if (node.type === COMPUTED) {
-            write(node as Computed<T>, value as T);
-        }
-    }
-    catch {
-        if (node.state === DIRTY) {
-            removeSourceObservers(node, 0);
+            node.set(value as T);
         }
     }
     finally {
@@ -369,18 +291,14 @@ function update<T>(node: Computed<T> | Effect) {
     node.state = CLEAN;
 }
 
-function write<T>(node: Computed<T> | Signal<T>, value: T) {
-    if (node.changed(node.value, value)) {
-        node.value = value;
-        notify(node.observers, DIRTY);
-    }
-
-    return value;
-}
-
 
 const computed = <T>(fn: Computed<T>['fn'], options?: Options) => {
-    return new Computed(fn, options);
+    let instance = new Reactive(DIRTY, COMPUTED, undefined as T) as any as Computed<T>;
+
+    instance.changed = options?.changed || changed;
+    instance.fn = fn;
+
+    return instance;
 };
 
 const dispose = <T extends { dispose: VoidFunction }>(dispose?: T[] | T | null) => {
@@ -399,14 +317,21 @@ const dispose = <T extends { dispose: VoidFunction }>(dispose?: T[] | T | null) 
 };
 
 const effect = (fn: Effect['fn']) => {
-    return new Effect(fn);
+    let instance = new Reactive(DIRTY, EFFECT, null) as any as Effect;
+
+    instance.fn = fn;
+    instance.task = () => instance.get();
+
+    update(instance as any as Reactive<void>);
+
+    return instance;
 };
 
-const root = <T>(fn: NeverAsync<(root: Root) => T>, scheduler?: Scheduler) => {
+const root = <T>(fn: NeverAsync<(root: Root) => T>, scheduler: Scheduler | null = null) => {
     let o = observer,
         s = scope;
 
-    if (scheduler === undefined) {
+    if (scheduler === null) {
         if (scope === null) {
             throw new Error('Reactivity: `root` cannot be created without a task scheduler');
         }
@@ -415,7 +340,10 @@ const root = <T>(fn: NeverAsync<(root: Root) => T>, scheduler?: Scheduler) => {
     }
 
     observer = null;
-    scope = new Root(scheduler, fn.length > 0);
+
+    scope = new Reactive(CLEAN, ROOT, null) as any as Root;
+    scope.scheduler = scheduler as Scheduler;
+    scope.tracking = fn.length > 0;
 
     let result = fn(scope);
 
@@ -426,9 +354,13 @@ const root = <T>(fn: NeverAsync<(root: Root) => T>, scheduler?: Scheduler) => {
 };
 
 const signal = <T>(value: T, options?: Options) => {
-    return new Signal(value, options);
+    let instance = new Reactive(CLEAN, SIGNAL, value) as any as Signal<T>;
+
+    instance.changed = options?.changed || changed;
+
+    return instance;
 };
 
 
 export { computed, dispose, effect, root, signal };
-export { Computed, Effect, Root, Signal };
+export { Reactive };

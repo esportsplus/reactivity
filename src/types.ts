@@ -1,9 +1,22 @@
 import { Function, NeverAsync, Prettify } from '@esportsplus/typescript'
 import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, ROOT, SIGNAL } from './constants';
-import { Computed, Effect, Root, Signal } from './signal';
+import { Reactive } from './signal';
 
+
+type Base<T> = Omit<Reactive<T>, 'changed' | 'fn' | 'scheduler' | 'task' | 'tracking'>;
 
 type Changed = (a: unknown, b: unknown) => boolean;
+
+type Computed<T> = {
+    changed: Changed;
+    fn: NeverAsync<() => T>;
+} & Base<T>;
+
+type Effect = {
+    fn: NeverAsync<(node: Effect) => void>;
+    root: Root;
+    task: Function;
+} & Omit<Base<void>, 'value'>;
 
 type Event = string;
 
@@ -19,7 +32,17 @@ type Options = {
     changed?: Changed;
 };
 
+type Root = {
+    scheduler: Scheduler;
+    tracking: boolean;
+    value: void;
+} & Omit<Reactive<void>, 'changed' | 'fn' | 'root' | 'task'>;
+
 type Scheduler = (fn: Function) => unknown;
+
+type Signal<T> = {
+    changed: Changed;
+} & Base<T>;
 
 type State = typeof CHECK | typeof CLEAN | typeof DIRTY | typeof DISPOSED;
 
