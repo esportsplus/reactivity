@@ -1,5 +1,5 @@
 import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, ROOT, SIGNAL } from './constants';
-import { Computed, Changed, Effect, Event, Listener, NeverAsync, Options, Root, Scheduler, Signal, State, Type } from './types';
+import { Computed, Changed, Effect, Event, Function, Listener, NeverAsync, Options, Root, Scheduler, Signal, State, Type } from './types';
 import { isArray } from './utilities';
 
 
@@ -18,6 +18,7 @@ class Reactive<T> {
     scheduler: Scheduler | null = null;
     sources: Reactive<any>[] | null = null;
     state: State;
+    task: Function | null = null;
     tracking: boolean | null = null;
     type: Type;
     value: T;
