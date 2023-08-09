@@ -201,14 +201,14 @@ function removeSourceObservers<T>(node: Reactive<T>, start: number) {
     }
 
     for (let i = start, n = node.sources.length; i < n; i++) {
-        let source = node.sources[i];
+        let observers = node.sources[i].observers;
 
-        if (source.observers === null) {
+        if (observers === null) {
             continue;
         }
 
-        source.observers[source.observers.indexOf(node)] = source.observers[source.observers.length - 1];
-        source.observers.pop();
+        observers[observers.indexOf(node)] = observers[observers.length - 1];
+        observers.pop();
     }
 }
 
@@ -266,7 +266,7 @@ function update<T>(node: Reactive<T>) {
             for (let i = index, n = node.sources.length; i < n; i++) {
                 let source = node.sources[i];
 
-                if (!source.observers) {
+                if (source.observers === null) {
                     source.observers = [node];
                 }
                 else {
