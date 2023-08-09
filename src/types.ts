@@ -3,7 +3,7 @@ import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, ROOT, SIGNAL } from '.
 import { Reactive } from './signal';
 
 
-type Base<T> = Omit<Reactive<T>, 'changed' | 'fn' | 'scheduler' | 'task' | 'tracking'>;
+type Base<T> = Omit<Reactive<T>, 'changed' | 'fn' | 'get' | 'scheduler' | 'set' | 'task' | 'tracking'>;
 
 type Changed = (a: unknown, b: unknown) => boolean;
 
@@ -42,6 +42,8 @@ type Scheduler = (fn: Function) => unknown;
 
 type Signal<T> = {
     changed: Changed;
+    get(): T;
+    set(value: T): T;
 } & Base<T>;
 
 type State = typeof CHECK | typeof CLEAN | typeof DIRTY | typeof DISPOSED;

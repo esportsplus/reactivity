@@ -294,12 +294,12 @@ function update<T>(node: Reactive<T>) {
 
 
 const computed = <T>(fn: Computed<T>['fn'], options?: Options) => {
-    let instance = new Reactive(DIRTY, COMPUTED, undefined as T) as any as Computed<T>;
+    let instance = new Reactive(DIRTY, COMPUTED, undefined as T);
 
     instance.changed = options?.changed || changed;
     instance.fn = fn;
 
-    return instance;
+    return instance as Computed<T>;
 };
 
 const dispose = <T extends { dispose: VoidFunction }>(dispose?: T[] | T | null) => {
@@ -318,14 +318,14 @@ const dispose = <T extends { dispose: VoidFunction }>(dispose?: T[] | T | null) 
 };
 
 const effect = (fn: Effect['fn']) => {
-    let instance = new Reactive(DIRTY, EFFECT, null) as any as Effect;
+    let instance = new Reactive(DIRTY, EFFECT, null);
 
     instance.fn = fn;
     instance.task = () => instance.get();
 
-    update(instance as any as Reactive<void>);
+    update(instance);
 
-    return instance;
+    return instance as Effect;
 };
 
 const root = <T>(fn: NeverAsync<(root: Root) => T>, scheduler: Scheduler | null = null) => {
@@ -355,11 +355,11 @@ const root = <T>(fn: NeverAsync<(root: Root) => T>, scheduler: Scheduler | null 
 };
 
 const signal = <T>(value: T, options?: Options) => {
-    let instance = new Reactive(CLEAN, SIGNAL, value) as any as Signal<T>;
+    let instance = new Reactive(CLEAN, SIGNAL, value);
 
     instance.changed = options?.changed || changed;
 
-    return instance;
+    return instance as Signal<T>;
 };
 
 
