@@ -10,6 +10,7 @@ type Changed = (a: unknown, b: unknown) => boolean;
 type Computed<T> = {
     changed: Changed;
     fn: NeverAsync<() => T>;
+    get(): T;
 } & Base<T>;
 
 type Effect = {
