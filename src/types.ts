@@ -36,7 +36,7 @@ type Root = {
     scheduler: Scheduler;
     tracking: boolean;
     value: void;
-} & Omit<Reactive<void>, 'changed' | 'fn' | 'root' | 'task'>;
+} & Omit<Reactive<void>, 'root'>;
 
 type Scheduler = (fn: Function) => unknown;
 
