@@ -88,6 +88,7 @@ class Reactive<T> {
             return;
         }
 
+        this.dispatch('cleanup', this);
         this.dispatch('dispose', this);
 
         removeSourceObservers(this, 0);
@@ -125,9 +126,12 @@ class Reactive<T> {
     }
 
     on<T>(event: Event, listener: Listener<T>) {
-        // Events cannot be set within effects or computed's
         if (this.state === DIRTY) {
-            return;
+            if (event !== 'cleanup') {
+                throw new Error(`Reactivity: events set within computed or effects must use the 'cleanup' event name`);
+            }
+
+            listener.once = true;
         }
 
         if (this.listeners === null) {
@@ -186,7 +190,7 @@ function notify<T>(nodes: Reactive<T>[] | null, state: typeof CHECK | typeof DIR
 
         if (node.state < state) {
             if (node.type === EFFECT && node.state === CLEAN) {
-                node.root!.scheduler((node as any as Effect).task);
+                (node as Effect).root.scheduler((node as Effect).task);
             }
 
             node.state = state;
@@ -244,10 +248,11 @@ function update<T>(node: Reactive<T>) {
     observers = null as typeof observers;
 
     try {
+        node.dispatch('cleanup');
         node.dispatch('update');
 
         // @ts-ignore
-        let value = node.fn.call(node);
+        let value = node.fn.call(null, node);
 
         if (observers) {
             removeSourceObservers(node, index);
@@ -328,11 +333,11 @@ const effect = (fn: Effect['fn']) => {
     return instance as Effect;
 };
 
-const root = <T>(fn: NeverAsync<(root: Root) => T>, scheduler: Scheduler | null = null) => {
+const root = <T>(fn: NeverAsync<(instance: Root) => T>, scheduler?: Scheduler) => {
     let o = observer,
         s = scope;
 
-    if (scheduler === null) {
+    if (scheduler === undefined) {
         if (scope === null) {
             throw new Error('Reactivity: `root` cannot be created without a task scheduler');
         }
@@ -343,10 +348,10 @@ const root = <T>(fn: NeverAsync<(root: Root) => T>, scheduler: Scheduler | null 
     observer = null;
 
     scope = new Reactive(CLEAN, ROOT, null) as any as Root;
-    scope.scheduler = scheduler as Scheduler;
+    scope.scheduler = scheduler;
     scope.tracking = fn.length > 0;
 
-    let result = fn(scope);
+    let result = fn.call(null, scope);
 
     observer = o;
     scope = s;

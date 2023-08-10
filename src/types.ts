@@ -9,12 +9,12 @@ type Changed = (a: unknown, b: unknown) => boolean;
 
 type Computed<T> = {
     changed: Changed;
-    fn: NeverAsync<() => T>;
+    fn: NeverAsync<(instance: Computed<T>) => T>;
     get(): T;
 } & Base<T>;
 
 type Effect = {
-    fn: NeverAsync<(node: Effect) => void>;
+    fn: NeverAsync<(instance: Effect) => void>;
     root: Root;
     task: Function;
 } & Omit<Base<void>, 'value'>;
