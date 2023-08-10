@@ -4,7 +4,7 @@ import { defineProperty, isArray } from '~/utilities';
 import { ReactiveArray, ReactiveObjectArray } from './array';
 
 
-type Node = Computed<unknown> | ReactiveArray<unknown> | ReactiveObjectArray<Object> | Signal<unknown>;
+type Node = Computed<any> | ReactiveArray<any> | ReactiveObjectArray<Object> | Signal<any>;
 
 
 class ReactiveObject<T extends Object> {
