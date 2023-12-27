@@ -338,6 +338,10 @@ const root = <T>(fn: NeverAsync<(instance: Root) => T>, scheduler?: Scheduler) =
         s = scope;
 
     if (scheduler === undefined) {
+        if (o?.type === EFFECT) {
+            scope = o.root;
+        }
+
         if (scope === null) {
             throw new Error('Reactivity: `root` cannot be created without a task scheduler');
         }
