@@ -32,8 +32,6 @@ function unsupported(method: string): never {
 }
 
 
-// TODO:
-// - patch method ( diff )
 class ReactiveArray<T> extends Array<T> {
     #signal: Signal<boolean>;
 
