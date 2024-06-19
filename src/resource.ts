@@ -7,9 +7,9 @@ type Function<A extends unknown[], R extends Promise<unknown>> = (...args: A) =>
 
 
 class Resource<A extends unknown[], R extends Promise<unknown>> extends CustomFunction {
-    #data: Signal<Awaited<R>>;
-    #input: Signal<A | null>;
-    #ok: Signal<boolean | null>;
+    private arguments: Signal<A | null>;
+    private okay: Signal<boolean | null>;
+    private response: Signal<Awaited<R>>;
 
     stop: boolean | null = null;
 
@@ -18,8 +18,8 @@ class Resource<A extends unknown[], R extends Promise<unknown>> extends CustomFu
         super((...args: A) => {
             this.stop = null;
 
-            this.#input.set(args);
-            this.#ok.set(null);
+            this.arguments.set(args);
+            this.okay.set(null);
 
             fn(...args)
                 .then((value) => {
@@ -27,41 +27,41 @@ class Resource<A extends unknown[], R extends Promise<unknown>> extends CustomFu
                         return;
                     }
 
-                    this.#data.set(value as Awaited<R>);
-                    this.#ok.set(true);
+                    this.response.set(value as Awaited<R>);
+                    this.okay.set(true);
                 })
                 .catch(() => {
                     if (this.stop === true) {
                         return;
                     }
 
-                    this.#data.set(undefined as Awaited<R>);
-                    this.#ok.set(false);
+                    this.response.set(undefined as Awaited<R>);
+                    this.okay.set(false);
                 });
         });
-        this.#data = signal(undefined as Awaited<R>, options);
-        this.#input = signal<A | null>(null, options);
-        this.#ok = signal<boolean | null>(null, options);
+        this.response = signal(undefined as Awaited<R>, options);
+        this.arguments = signal<A | null>(null, options);
+        this.okay = signal<boolean | null>(null, options);
     }
 
 
     get data() {
-        return this.#data.get();
+        return this.response.get();
     }
 
     get input() {
-        return this.#input.get();
+        return this.arguments.get();
     }
 
     get ok() {
-        return this.#ok.get();
+        return this.okay.get();
     }
 
 
     dispose() {
-        this.#data.dispose();
-        this.#input.dispose();
-        this.#ok.dispose();
+        this.arguments.dispose();
+        this.okay.dispose();
+        this.response.dispose();
     }
 }
 

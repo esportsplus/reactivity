@@ -7,19 +7,19 @@ type Function<A extends unknown[], R> = Computed<(...args: A) => R>['fn'];
 
 
 class Macro<A extends unknown[], R> extends CustomFunction {
-    #factory: Computed<(...args: A) => R>;
+    private factory: Computed<(...args: A) => R>;
 
 
     constructor(fn: Function<A,R>, options: Options = {}) {
         super((...args: A) => {
-            return this.#factory.get()(...args);
+            return this.factory.get()(...args);
         });
-        this.#factory = computed(fn, options);
+        this.factory = computed(fn, options);
     }
 
 
     dispose() {
-        this.#factory.dispose();
+        this.factory.dispose();
     }
 }
 

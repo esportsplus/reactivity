@@ -33,12 +33,12 @@ function unsupported(method: string): never {
 
 
 class ReactiveArray<T> extends Array<T> {
-    #signal: Signal<boolean>;
+    private signal: Signal<boolean>;
 
 
     constructor(data: T[]) {
         super(...data);
-        this.#signal = signal(false);
+        this.signal = signal(false);
     }
 
 
@@ -52,16 +52,16 @@ class ReactiveArray<T> extends Array<T> {
 
 
     private trigger() {
-        this.#signal.set(!this.#signal.value);
+        this.signal.set(!this.signal.value);
     }
 
 
     dispatch<E extends keyof Events<T>>(event: E, data?: Events<T>[E]) {
-        this.#signal.dispatch(event, data);
+        this.signal.dispatch(event, data);
     }
 
     dispose() {
-        this.#signal.dispose();
+        this.signal.dispose();
     }
 
     fill(value: T, start?: number, end?: number) {
@@ -74,11 +74,11 @@ class ReactiveArray<T> extends Array<T> {
     }
 
     on<E extends keyof Events<T>>(event: E, listener: Listener<Events<T>[E]>) {
-        this.#signal.on(event, listener);
+        this.signal.on(event, listener);
     }
 
     once<E extends keyof Events<T>>(event: E, listener: Listener<Events<T>[E]>) {
-        this.#signal.once(event, listener);
+        this.signal.once(event, listener);
     }
 
     pop() {
@@ -146,7 +146,7 @@ class ReactiveArray<T> extends Array<T> {
     }
 
     track() {
-        this.#signal.get();
+        this.signal.get();
     }
 
     unshift(...items: T[]) {
@@ -164,12 +164,12 @@ class ReactiveArray<T> extends Array<T> {
 // - @ts-ignore flags are supressing a type mismatch error
 // - Input values are being transformed by this class into nodes
 class ReactiveObjectArray<T extends Object>  extends ReactiveArray<Node<T>> {
-    #options: Options;
+    private options: Options;
 
 
     constructor(data: T[], options: Options = {}) {
         super( factory(data, options) );
-        this.#options = options;
+        this.options = options;
     }
 
 
@@ -187,7 +187,7 @@ class ReactiveObjectArray<T extends Object>  extends ReactiveArray<Node<T>> {
 
     // @ts-ignore
     push(...values: T[]) {
-        return super.push(...factory(values, this.#options));
+        return super.push(...factory(values, this.options));
     }
 
     shift() {
@@ -200,12 +200,12 @@ class ReactiveObjectArray<T extends Object>  extends ReactiveArray<Node<T>> {
 
     // @ts-ignore
     splice(start: number, deleteCount: number = super.length, ...values: T[]) {
-        return dispose( super.splice(start, deleteCount, ...factory(values, this.#options)) );
+        return dispose( super.splice(start, deleteCount, ...factory(values, this.options)) );
     }
 
     // @ts-ignore
     unshift(...values: T[]) {
-        return super.unshift(...factory(values, this.#options));
+        return super.unshift(...factory(values, this.options));
     }
 }
 
