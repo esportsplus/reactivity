@@ -21,18 +21,20 @@ type Infer<T> =
 
 type Never<K,V> = K extends keyof ReactiveObject<Object> ? never : V;
 
-type Node<T> =
+type Nodes<T> =
     T extends (...args: unknown[]) => unknown
         ? Computed<T>
         : T extends unknown[]
             ? T extends Object[] ? ReactiveObjectArray<T[0]> : ReactiveArray<T>
             : Signal<T>;
 
-type Nodes<T extends Object> = { [K in keyof T]: Node<T[K]> };
+type Signals<T extends Object> = {
+    [K in keyof T]: Nodes<T[K]>
+};
 
 
 export default <T extends Object>(data: Guard<T>, options?: Options) => {
     return new ReactiveObject(data, options) as any as Prettify<
-        { [K in keyof T]: Infer<T[K]> } & Omit<ReactiveObject<T>, 'nodes'> & { nodes: Nodes<T> }
+        { [K in keyof T]: Infer<T[K]> } & Omit<ReactiveObject<T>, 'signals'> & { signals: Signals<T> }
     >;
 };

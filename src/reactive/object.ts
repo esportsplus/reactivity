@@ -8,55 +8,55 @@ type Node = Computed<any> | ReactiveArray<any> | ReactiveObjectArray<Object> | S
 
 
 class ReactiveObject<T extends Object> {
-    nodes: Record<PropertyKey, Node> = {};
+    signals: Record<PropertyKey, Node> = {};
 
 
     constructor(data: T, options: Options = {}) {
-        let nodes = this.nodes;
+        let signals = this.signals;
 
         for (let key in data) {
             let input = data[key];
 
             if (typeof input === 'function') {
-                let node = nodes[key] = computed(input as Computed<T>['fn'], options);
+                let s = signals[key] = computed(input as Computed<T>['fn'], options);
 
                 defineProperty(this, key, {
                     enumerable: true,
                     get() {
-                        return node.get();
+                        return s.get();
                     }
                 });
             }
             else if (isArray(input)) {
-                let node: ReactiveArray<unknown> | ReactiveObjectArray<Object>,
+                let s: ReactiveArray<unknown> | ReactiveObjectArray<Object>,
                     test = input[0];
 
                 if (typeof test === 'object' && test !== null && test?.constructor?.name === 'Object') {
-                    node = nodes[key] = new ReactiveObjectArray(input, options);
+                    s = signals[key] = new ReactiveObjectArray(input, options);
                 }
                 else {
-                    node = nodes[key] = new ReactiveArray(input);
+                    s = signals[key] = new ReactiveArray(input);
                 }
 
                 defineProperty(this, key, {
                     enumerable: true,
                     get() {
-                        node.track();
+                        s.track();
 
-                        return node;
+                        return s;
                     }
                 });
             }
             else {
-                let node = nodes[key] = signal(input, options);
+                let s = signals[key] = signal(input, options);
 
                 defineProperty(this, key, {
                     enumerable: true,
                     get() {
-                        return node.get();
+                        return s.get();
                     },
                     set(value) {
-                        node.set(value);
+                        s.set(value);
                     }
                 });
             }
@@ -65,10 +65,10 @@ class ReactiveObject<T extends Object> {
 
 
     dispose() {
-        let nodes = this.nodes;
+        let signals = this.signals;
 
-        for (let key in nodes) {
-            nodes[key].dispose();
+        for (let key in signals) {
+            signals[key].dispose();
         }
     }
 }

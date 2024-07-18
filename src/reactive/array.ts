@@ -14,8 +14,6 @@ type Events<T> = {
     unshift: { items: T[] };
 };
 
-type Node<T extends Object> = ReactiveObject<T>;
-
 
 function factory<T extends Object>(data: T[], options: Options = {}) {
     let signals = [];
@@ -37,7 +35,8 @@ class ReactiveArray<T> extends Array<T> {
 
 
     constructor(data: T[]) {
-        super(...data);
+        // @ts-ignore
+        super(data);
         this.signal = signal(false);
     }
 
@@ -71,6 +70,16 @@ class ReactiveArray<T> extends Array<T> {
         this.trigger();
 
         return this;
+    }
+
+    map<U>(fn: (value: T, i: number, values: this) => U) {
+        let values: U[] = [];
+
+        for (let i = 0, n = this.length; i < n; i++) {
+            values.push( fn(this[i], i, this) );
+        }
+
+        return values;
     }
 
     on<E extends keyof Events<T>>(event: E, listener: Listener<Events<T>[E]>) {
@@ -162,8 +171,8 @@ class ReactiveArray<T> extends Array<T> {
 
 // REMINDER:
 // - @ts-ignore flags are supressing a type mismatch error
-// - Input values are being transformed by this class into nodes
-class ReactiveObjectArray<T extends Object>  extends ReactiveArray<Node<T>> {
+// - Input values are being transformed by this class into signals
+class ReactiveObjectArray<T extends Object>  extends ReactiveArray<ReactiveObject<T>> {
     private options: Options;
 
 
@@ -182,7 +191,7 @@ class ReactiveObjectArray<T extends Object>  extends ReactiveArray<Node<T>> {
     }
 
     pop() {
-        return dispose(super.pop()) as Node<T> | undefined;
+        return dispose(super.pop()) as ReactiveObject<T>| undefined;
     }
 
     // @ts-ignore
@@ -191,7 +200,7 @@ class ReactiveObjectArray<T extends Object>  extends ReactiveArray<Node<T>> {
     }
 
     shift() {
-        return dispose(super.shift()) as Node<T> | undefined;
+        return dispose(super.shift()) as ReactiveObject<T> | undefined;
     }
 
     sort() {
