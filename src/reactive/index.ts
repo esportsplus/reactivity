@@ -14,7 +14,7 @@ type Infer<T> =
     T extends (...args: unknown[]) => unknown
         ? ReturnType<T>
         : T extends unknown[]
-            ? Infer<T[number]>[]
+            ? T extends Object[] ? ReactiveObjectArray<T[0]> : ReactiveArray<T[0]>
             : T extends Object
                 ? { [K in keyof T]: T[K] }
                 : T;
@@ -25,7 +25,7 @@ type Nodes<T> =
     T extends (...args: unknown[]) => unknown
         ? Computed<T>
         : T extends unknown[]
-            ? T extends Object[] ? ReactiveObjectArray<T[0]> : ReactiveArray<T>
+            ? T extends Object[] ? ReactiveObjectArray<T[0]> : ReactiveArray<T[0]>
             : Signal<T>;
 
 type Signals<T extends Object> = {

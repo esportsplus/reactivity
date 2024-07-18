@@ -35,8 +35,7 @@ class ReactiveArray<T> extends Array<T> {
 
 
     constructor(data: T[]) {
-        // @ts-ignore
-        super(data);
+        super(...data);
         this.signal = signal(false);
     }
 
@@ -47,11 +46,6 @@ class ReactiveArray<T> extends Array<T> {
         }
 
         this.splice(n);
-    }
-
-
-    private trigger() {
-        this.signal.set(!this.signal.value);
     }
 
 
@@ -72,11 +66,11 @@ class ReactiveArray<T> extends Array<T> {
         return this;
     }
 
-    map<U>(fn: (value: T, i: number, values: this) => U) {
+    map<U>(fn: (this: ReactiveArray<T>, value: T, i: number, values: this) => U) {
         let values: U[] = [];
 
         for (let i = 0, n = this.length; i < n; i++) {
-            values.push( fn(this[i], i, this) );
+            values.push( fn.call(this, this[i], i, this) );
         }
 
         return values;
@@ -154,8 +148,13 @@ class ReactiveArray<T> extends Array<T> {
         return removed;
     }
 
-    track() {
+    track(index?: number) {
         this.signal.get();
+        return index === undefined ? undefined : this[index];
+    }
+
+    trigger() {
+        this.signal.set(!this.signal.value);
     }
 
     unshift(...items: T[]) {
