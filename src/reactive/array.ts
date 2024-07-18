@@ -66,11 +66,12 @@ class ReactiveArray<T> extends Array<T> {
         return this;
     }
 
-    map<U>(fn: (this: ReactiveArray<T>, value: T, i: number, values: this) => U) {
+    // @ts-ignore
+    map<U>(fn: (this: ReactiveArray<T>, value: T, i: number) => U) {
         let values: U[] = [];
 
         for (let i = 0, n = this.length; i < n; i++) {
-            values.push( fn.call(this, this[i], i, this) );
+            values.push( fn.call(this, this[i], i) );
         }
 
         return values;
@@ -104,6 +105,7 @@ class ReactiveArray<T> extends Array<T> {
         return n;
     }
 
+    // @ts-ignore
     reverse() {
         super.reverse();
 
@@ -124,6 +126,7 @@ class ReactiveArray<T> extends Array<T> {
         return item;
     }
 
+    // @ts-ignore
     sort() {
         super.sort();
 
