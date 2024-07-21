@@ -3,9 +3,6 @@ import { signal } from './signal';
 import { Options, Signal } from './types';
 
 
-type Function<A extends unknown[], R extends Promise<unknown>> = (...args: A) => R;
-
-
 class Resource<A extends unknown[], R extends Promise<unknown>> extends CustomFunction {
     private arguments: Signal<A | null>;
     private okay: Signal<boolean | null>;
@@ -14,7 +11,7 @@ class Resource<A extends unknown[], R extends Promise<unknown>> extends CustomFu
     stop: boolean | null = null;
 
 
-    constructor(fn: Function<A,R>, options: Options = {}) {
+    constructor(fn: (...args: A) => R, options: Options = {}) {
         super((...args: A) => {
             this.stop = null;
 
@@ -66,6 +63,6 @@ class Resource<A extends unknown[], R extends Promise<unknown>> extends CustomFu
 }
 
 
-export default <A extends unknown[], R extends Promise<unknown>>(fn: Function<A,R>, options: Options = {}) => {
+export default <A extends unknown[], R extends Promise<unknown>>(fn: (...args: A) => R, options: Options = {}) => {
     return new Resource(fn, options);
 };

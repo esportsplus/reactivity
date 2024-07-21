@@ -1,41 +1,112 @@
-import { dispose, signal } from '~/signal';
-import { Listener, Object, Options, Signal } from '~/types';
+import { dispose, signal, Reactive } from '~/signal';
+import { Listener, Options, Signal } from '~/types';
+import { isInstanceOf, isNumber, isObject } from '~/utilities';
 import { ReactiveObject } from './object';
 
 
 type Events<T> = {
-    fill: { value: T };
-    pop: { item: T };
-    push: { items: T[] };
+    pop: {
+        item: R<T>;
+    };
+    push: {
+        items: R<T>[];
+    };
     reverse: undefined;
-    shift: { item: T };
+    shift: {
+        item: R<T>;
+    };
     sort: undefined;
-    splice: { deleteCount: number, items: T[], start: number };
-    unshift: { items: T[] };
+    splice: {
+        deleteCount: number;
+        items: R<T>[];
+        start: number;
+    };
+    unshift: {
+        items: R<T>[];
+    };
 };
 
+type R<T> = Signal<T> | ReactiveObject< T extends Record<PropertyKey, unknown> ? { [K in keyof T]: T[K] } : never >;
 
-function factory<T extends Object>(data: T[], options: Options = {}) {
-    let signals = [];
 
-    for (let i = 0, n = data.length; i < n; i++) {
-        signals.push( new ReactiveObject(data[i], options) );
+let handler = {
+        get(target: any, prop: any) {
+            let value = target[prop];
+
+            if (value === undefined) {
+                return value;
+            }
+
+            if (isInstanceOf(value, Reactive)) {
+                return value.get();
+            }
+            else if (supported.has(prop)) {
+                return value;
+            }
+
+            throw new Error(`Reactivity: '${prop}' is not supported on reactive arrays`);
+        },
+        set(target: any, prop: any, value: any) {
+            if (isNumber(prop)) {
+                let host = target[prop];
+
+                if (isInstanceOf(host, Reactive)) {
+                    host.set(value);
+                    return true;
+                }
+
+                return false;
+            }
+
+            return target[prop] = value;
+        }
+    },
+    supported = new Set([
+        'at',
+        'dispatch', 'dispose',
+        'length',
+        'map',
+        'on', 'once',
+        'pop', 'push',
+        'reverse',
+        'self', 'shift', 'sort', 'splice',
+        'unshift'
+    ]);
+
+
+function factory<T>(input: T[], options: Options = {}) {
+    let items: R<T>[] = [];
+
+    for (let i = 0, n = input.length; i < n; i++) {
+        let value = input[i];
+
+        if (isObject(value)) {
+            items[i] = new ReactiveObject(value, options);
+        }
+        else {
+            items[i] = signal(value);
+        }
     }
 
-    return signals;
-}
-
-function unsupported(method: string): never {
-    throw new Error(`Reactivity: '${method}' is not supported on reactive object array`);
+    return items;
 }
 
 
-class ReactiveArray<T> extends Array<T> {
+// REMINDER:
+// - @ts-ignore flags are supressing type mismatch error
+// - Input values are being transformed by this class into reactive values and back during get
+class ReactiveArray<T> extends Array<R<T>> {
+    private options: Options;
+    // - Proxy binds itself to methods on get
+    // - Use 'self' to avoid going through proxy for internal loops
+    private self: ReactiveArray<T>;
     private signal: Signal<boolean>;
 
 
-    constructor(data: T[]) {
+    constructor(data: R<T>[], options: Options = {}) {
         super(...data);
+        this.options = options;
+        this.self = this;
         this.signal = signal(false);
     }
 
@@ -49,29 +120,33 @@ class ReactiveArray<T> extends Array<T> {
     }
 
 
+    at(index: number) {
+        let value = super.at(index);
+
+        if (isInstanceOf(value, Reactive)) {
+            return value.get();
+        }
+
+        return value;
+    }
+
     dispatch<E extends keyof Events<T>>(event: E, data?: Events<T>[E]) {
         this.signal.dispatch(event, data);
     }
 
     dispose() {
         this.signal.dispose();
-    }
-
-    fill(value: T, start?: number, end?: number) {
-        super.fill(value, start, end);
-
-        this.dispatch('fill', { value });
-        this.trigger();
-
-        return this;
+        dispose(this.self as any);
     }
 
     // @ts-ignore
-    map<U>(fn: (this: ReactiveArray<T>, value: T, i: number) => U) {
-        let values: U[] = [];
+    map<U>(fn: (this: T[], value: T, i: number) => U) {
+        let self = this.self,
+            values: U[] = [];
 
-        for (let i = 0, n = this.length; i < n; i++) {
-            values.push( fn.call(this, this[i], i) );
+        for (let i = 0, n = self.length; i < n; i++) {
+            // @ts-ignore
+            values.push( fn.call(this, self[i].value, i) );
         }
 
         return values;
@@ -89,18 +164,19 @@ class ReactiveArray<T> extends Array<T> {
         let item = super.pop();
 
         if (item !== undefined) {
-            this.dispatch('pop', { item });
-            this.trigger();
+            dispose(item);
+            this.signal.dispatch('pop', { item });
         }
 
         return item;
     }
 
-    push(...items: T[]) {
-        let n = super.push(...items);
+    // @ts-ignore
+    push(...input: T[]) {
+        let items = factory(input, this.options),
+            n = super.push(...items);
 
-        this.dispatch('push', { items });
-        this.trigger();
+        this.signal.dispatch('push', { items });
 
         return n;
     }
@@ -108,9 +184,7 @@ class ReactiveArray<T> extends Array<T> {
     // @ts-ignore
     reverse() {
         super.reverse();
-
-        this.dispatch('reverse');
-        this.trigger();
+        this.signal.dispatch('reverse');
 
         return this;
     }
@@ -119,106 +193,50 @@ class ReactiveArray<T> extends Array<T> {
         let item = super.shift();
 
         if (item !== undefined) {
-            this.dispatch('shift', { item });
-            this.trigger();
+            dispose(item);
+            this.signal.dispatch('shift', { item });
         }
 
         return item;
     }
 
-    // @ts-ignore
     sort() {
         super.sort();
-
-        this.dispatch('sort');
-        this.trigger();
+        this.signal.dispatch('sort');
 
         return this;
     }
 
-    splice(start: number, deleteCount: number = super.length, ...items: T[]) {
-        let removed = super.splice(start, deleteCount, ...items);
+    // @ts-ignore
+    splice(start: number, deleteCount: number = super.length, ...input: T[]) {
+        let items = factory(input, this.options),
+            removed = super.splice(start, deleteCount, ...items);
 
         if (items.length > 0 || removed.length > 0) {
-            this.dispatch('splice', {
+            dispose(removed);
+            this.signal.dispatch('splice', {
                 deleteCount,
                 items,
                 start
             });
-            this.trigger();
         }
 
         return removed;
     }
 
-    track(index?: number) {
-        this.signal.get();
-        return index === undefined ? undefined : this[index];
-    }
+    // @ts-ignore
+    unshift(...input: T[]) {
+        let items = factory(input, this.options),
+            length = super.unshift(...items);
 
-    trigger() {
-        this.signal.set(!this.signal.value);
-    }
-
-    unshift(...items: T[]) {
-        let length = super.unshift(...items);
-
-        this.dispatch('unshift', { items });
-        this.trigger();
+        this.signal.dispatch('unshift', { items });
 
         return length;
     }
 }
 
 
-// REMINDER:
-// - @ts-ignore flags are supressing a type mismatch error
-// - Input values are being transformed by this class into signals
-class ReactiveObjectArray<T extends Object>  extends ReactiveArray<ReactiveObject<T>> {
-    private options: Options;
-
-
-    constructor(data: T[], options: Options = {}) {
-        super( factory(data, options) );
-        this.options = options;
-    }
-
-
-    fill() {
-        return unsupported('fill');
-    }
-
-    reverse() {
-        return unsupported('reverse');
-    }
-
-    pop() {
-        return dispose(super.pop()) as ReactiveObject<T>| undefined;
-    }
-
-    // @ts-ignore
-    push(...values: T[]) {
-        return super.push(...factory(values, this.options));
-    }
-
-    shift() {
-        return dispose(super.shift()) as ReactiveObject<T> | undefined;
-    }
-
-    sort() {
-        return unsupported('sort');
-    }
-
-    // @ts-ignore
-    splice(start: number, deleteCount: number = super.length, ...values: T[]) {
-        return dispose( super.splice(start, deleteCount, ...factory(values, this.options)) );
-    }
-
-    // @ts-ignore
-    unshift(...values: T[]) {
-        return super.unshift(...factory(values, this.options));
-    }
-}
-
-
-export { ReactiveArray, ReactiveObjectArray };
+export default <T>(input: T[], options: Options = {}) => {
+    return new Proxy(new ReactiveArray(factory(input, options)), handler);
+};
+export { ReactiveArray };

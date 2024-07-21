@@ -1,14 +1,11 @@
 import { computed, signal } from '~/signal';
-import { Computed, Object, Options, Signal } from '~/types';
-import { defineProperty, isArray } from '~/utilities';
-import { ReactiveArray, ReactiveObjectArray } from './array';
+import { Computed, Options, Signal } from '~/types';
+import { defineProperty, isArray, isFunction } from '~/utilities';
+import { default as array, ReactiveArray } from './array';
 
 
-type Node = Computed<any> | ReactiveArray<any> | ReactiveObjectArray<Object> | Signal<any>;
-
-
-class ReactiveObject<T extends Object> {
-    signals: Record<PropertyKey, Node> = {};
+class ReactiveObject<T extends Record<PropertyKey, unknown>> {
+    signals: Record<PropertyKey, Computed<any> | ReactiveArray<any> | Signal<any>> = {};
 
 
     constructor(data: T, options: Options = {}) {
@@ -17,33 +14,23 @@ class ReactiveObject<T extends Object> {
         for (let key in data) {
             let input = data[key];
 
-            if (typeof input === 'function') {
+            if (isArray(input)) {
+                let s = signals[key] = array(input, options);
+
+                defineProperty(this, key, {
+                    enumerable: true,
+                    get() {
+                        return s;
+                    }
+                });
+            }
+            else if (isFunction(input)) {
                 let s = signals[key] = computed(input as Computed<T>['fn'], options);
 
                 defineProperty(this, key, {
                     enumerable: true,
                     get() {
                         return s.get();
-                    }
-                });
-            }
-            else if (isArray(input)) {
-                let s: ReactiveArray<unknown> | ReactiveObjectArray<Object>,
-                    test = input[0];
-
-                if (typeof test === 'object' && test !== null && test?.constructor?.name === 'Object') {
-                    s = signals[key] = new ReactiveObjectArray(input, options);
-                }
-                else {
-                    s = signals[key] = new ReactiveArray(input);
-                }
-
-                defineProperty(this, key, {
-                    enumerable: true,
-                    get() {
-                        s.track();
-
-                        return s;
                     }
                 });
             }
@@ -64,6 +51,11 @@ class ReactiveObject<T extends Object> {
     }
 
 
+    get value() {
+        return this;
+    }
+
+
     dispose() {
         let signals = this.signals;
 
@@ -74,4 +66,7 @@ class ReactiveObject<T extends Object> {
 }
 
 
+export default <T extends Record<PropertyKey, unknown>>(input: T, options: Options = {}) => {
+    return new ReactiveObject(input, options);
+};
 export { ReactiveObject };

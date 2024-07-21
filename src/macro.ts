@@ -3,14 +3,11 @@ import { computed } from './signal';
 import { Computed, Options } from './types';
 
 
-type Function<A extends unknown[], R> = Computed<(...args: A) => R>['fn'];
-
-
 class Macro<A extends unknown[], R> extends CustomFunction {
     private factory: Computed<(...args: A) => R>;
 
 
-    constructor(fn: Function<A,R>, options: Options = {}) {
+    constructor(fn: Macro<A,R>['factory']['fn'], options: Options = {}) {
         super((...args: A) => {
             return this.factory.get()(...args);
         });
@@ -24,6 +21,6 @@ class Macro<A extends unknown[], R> extends CustomFunction {
 }
 
 
-export default <A extends unknown[], R>(fn: Function<A,R>, options: Options = {}) => {
+export default <A extends unknown[], R>(fn: Macro<A,R>['factory']['fn'], options: Options = {}) => {
     return new Macro(fn, options);
 };
