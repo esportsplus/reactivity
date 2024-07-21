@@ -1,8 +1,8 @@
 import { Prettify } from '@esportsplus/typescript';
+import { isArray, isObject } from '@esportsplus/utilities';
 import { Options } from '~/types';
 import { default as array, ReactiveArray } from './array';
 import { default as object, ReactiveObject } from './object';
-import { isArray, isObject } from '~/utilities';
 
 
 type Guard<T> =

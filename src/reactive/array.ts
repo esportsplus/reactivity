@@ -1,6 +1,6 @@
+import { isInstanceOf, isNumber, isObject } from '@esportsplus/utilities';
 import { dispose, signal, Reactive } from '~/signal';
 import { Listener, Options, Signal } from '~/types';
-import { isInstanceOf, isNumber, isObject } from '~/utilities';
 import { ReactiveObject } from './object';
 
 

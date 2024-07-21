@@ -1,6 +1,6 @@
+import { isArray } from '@esportsplus/utilities';
 import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, ROOT, SIGNAL } from './constants';
 import { Computed, Changed, Effect, Event, Function, Listener, NeverAsync, Options, Root, Scheduler, Signal, State, Type } from './types';
-import { isArray } from './utilities';
 
 
 let index = 0,

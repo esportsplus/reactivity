@@ -1,6 +1,6 @@
+import { defineProperty, isArray, isFunction } from '@esportsplus/utilities';
 import { computed, signal } from '~/signal';
 import { Computed, Options, Signal } from '~/types';
-import { defineProperty, isArray, isFunction } from '~/utilities';
 import { default as array, ReactiveArray } from './array';
 
 
