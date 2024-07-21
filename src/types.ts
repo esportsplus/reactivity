@@ -1,4 +1,5 @@
 import { Function, NeverAsync, Prettify } from '@esportsplus/typescript'
+import { ReactiveArray } from './reactive/array';
 import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, ROOT, SIGNAL } from './constants';
 import { Reactive } from './signal';
 
@@ -58,6 +59,7 @@ export type {
     NeverAsync,
     Options,
     Prettify,
+    ReactiveArray,
     Root,
     Scheduler, Signal, State,
     Type
