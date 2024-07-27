@@ -1,5 +1,6 @@
 import { Function, NeverAsync, Prettify } from '@esportsplus/typescript'
 import { ReactiveArray } from './reactive/array';
+import { ReactiveObject } from './reactive/object';
 import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, ROOT, SIGNAL } from './constants';
 import { Reactive } from './signal';
 
@@ -20,12 +21,23 @@ type Effect = {
     task: Function;
 } & Omit<Base<void>, 'value'>;
 
+type Infer<T> =
+    T extends (...args: unknown[]) => unknown
+        ? ReturnType<T>
+        : T extends (infer U)[]
+            ? ReactiveArray<U>
+            : T extends ReactiveObject<T>
+                ? ReactiveObject<T>
+                : T extends Record<PropertyKey, unknown>
+                    ? { [K in keyof T]: T[K] }
+                    : T;
+
 type Event = string;
 
 type Listener<D> = {
     once?: boolean;
 
-    <V>(event: { data?: D, value: V }): void;
+    <V>(data: D, value: V): void;
 };
 
 type Options = {
@@ -55,12 +67,12 @@ export type {
     Changed, Computed,
     Effect, Event,
     Function,
+    Infer,
     Listener,
     NeverAsync,
     Options,
     Prettify,
-    ReactiveArray,
-    Root,
+    ReactiveArray, ReactiveObject, Root,
     Scheduler, Signal, State,
     Type
 };

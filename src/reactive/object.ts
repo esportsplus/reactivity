@@ -1,7 +1,10 @@
 import { defineProperty, isArray, isFunction } from '@esportsplus/utilities';
 import { computed, signal } from '~/signal';
-import { Computed, Options, Signal } from '~/types';
-import { default as array, ReactiveArray } from './array';
+import { Computed, Infer, Options, Prettify, ReactiveArray, Signal } from '~/types';
+import { default as array } from './array';
+
+
+type API<T> = Prettify< { [K in keyof T]: Infer<T[K]> } & { dispose: VoidFunction } >;
 
 
 class ReactiveObject<T extends Record<PropertyKey, unknown>> {
@@ -51,11 +54,6 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
     }
 
 
-    get value() {
-        return this;
-    }
-
-
     dispose() {
         let signals = this.signals;
 
@@ -67,6 +65,6 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
 
 
 export default <T extends Record<PropertyKey, unknown>>(input: T, options: Options = {}) => {
-    return new ReactiveObject(input, options);
+    return new ReactiveObject(input, options) as API<T>;
 };
-export { ReactiveObject };
+export { API as ReactiveObject };

@@ -1,29 +1,15 @@
-import { Prettify } from '@esportsplus/typescript';
 import { isArray, isObject } from '@esportsplus/utilities';
-import { Options } from '~/types';
-import { default as array, ReactiveArray } from './array';
-import { default as object, ReactiveObject } from './object';
+import { Options, ReactiveArray, ReactiveObject } from '~/types';
+import { default as array } from './array';
+import { default as object } from './object';
 
 
 type Guard<T> =
-    T extends Record<PropertyKey, unknown>
-        ? { [K in keyof T]: Never<K, Guard<T[K]>> }
-        : T extends unknown[]
+    T extends { dispose: any } | { signals: any }
+        ? { never: '[ dispose, signals ] are reserved keys' }
+        : T extends Record<PropertyKey, unknown> | unknown[]
             ? T
-            : T extends Function
-                ? never
-                : T;
-
-type Infer<T> =
-    T extends (...args: unknown[]) => unknown
-        ? ReturnType<T>
-        : T extends (infer U)[]
-            ? Prettify< Omit<U[], 'map'> & Pick<ReactiveArray<U>, 'dispatch' | 'dispose' | 'map' | 'on' | 'once'> >
-            : T extends Record<PropertyKey, unknown>
-                ? { [K in keyof T]: T[K] }
-                : T;
-
-type Never<K,V> = K extends keyof ReactiveObject<Record<PropertyKey, unknown>> ? never : V;
+            : never;
 
 
 export default <T>(data: Guard<T>, options: Options = {}) => {
@@ -39,5 +25,7 @@ export default <T>(data: Guard<T>, options: Options = {}) => {
         throw new Error(`Reactivity: 'reactive' received invalid input - ${JSON.stringify(data)}`);
     }
 
-    return value as T extends Record<PropertyKey, unknown> ? { [K in keyof T]: Infer<T[K]> } : Infer<T>;
+    return value as T extends Record<PropertyKey, unknown>
+        ? ReactiveObject<T>
+        : ReactiveArray<T>;
 };

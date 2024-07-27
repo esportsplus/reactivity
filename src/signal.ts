@@ -57,11 +57,7 @@ class Reactive<T> {
             return;
         }
 
-        let listeners = this.listeners[event],
-            values = {
-                data,
-                value: this.value
-            };
+        let listeners = this.listeners[event];
 
         for (let i = 0, n = listeners.length; i < n; i++) {
             let listener = listeners[i];
@@ -71,7 +67,7 @@ class Reactive<T> {
             }
 
             try {
-                listener(values);
+                listener(data, this.value);
 
                 if (listener.once !== undefined) {
                     listeners[i] = null;
