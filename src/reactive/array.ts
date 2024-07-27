@@ -5,7 +5,7 @@ import { Listener, Options, ReactiveObject, Signal } from '~/types';
 import object from './object';
 
 
-type API<T> = Prettify< { [index: number]: Infer<T> } & ReturnType<typeof methods<T>> >;
+type API<T> = Prettify< Infer<T>[] & ReturnType<typeof methods<T>> >;
 
 type Events<T> = {
     pop: {
