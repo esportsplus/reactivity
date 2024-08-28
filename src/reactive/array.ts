@@ -46,7 +46,13 @@ class ReactiveArray<T> extends Array<Item<T>> {
 
 
     constructor(data: Item<T>[], proxy: API<T>, options: Options = {}) {
-        super(...data);
+        super();
+
+        // Only method I could use to prevent TS and runtime JS errors
+        for (let i = 0, n = data.length; i < n; i++) {
+            super.push(data[i]);
+        }
+
         this.options = options;
         this.proxy = proxy;
         this.signal = signal(false);
@@ -283,12 +289,17 @@ export default <T>(input: T[], options: Options = {}) => {
                 if (isNumber(key)) {
                     let host = a[key];
 
-                    if (isInstanceOf(host, Reactive)) {
+                    if (host === undefined) {
+                        a[key] = factory([value] as T[], options)[0];
+                    }
+                    else if (isInstanceOf(host, Reactive)) {
                         host.set(value);
-                        return true;
+                    }
+                    else {
+                        return false;
                     }
 
-                    return false;
+                    return true;
                 }
 
                 return a[key] = value;
