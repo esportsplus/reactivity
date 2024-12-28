@@ -87,6 +87,7 @@ class ReactiveArray<T> extends Array<Item<T>> {
         dispose(this);
     }
 
+    // @ts-ignore
     indexOf(value: T) {
         for (let i = 0, n = this.length; i < n; i++) {
             if (this[i].value === value) {
