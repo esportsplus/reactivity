@@ -87,6 +87,16 @@ class ReactiveArray<T> extends Array<Item<T>> {
         dispose(this);
     }
 
+    indexOf(value: T) {
+        for (let i = 0, n = this.length; i < n; i++) {
+            if (this[i].value === value) {
+                return i;
+            }
+        }
+
+        return -1;
+    }
+
     // @ts-ignore
     map<U>(fn: (this: API<T>, value: T, i: number) => U, i?: number, n?: number) {
         let proxy = this.proxy,
@@ -229,6 +239,7 @@ function methods<T>(a: ReactiveArray<T>): Prettify<
         typeof a,
         'at' |
         'dispatch' | 'dispose' |
+        'indexOf' |
         'map' |
         'on' | 'once' |
         'pop' | 'push' |
@@ -250,6 +261,7 @@ function methods<T>(a: ReactiveArray<T>): Prettify<
         at: (index) => a.at(index),
         dispatch: (event, data) => a.dispatch(event, data),
         dispose: () => a.dispose(),
+        indexOf: (value) => a.indexOf(value),
         map: (fn, i, n) => a.map(fn, i, n),
         on: (event, listener) => a.on(event, listener),
         once: (event, listener) => a.once(event, listener),
