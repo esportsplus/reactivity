@@ -324,4 +324,4 @@ export default <T>(input: T[], options: Options = {}) => {
 
     return proxy;
 };
-export { API as ReactiveArray };
+export type { API as ReactiveArray };

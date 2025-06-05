@@ -67,4 +67,4 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
 export default <T extends Record<PropertyKey, unknown>>(input: T, options: Options = {}) => {
     return new ReactiveObject(input, options) as API<T>;
 };
-export { API as ReactiveObject };
+export type { API as ReactiveObject };
