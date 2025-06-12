@@ -292,11 +292,8 @@ export default <T>(input: T[], options: Options = {}) => {
 
                     return value;
                 }
-                else if (key in m) {
-                    return m[key as keyof typeof m];
-                }
 
-                throw new Error(`Reactivity: '${key}' is not supported on reactive arrays`);
+                return m[key as keyof typeof m];
             },
             set(_: any, key: any, value: any) {
                 if (isNumber(key)) {
