@@ -5,7 +5,7 @@
         "@esportsplus/utilities": "^0.0.9"
     },
     "devDependencies": {
-        "@esportsplus/typescript": "^0.8.11"
+        "@esportsplus/typescript": "^0.8.14"
     },
     "main": "build/index.js",
     "name": "@esportsplus/reactivity",

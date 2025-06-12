@@ -292,8 +292,11 @@ export default <T>(input: T[], options: Options = {}) => {
 
                     return value;
                 }
+                else if (key in m) {
+                    return m[key as keyof typeof m];
+                }
 
-                return m[key as keyof typeof m];
+                return a[key];
             },
             set(_: any, key: any, value: any) {
                 if (isNumber(key)) {
