@@ -80,7 +80,7 @@ class ReactiveArray<T> {
 
     dispose() {
         this.signal.dispose();
-        dispose(this);
+        dispose(this.data);
     }
 
     indexOf(value: T, fromIndex?: number) {
