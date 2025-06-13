@@ -1,11 +1,11 @@
-import { Infer, Prettify } from '~/types';
+import { Infer } from '~/types';
 import { isInstanceOf, isNumber, isObject } from '@esportsplus/utilities';
 import { dispose, signal, Reactive } from '~/signal';
 import { Listener, Options, ReactiveObject, Signal } from '~/types';
 import object from './object';
 
 
-type API<T> = Prettify< Infer<T>[] & ReturnType<typeof methods<T>> >;
+type API<T> = Infer<T>[] & ReactiveArray<T>;
 
 type Events<T> = {
     pop: {
@@ -36,31 +36,27 @@ type Events<T> = {
 type Item<T> = T extends Record<PropertyKey, unknown> ? ReactiveObject<T> : Signal<T>;
 
 
-// REMINDER:
-// - @ts-ignore flags are supressing type mismatch error
-// - Input values are being transformed by this class into reactive values and back during get
-class ReactiveArray<T> extends Array<Item<T>> {
+class ReactiveArray<T> {
+    private data: Item<T>[]
     private options: Options;
     private proxy: API<T>;
     private signal: Signal<boolean>;
 
 
     constructor(data: Item<T>[], proxy: API<T>, options: Options = {}) {
-        super();
-
-        // Only method I could use to prevent TS and runtime JS errors
-        for (let i = 0, n = data.length; i < n; i++) {
-            super.push(data[i]);
-        }
-
+        this.data = data;
         this.options = options;
         this.proxy = proxy;
         this.signal = signal(false);
     }
 
 
+    get length(): number {
+        return this.data.length;
+    }
+
     set length(n: number) {
-        if (n > this.length) {
+        if (n > this.data.length) {
             return;
         }
 
@@ -69,7 +65,7 @@ class ReactiveArray<T> extends Array<Item<T>> {
 
 
     at(i: number) {
-        let value = super.at(i);
+        let value = this.data[i];
 
         if (isInstanceOf(value, Reactive)) {
             return value.get();
@@ -78,7 +74,7 @@ class ReactiveArray<T> extends Array<Item<T>> {
         return value;
     }
 
-    dispatch<E extends keyof Events<T>>(event: E, data?: Events<T>[E]) {
+    dispatch<E extends keyof Events<unknown>>(event: E, data?: Events<T>[E]) {
         this.signal.dispatch(event, data);
     }
 
@@ -87,10 +83,11 @@ class ReactiveArray<T> extends Array<Item<T>> {
         dispose(this);
     }
 
-    // @ts-ignore
-    indexOf(value: T) {
-        for (let i = 0, n = this.length; i < n; i++) {
-            if (this[i].value === value) {
+    indexOf(value: T, fromIndex?: number) {
+        let data = this.data;
+
+        for (let i = fromIndex ?? 0, n = data.length; i < n; i++) {
+            if (data[i].value === value) {
                 return i;
             }
         }
@@ -98,9 +95,8 @@ class ReactiveArray<T> extends Array<Item<T>> {
         return -1;
     }
 
-    // @ts-ignore
     map<U>(fn: (this: API<T>, value: T, i: number) => U, i?: number, n?: number) {
-        let proxy = this.proxy,
+        let { data, proxy } = this,
             values: U[] = [];
 
         if (i === undefined) {
@@ -108,13 +104,13 @@ class ReactiveArray<T> extends Array<Item<T>> {
         }
 
         if (n === undefined) {
-            n = this.length;
+            n = data.length;
         }
 
-        n = Math.min(n, this.length);
+        n = Math.min(n, data.length);
 
         for (; i < n; i++) {
-            let item = this[i];
+            let item = data[i];
 
             values.push(
                 fn.call(proxy, isInstanceOf(item, Reactive) ? item.value : item, i)
@@ -124,16 +120,16 @@ class ReactiveArray<T> extends Array<Item<T>> {
         return values;
     }
 
-    on<E extends keyof Events<T>>(event: E, listener: Listener<Events<T>[E]>) {
+    on<E extends keyof Events<unknown>>(event: E, listener: Listener<Events<T>[E]>) {
         this.signal.on(event, listener);
     }
 
-    once<E extends keyof Events<T>>(event: E, listener: Listener<Events<T>[E]>) {
+    once<E extends keyof Events<unknown>>(event: E, listener: Listener<Events<T>[E]>) {
         this.signal.once(event, listener);
     }
 
     pop() {
-        let item = super.pop();
+        let item = this.data.pop();
 
         if (item !== undefined) {
             dispose(item);
@@ -143,26 +139,24 @@ class ReactiveArray<T> extends Array<Item<T>> {
         return item;
     }
 
-    // @ts-ignore
     push(...input: T[]) {
         let items = factory(input, this.options),
-            n = super.push(...items);
+            n = this.data.push(...items);
 
         this.signal.dispatch('push', { items });
 
         return n;
     }
 
-    // @ts-ignore
     reverse() {
-        super.reverse();
+        this.data.reverse();
         this.signal.dispatch('reverse');
 
         return this;
     }
 
     shift() {
-        let item = super.shift();
+        let item = this.data.shift();
 
         if (item !== undefined) {
             dispose(item);
@@ -172,9 +166,8 @@ class ReactiveArray<T> extends Array<Item<T>> {
         return item;
     }
 
-    // @ts-ignore
     sort(fn: (a: T, b: T) => number) {
-        super.sort((a, b) => fn(
+        this.data.sort((a, b) => fn(
             isInstanceOf(a, Reactive) ? a.value : a,
             isInstanceOf(b, Reactive) ? b.value : b
         ));
@@ -183,10 +176,9 @@ class ReactiveArray<T> extends Array<Item<T>> {
         return this;
     }
 
-    // @ts-ignore
-    splice(start: number, deleteCount: number = super.length, ...input: T[]) {
+    splice(start: number, deleteCount: number = this.data.length, ...input: T[]) {
         let items = factory(input, this.options),
-            removed = super.splice(start, deleteCount, ...items);
+            removed = this.data.splice(start, deleteCount, ...items);
 
         if (items.length > 0 || removed.length > 0) {
             dispose(removed);
@@ -200,10 +192,9 @@ class ReactiveArray<T> extends Array<Item<T>> {
         return removed;
     }
 
-    // @ts-ignore
     unshift(...input: T[]) {
         let items = factory(input, this.options),
-            length = super.unshift(...items);
+            length = this.data.unshift(...items);
 
         this.signal.dispatch('unshift', { items });
 
@@ -231,60 +222,13 @@ function factory<T>(input: T[], options: Options = {}) {
     return items;
 }
 
-function methods<T>(a: ReactiveArray<T>): Prettify<
-    {
-        get constructor(): typeof a['constructor'];
-        get length(): number;
-        set length(n: number);
-    } & Pick<
-        typeof a,
-        'at' |
-        'dispatch' | 'dispose' |
-        'indexOf' |
-        'map' |
-        'on' | 'once' |
-        'pop' | 'push' |
-        'reverse' |
-        'shift' | 'sort' | 'splice' |
-        'unshift'
-    >
-> {
-    return {
-        get constructor() {
-            return a.constructor;
-        },
-        get length() {
-            return a.length;
-        },
-        set length(n: number) {
-            a.length = n;
-        },
-        at: (index) => a.at(index),
-        dispatch: (event, data) => a.dispatch(event, data),
-        dispose: () => a.dispose(),
-        indexOf: (value) => a.indexOf(value),
-        map: (fn, i, n) => a.map(fn, i, n),
-        on: (event, listener) => a.on(event, listener),
-        once: (event, listener) => a.once(event, listener),
-        pop: () => a.pop(),
-        push: (...input) => a.push(...input),
-        reverse: () => a.reverse(),
-        shift: () => a.shift(),
-        sort: (fn) => a.sort(fn),
-        splice: (start, deleteCount, ...input) => a.splice(start, deleteCount, ...input),
-        unshift: (...input) => a.unshift(...input)
-    };
-}
 
-
-// - Proxies are slow...
-// - `this.[property]` goes through proxy
-// - Wrapper slows down creation in exchange for 'faster' runtime use
 export default <T>(input: T[], options: Options = {}) => {
-    let proxy = new Proxy({}, {
+    let wrapped = factory(input, options),
+        proxy = new Proxy({}, {
             get(_: any, key: any) {
                 if (isNumber(key)) {
-                    let value = a[key];
+                    let value = wrapped[key];
 
                     if (isInstanceOf(value, Reactive)) {
                         return value.get();
@@ -292,18 +236,18 @@ export default <T>(input: T[], options: Options = {}) => {
 
                     return value;
                 }
-                else if (key in m) {
-                    return m[key as keyof typeof m];
+                else if (key in a) {
+                    return a[key as keyof typeof a];
                 }
 
-                return a[key];
+                return wrapped[key];
             },
             set(_: any, key: any, value: any) {
                 if (isNumber(key)) {
-                    let host = a[key];
+                    let host = wrapped[key];
 
                     if (host === undefined) {
-                        a[key] = factory([value] as T[], options)[0];
+                        wrapped[key] = factory([value] as T[], options)[0];
                     }
                     else if (isInstanceOf(host, Reactive)) {
                         host.set(value);
@@ -314,13 +258,15 @@ export default <T>(input: T[], options: Options = {}) => {
 
                     return true;
                 }
+                else if (key === 'length') {
+                    return a.length = value;
+                }
 
-                return a[key] = value;
+                return false;
             }
         }) as API<T>;
 
-    let a = new ReactiveArray(factory(input, options), proxy),
-        m = methods(a);
+    let a = new ReactiveArray(wrapped, proxy);
 
     return proxy;
 };
