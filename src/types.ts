@@ -1,4 +1,4 @@
-import { Function, NeverAsync, Prettify } from '@esportsplus/typescript'
+import { Function, NeverAsync, Prettify } from '@esportsplus/utilities'
 import { ReactiveArray } from './reactive/array';
 import { ReactiveObject } from './reactive/object';
 import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, ROOT, SIGNAL } from './constants';
