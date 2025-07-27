@@ -2,10 +2,10 @@ import { Function, NeverAsync, Prettify } from '@esportsplus/utilities'
 import { ReactiveArray } from './reactive/array';
 import { ReactiveObject } from './reactive/object';
 import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, ROOT, SIGNAL } from './constants';
-import { Reactive } from './signal';
+import { Reactive as ReactiveBase } from './signal';
 
 
-type Base<T> = Omit<Reactive<T>, 'changed' | 'fn' | 'get' | 'scheduler' | 'set' | 'task' | 'tracking'>;
+type Base<T> = Omit<ReactiveBase<T>, 'changed' | 'fn' | 'get' | 'scheduler' | 'set' | 'task' | 'tracking'>;
 
 type Changed = (a: unknown, b: unknown) => boolean;
 
@@ -44,11 +44,15 @@ type Options = {
     changed?: Changed;
 };
 
+type Reactive<T> = T extends Record<PropertyKey, unknown>
+    ? ReactiveObject<T>
+    : ReactiveArray<T>;
+
 type Root = {
     scheduler: Scheduler;
     tracking: boolean;
     value: void;
-} & Omit<Reactive<void>, 'root'>;
+} & Omit<ReactiveBase<void>, 'root'>;
 
 type Scheduler = (fn: Function) => unknown;
 
@@ -72,7 +76,7 @@ export type {
     NeverAsync,
     Options,
     Prettify,
-    ReactiveArray, ReactiveObject, Root,
+    Reactive, ReactiveArray, ReactiveObject, Root,
     Scheduler, Signal, State,
     Type
 };

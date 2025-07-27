@@ -1,5 +1,5 @@
 import { isArray, isObject } from '@esportsplus/utilities';
-import { Options, ReactiveArray, ReactiveObject } from '~/types';
+import { Options, Reactive } from '~/types';
 import { default as array } from './array';
 import { default as object } from './object';
 
@@ -25,7 +25,5 @@ export default <T>(data: Guard<T>, options: Options = {}) => {
         throw new Error(`Reactivity: 'reactive' received invalid input - ${JSON.stringify(data)}`);
     }
 
-    return value as T extends Record<PropertyKey, unknown>
-        ? ReactiveObject<T>
-        : ReactiveArray<T>;
+    return value as Reactive<T>;
 };
