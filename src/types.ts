@@ -32,7 +32,7 @@ type Infer<T> =
                     ? { [K in keyof T]: T[K] }
                     : T;
 
-type Event = string;
+type Event = 'cleanup' | 'dispose' | 'update' | string;
 
 type Listener<D> = {
     once?: boolean;

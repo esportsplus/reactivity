@@ -22,7 +22,7 @@ export default <T>(data: Guard<T>, options: Options = {}) => {
         value = object(data as { [K in keyof T]: T[K] }, options);
     }
     else {
-        throw new Error(`Reactivity: 'reactive' received invalid input - ${JSON.stringify(data)}`);
+        throw new Error(`@esportsplus/reactivity: 'reactive' received invalid input - ${JSON.stringify(data)}`);
     }
 
     return value as Reactive<T>;

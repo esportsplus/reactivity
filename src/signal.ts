@@ -37,7 +37,7 @@ class Reactive<T> {
 
             if (root == null) {
                 if (type === EFFECT) {
-                    throw new Error(`Reactivity: 'effect' cannot be created without a reactive root`);
+                    throw new Error(`@esportsplus/reactivity: 'effect' cannot be created without a reactive root`);
                 }
             }
             else if (root.tracking) {
@@ -124,7 +124,7 @@ class Reactive<T> {
     on<T>(event: Event, listener: Listener<T>) {
         if (this.state === DIRTY) {
             if (event !== 'cleanup') {
-                throw new Error(`Reactivity: events set within computed or effects must use the 'cleanup' event name`);
+                throw new Error(`@esportsplus/reactivity: events set within computed or effects must use the 'cleanup' event name`);
             }
 
             listener.once = true;
@@ -159,7 +159,7 @@ class Reactive<T> {
 
     set(value: T): T {
         if (this.type !== SIGNAL && observer !== this) {
-            throw new Error(`Reactivity: 'set' method is only available on signals`);
+            throw new Error(`@esportsplus/reactivity: 'set' method is only available on signals`);
         }
 
         if (this.changed!(this.value, value)) {
@@ -339,7 +339,7 @@ const root = <T>(fn: NeverAsync<(instance: Root) => T>, scheduler?: Scheduler) =
         }
 
         if (scope === null) {
-            throw new Error('Reactivity: `root` cannot be created without a task scheduler');
+            throw new Error('@esportsplus/reactivity: `root` cannot be created without a task scheduler');
         }
 
         scheduler = scope.scheduler;
