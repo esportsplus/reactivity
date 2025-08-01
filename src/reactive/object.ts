@@ -1,63 +1,88 @@
-import { defineProperty, isArray, isFunction, isObject } from '@esportsplus/utilities';
-import { computed, signal } from '~/signal';
-import { Computed, Infer, Options, Prettify, ReactiveArray, Signal } from '~/types';
-import { default as array } from './array';
+import { defineProperty, isArray, isFunction, isInstanceOf, isObject, Prettify } from '@esportsplus/utilities';
+import array, { ReactiveArray } from './array';
+import { computed, dispose, isComputed, read, signal } from '~/signal';
+import { Computed, Infer, Signal } from '~/types';
+import { Disposable } from './disposable';
 
 
-type API<T> = Prettify< { [K in keyof T]: Infer<T[K]> } & { dispose: VoidFunction } >;
+type API<T extends Record<PropertyKey, unknown>> = Prettify<{ [K in keyof T]: Infer<T[K]> }> & ReactiveObject<T>;
 
 
-class ReactiveObject<T extends Record<PropertyKey, unknown>> {
-    signals: Record<PropertyKey, Computed<any> | ReactiveArray<any> | ReactiveObject<any> | Signal<any>> = {};
+let { set } = signal;
 
 
-    constructor(data: T, options: Options = {}) {
-        let signals = this.signals;
+class ReactiveObject<T extends Record<PropertyKey, unknown>> extends Disposable {
+    private signals: Record<
+        PropertyKey,
+        Computed<any> | ReactiveArray<any> | ReactiveObject<any> | Signal<any>
+    > = {};
+
+
+    constructor(data: T) {
+        super();
+
+        let signals = this.signals,
+            triggers: Record<string, Signal<boolean>> = {};
 
         for (let key in data) {
             let value = data[key];
 
             if (isArray(value)) {
-                let s = signals[key] = array(value, options);
+                let s = signals[key] = array(value),
+                    t = triggers[key] = signal(false);
 
                 defineProperty(this, key, {
                     enumerable: true,
                     get() {
+                        read(t);
                         return s;
+                    },
+                    set(v: typeof value) {
+                        set(t, !!t.value);
+                        s = signals[key] = array(v);
                     }
                 });
             }
             else if (isFunction(value)) {
-                let s = signals[key] = computed(value as Computed<T>['fn'], options);
+                let s = signals[key] = computed(value as Computed<T>['fn']);
 
                 defineProperty(this, key, {
                     enumerable: true,
                     get() {
-                        return s.get();
+                        return read(s as Computed<T>);
                     }
                 });
             }
             else if (isObject(value)) {
-                // Type issue with factory function below, fix after testing, if this is kept
-                let s = signals[key] = new ReactiveObject(value, options);
+                let s = signals[key] = new ReactiveObject(value),
+                    t = triggers[key] = signal(false);
 
                 defineProperty(this, key, {
                     enumerable: true,
                     get() {
+                        read(t);
                         return s;
+                    },
+                    set(v: typeof value) {
+                        set(t, !!t.value);
+                        s = signals[key] = new ReactiveObject(v);
                     }
                 });
             }
             else {
-                let s = signals[key] = signal(value, options);
+                let s = signals[key] = signal(value);
 
                 defineProperty(this, key, {
                     enumerable: true,
                     get() {
-                        return s.get();
+                        if (s === undefined) {
+                            s = signals[key] = signal(value);
+                        }
+
+                        return read(s as Signal<typeof value>);
                     },
-                    set(value) {
-                        s.set(value);
+                    set(v: typeof value) {
+                        set(s, v);
                     }
                 });
             }
@@ -66,16 +91,23 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
 
 
     dispose() {
-        let signals = this.signals;
+        for (let key in this.signals) {
+            let value = this.signals[key];
 
-        for (let key in signals) {
-            signals[key].dispose();
+            if (isInstanceOf(value, Disposable)) {
+                value.dispose();
+            }
+            else if (isComputed(value)) {
+                dispose(value);
+            }
         }
+
+        this.signals = {};
     }
 }
 
 
-export default function object<T extends Record<PropertyKey, unknown>>(input: T, options: Options = {}) {
-    return new ReactiveObject(input, options) as API<T>;
+export default function object<T extends Record<PropertyKey, unknown>>(input: T) {
+    return new ReactiveObject(input) as API<T>;
 };
-export type { API as ReactiveObject };
+export { ReactiveObject };

@@ -1,8 +1,8 @@
-import { Infer } from '~/types';
-import { isInstanceOf, isNumber, isObject } from '@esportsplus/utilities';
-import { dispose, signal, Reactive } from '~/signal';
-import { Listener, Options, ReactiveObject, Signal } from '~/types';
-import object from './object';
+import { isArray, isFunction, isInstanceOf, isNumber, isObject } from '@esportsplus/utilities';
+import { computed, dispose, isComputed, read } from '~/signal';
+import { Computed, Infer } from '~/types';
+import object, { ReactiveObject } from './object';
+import { Disposable } from './disposable';
 
 
 type API<T> = Infer<T>[] & ReactiveArray<T>;
@@ -33,21 +33,32 @@ type Events<T> = {
     };
 };
 
-type Item<T> = T extends Record<PropertyKey, unknown> ? ReactiveObject<T> : Signal<T>;
+type Item<T> = Computed<T> | ReactiveArray<T> | ReactiveObject<T extends Record<PropertyKey, unknown> ? T : never> | T;
+
+type Listener<V> = {
+    once?: boolean;
+    (value: V): void;
+};
+
+type Value<T> =
+    T extends Record<PropertyKey, unknown>
+        ? ReactiveObject<T>
+        : T extends Array<infer U>
+            ? ReactiveArray<U>
+            : T;
 
 
-class ReactiveArray<T> {
-    private data: Item<T>[]
-    private options: Options;
+class ReactiveArray<T> extends Disposable {
+    private data: Item<T>[];
+    private listeners: Record<string, (Listener<any> | null)[]> | null = null;
     private proxy: API<T>;
-    private signal: Signal<boolean>;
 
 
-    constructor(data: Item<T>[], proxy: API<T>, options: Options = {}) {
+    constructor(data: Item<T>[], proxy: API<T>) {
+        super();
+
         this.data = data;
-        this.options = options;
         this.proxy = proxy;
-        this.signal = signal(false);
     }
 
 
@@ -67,37 +78,64 @@ class ReactiveArray<T> {
     at(i: number) {
         let value = this.data[i];
 
-        if (isInstanceOf(value, Reactive)) {
-            return value.get();
+        if (isComputed(value)) {
+            return read(value);
         }
 
         return value;
     }
 
-    dispatch<E extends keyof Events<unknown>>(event: E, data?: Events<T>[E]) {
-        this.signal.dispatch(event, data);
+    dispatch<D>(event: keyof Events<T>, value?: D) {
+        if (this.listeners === null || this.listeners[event] === undefined) {
+            return;
+        }
+
+        let listeners = this.listeners[event];
+
+        for (let i = 0, n = listeners.length; i < n; i++) {
+            let listener = listeners[i];
+
+            if (listener === null) {
+                continue;
+            }
+
+            try {
+                listener(value);
+
+                if (listener.once !== undefined) {
+                    listeners[i] = null;
+                }
+            }
+            catch {
+                listeners[i] = null;
+            }
+        }
     }
 
     dispose() {
-        this.signal.dispose();
-        dispose(this.data);
-    }
-
-    indexOf(value: T, fromIndex?: number) {
         let data = this.data;
 
-        for (let i = fromIndex ?? 0, n = data.length; i < n; i++) {
-            if (data[i].value === value) {
-                return i;
+        for (let i = 0, n = data.length; i < n; i++) {
+            let value = data[i];
+
+            if (isInstanceOf(value, Disposable)) {
+                value.dispose();
+            }
+            else if (isComputed(value)) {
+                dispose(value);
             }
         }
 
-        return -1;
+        this.listeners = null;
     }
 
-    map<U>(fn: (this: API<T>, value: T, i: number) => U, i?: number, n?: number) {
+    map<R>(
+        fn: (this: API<T>, value: Value<T>, i: number) => R,
+        i?: number,
+        n?: number
+    ) {
         let { data, proxy } = this,
-            values: U[] = [];
+            values: R[] = [];
 
         if (i === undefined) {
             i = 0;
@@ -113,44 +151,71 @@ class ReactiveArray<T> {
             let item = data[i];
 
             values.push(
-                fn.call(proxy, isInstanceOf(item, Reactive) ? item.value : item, i)
+                fn.call(
+                    proxy,
+                    (isComputed(item) ? item.value : item) as Value<T>,
+                    i
+                )
             );
         }
 
         return values;
     }
 
-    on<E extends keyof Events<unknown>>(event: E, listener: Listener<Events<T>[E]>) {
-        this.signal.on(event, listener);
+    on<T>(event: keyof Events<T>, listener: Listener<T>) {
+        if (this.listeners === null) {
+            this.listeners = { [event]: [listener] };
+        }
+        else {
+            let listeners = this.listeners[event];
+
+            if (listeners === undefined) {
+                this.listeners[event] = [listener];
+            }
+            else if (listeners.indexOf(listener) === -1) {
+                let i = listeners.indexOf(null);
+
+                if (i === -1) {
+                    listeners.push(listener);
+                }
+                else {
+                    listeners[i] = listener;
+                }
+            }
+        }
     }
 
-    once<E extends keyof Events<unknown>>(event: E, listener: Listener<Events<T>[E]>) {
-        this.signal.once(event, listener);
+    once<T>(event: keyof Events<T>, listener: Listener<T>) {
+        listener.once = true;
+        this.on(event, listener);
     }
 
     pop() {
         let item = this.data.pop();
 
         if (item !== undefined) {
-            dispose(item);
-            this.signal.dispatch('pop', { item });
+            if (isComputed(item)) {
+                dispose(item);
+            }
+
+            this.dispatch('pop', { item });
         }
 
         return item;
     }
 
     push(...input: T[]) {
-        let items = factory(input, this.options),
+        let items = factory(input),
             n = this.data.push(...items);
 
-        this.signal.dispatch('push', { items });
+        this.dispatch('push', { items });
 
         return n;
     }
 
     reverse() {
         this.data.reverse();
-        this.signal.dispatch('reverse');
+        this.dispatch('reverse');
 
         return this;
     }
@@ -159,30 +224,40 @@ class ReactiveArray<T> {
         let item = this.data.shift();
 
         if (item !== undefined) {
-            dispose(item);
-            this.signal.dispatch('shift', { item });
+            if (isComputed(item)) {
+                dispose(item);
+            }
+
+            this.dispatch('shift', { item });
         }
 
         return item;
     }
 
-    sort(fn: (a: T, b: T) => number) {
+    sort(fn: (a: Value<T>, b: Value<T>) => number) {
         this.data.sort((a, b) => fn(
-            isInstanceOf(a, Reactive) ? a.value : a,
-            isInstanceOf(b, Reactive) ? b.value : b
+            (isComputed(a) ? a.value : a) as Value<T>,
+            (isComputed(b) ? b.value : b) as Value<T>
         ));
-        this.signal.dispatch('sort');
+        this.dispatch('sort');
 
         return this;
     }
 
     splice(start: number, deleteCount: number = this.data.length, ...input: T[]) {
-        let items = factory(input, this.options),
+        let items = factory(input),
             removed = this.data.splice(start, deleteCount, ...items);
 
         if (items.length > 0 || removed.length > 0) {
-            dispose(removed);
-            this.signal.dispatch('splice', {
+            for (let i = 0, n = removed.length; i < n; i++) {
+                let item = removed[i];
+
+                if (isComputed(item)) {
+                    dispose(item);
+                }
+            }
+
+            this.dispatch('splice', {
                 deleteCount,
                 items,
                 start
@@ -193,29 +268,33 @@ class ReactiveArray<T> {
     }
 
     unshift(...input: T[]) {
-        let items = factory(input, this.options),
+        let items = factory(input),
             length = this.data.unshift(...items);
 
-        this.signal.dispatch('unshift', { items });
+        this.dispatch('unshift', { items });
 
         return length;
     }
 }
 
 
-function factory<T>(input: T[], options: Options = {}) {
+function factory<T>(input: T[]) {
     let items: Item<T>[] = [];
 
     for (let i = 0, n = input.length; i < n; i++) {
         let value = input[i];
 
-        if (isObject(value)) {
-            // @ts-ignore
-            items[i] = object(value, options);
+        if (isArray(value)) {
+            items[i] = array(value);
+        }
+        else if (isFunction(value)) {
+            items[i] = computed(value as Computed<T>['fn']);
+        }
+        else if (isObject(value)) {
+            items[i] = object(value);
         }
         else {
-            // @ts-ignore
-            items[i] = signal(value);
+            items[i] = value;
         }
     }
 
@@ -223,15 +302,14 @@ function factory<T>(input: T[], options: Options = {}) {
 }
 
 
-export default <T>(input: T[], options: Options = {}) => {
-    let wrapped = factory(input, options),
-        proxy = new Proxy({}, {
+export default function array<T>(input: T[]) {
+    let proxy = new Proxy({}, {
             get(_: any, key: any) {
                 if (isNumber(key)) {
                     let value = wrapped[key];
 
-                    if (isInstanceOf(value, Reactive)) {
-                        return value.get();
+                    if (isComputed(value)) {
+                        return read(value);
                     }
 
                     return value;
@@ -246,11 +324,8 @@ export default <T>(input: T[], options: Options = {}) => {
                 if (isNumber(key)) {
                     let host = wrapped[key];
 
-                    if (host === undefined) {
-                        wrapped[key] = factory([value] as T[], options)[0];
-                    }
-                    else if (isInstanceOf(host, Reactive)) {
-                        host.set(value);
+                    if (host === undefined || !isComputed(host)) {
+                        wrapped[key] = factory([value] as T[])[0];
                     }
                     else {
                         return false;
@@ -264,10 +339,11 @@ export default <T>(input: T[], options: Options = {}) => {
 
                 return false;
             }
-        }) as API<T>;
+        }) as API<T>,
+        wrapped = factory(input);
 
     let a = new ReactiveArray(wrapped, proxy);
 
     return proxy;
 };
-export type { API as ReactiveArray };
+export { ReactiveArray };

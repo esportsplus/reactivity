@@ -1,2 +1,2 @@
-https://github.com/maverick-js/signals
-https://github.com/modderme123/reactively
+https://github.com/milomg/r3
+https://github.com/stackblitz/alien-signals

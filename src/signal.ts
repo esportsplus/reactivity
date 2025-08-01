@@ -1,372 +1,447 @@
-import { isArray } from '@esportsplus/utilities';
-import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, ROOT, SIGNAL } from './constants';
-import { Computed, Changed, Effect, Event, Function, Listener, NeverAsync, Options, Root, Scheduler, Signal, State, Type } from './types';
+import { isArray, isObject } from '@esportsplus/utilities';
+import { REACTIVE, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
+import { Computed, Link, Signal, } from './types';
 
 
-let index = 0,
-    observer: Reactive<any> | null = null,
-    observers: Reactive<any>[] | null = null,
-    scope: Root | null = null;
+let context: Computed<unknown> | null = null,
+    dirtyHeap: (Computed<unknown> | undefined)[] = new Array(2000),
+    maxDirty = 0,
+    markedHeap = false,
+    minDirty = 0;
 
 
-class Reactive<T> {
-    changed: Changed | null = null;
-    fn: Computed<T>['fn'] | Effect['fn'] | null = null;
-    listeners: Record<Event, (Listener<any> | null)[]> | null = null;
-    observers: Reactive<any>[] | null = null;
-    root: Root | null;
-    scheduler: Scheduler | null = null;
-    sources: Reactive<any>[] | null = null;
-    state: State;
-    task: Function | null = null;
-    tracking: boolean | null = null;
-    type: Type;
-    value: T;
-
-
-    constructor(state: State, type: Type, value: T) {
-        let root = null;
-
-        if (type !== ROOT) {
-            if (scope !== null) {
-                root = scope;
-            }
-            else if (observer !== null) {
-                root = observer.root;
-            }
-
-            if (root == null) {
-                if (type === EFFECT) {
-                    throw new Error(`@esportsplus/reactivity: 'effect' cannot be created without a reactive root`);
-                }
-            }
-            else if (root.tracking) {
-                root.on('dispose', () => this.dispose());
-            }
-        }
-
-        this.root = root;
-        this.state = state;
-        this.type = type;
-        this.value = value;
+function cleanup(node: Computed<unknown>): void {
+    if (!node.cleanup) {
+        return;
     }
 
-
-    dispatch<D>(event: Event, data?: D) {
-        if (this.listeners === null || this.listeners[event] === undefined) {
-            return;
-        }
-
-        let listeners = this.listeners[event];
-
-        for (let i = 0, n = listeners.length; i < n; i++) {
-            let listener = listeners[i];
-
-            if (listener === null) {
-                continue;
-            }
-
-            try {
-                listener(data, this.value);
-
-                if (listener.once !== undefined) {
-                    listeners[i] = null;
-                }
-            }
-            catch {
-                listeners[i] = null;
-            }
+    if (isArray(node.cleanup)) {
+        for (let i = 0; i < node.cleanup.length; i++) {
+            node.cleanup[i]();
         }
     }
-
-    dispose() {
-        if (this.state === DISPOSED) {
-            return;
-        }
-
-        this.dispatch('cleanup', this);
-        this.dispatch('dispose', this);
-
-        removeSourceObservers(this, 0);
-
-        this.listeners = null;
-        this.observers = null;
-        this.sources = null;
-        this.state = DISPOSED;
+    else {
+        node.cleanup();
     }
 
-    get() {
-        if (this.state === DISPOSED) {
-            return this.value;
-        }
+    node.cleanup = null;
+}
 
-        if (observer !== null) {
-            if (observers === null) {
-                if (observer.sources !== null && observer.sources[index] == this) {
-                    index++;
-                }
-                else {
-                    observers = [this];
-                }
-            }
-            else {
-                observers.push(this);
-            }
-        }
+function deleteFromHeap(n: Computed<unknown>) {
+    let state = n.state;
 
-        if (this.type === COMPUTED || this.type === EFFECT) {
-            sync(this);
-        }
-
-        return this.value;
+    if (!(state & STATE_IN_HEAP)) {
+        return;
     }
 
-    on<T>(event: Event, listener: Listener<T>) {
-        if (this.state === DIRTY) {
-            if (event !== 'cleanup') {
-                throw new Error(`@esportsplus/reactivity: events set within computed or effects must use the 'cleanup' event name`);
-            }
+    n.state = state & ~STATE_IN_HEAP;
 
-            listener.once = true;
-        }
+    let height = n.height;
 
-        if (this.listeners === null) {
-            this.listeners = { [event]: [listener] };
+    if (n.prevHeap === n) {
+        dirtyHeap[height] = undefined;
+    }
+    else {
+        let next = n.nextHeap,
+            dhh = dirtyHeap[height]!,
+            end = next ?? dhh;
+
+        if (n === dhh) {
+            dirtyHeap[height] = next;
         }
         else {
-            let listeners = this.listeners[event];
-
-            if (listeners === undefined) {
-                this.listeners[event] = [listener];
-            }
-            else if (listeners.indexOf(listener) === -1) {
-                let i = listeners.indexOf(null);
-
-                if (i === -1) {
-                    listeners.push(listener);
-                }
-                else {
-                    listeners[i] = listener;
-                }
-            }
-        }
-    }
-
-    once<T>(event: Event, listener: Listener<T>) {
-        listener.once = true;
-        this.on(event, listener);
-    }
-
-    set(value: T): T {
-        if (this.type !== SIGNAL && observer !== this) {
-            throw new Error(`@esportsplus/reactivity: 'set' method is only available on signals`);
+            n.prevHeap.nextHeap = next;
         }
 
-        if (this.changed!(this.value, value)) {
-            this.value = value;
-            notify(this.observers, DIRTY);
-        }
-
-        return this.value;
+        end.prevHeap = n.prevHeap;
     }
+
+    n.nextHeap = undefined;
+    n.prevHeap = n;
 }
 
+function insertIntoHeap(n: Computed<unknown>) {
+    let state = n.state;
 
-function changed(a: unknown, b: unknown) {
-    return a !== b;
-}
-
-function notify<T>(nodes: Reactive<T>[] | null, state: typeof CHECK | typeof DIRTY) {
-    if (nodes === null) {
+    if (state & STATE_IN_HEAP) {
         return;
     }
 
-    for (let i = 0, n = nodes.length; i < n; i++) {
-        let node = nodes[i];
+    n.state = state | STATE_IN_HEAP;
 
-        if (node.state < state) {
-            if (node.type === EFFECT && node.state === CLEAN) {
-                (node as Effect).root.scheduler((node as Effect).task);
-            }
+    let height = n.height,
+        heapAtHeight = dirtyHeap[height];
 
-            node.state = state;
-            notify(node.observers, CHECK);
+    if (heapAtHeight === undefined) {
+        dirtyHeap[height] = n;
+    }
+    else {
+        let tail = heapAtHeight.prevHeap;
+
+        tail.nextHeap = n;
+        n.prevHeap = tail;
+        heapAtHeight.prevHeap = n;
+    }
+
+    if (height > maxDirty) {
+        maxDirty = height;
+
+        // Simple auto adjust to avoid manual management within apps.
+        if (height >= dirtyHeap.length) {
+            dirtyHeap.length += 250;
         }
     }
 }
 
-function removeSourceObservers<T>(node: Reactive<T>, start: number) {
-    if (node.sources === null) {
+// https://github.com/stackblitz/alien-signals/blob/v2.0.3/src/system.ts#L52
+function link(dep: Signal<unknown> | Computed<unknown>, sub: Computed<unknown>) {
+    let prevDep = sub.depsTail;
+
+    if (prevDep !== null && prevDep.dep === dep) {
         return;
     }
 
-    for (let i = start, n = node.sources.length; i < n; i++) {
-        let observers = node.sources[i].observers;
+    let nextDep: Link | null = null;
 
-        if (observers === null) {
-            continue;
+    if (sub.state & STATE_RECOMPUTING) {
+        nextDep = prevDep !== null ? prevDep.nextDep : sub.deps;
+
+        if (nextDep !== null && nextDep.dep === dep) {
+            sub.depsTail = nextDep;
+            return;
         }
+    }
 
-        observers[observers.indexOf(node)] = observers[observers.length - 1];
-        observers.pop();
+    let prevSub = dep.subsTail,
+        newLink =
+            sub.depsTail =
+                dep.subsTail = {
+                    dep,
+                    sub,
+                    nextDep,
+                    prevSub,
+                    nextSub: null,
+                };
+
+    if (prevDep !== null) {
+        prevDep.nextDep = newLink;
+    }
+    else {
+        sub.deps = newLink;
+    }
+
+    if (prevSub !== null) {
+        prevSub.nextSub = newLink;
+    }
+    else {
+        dep.subs = newLink;
     }
 }
 
-function sync<T>(node: Reactive<T>) {
-    if (node.state === CHECK && node.sources !== null) {
-        for (let i = 0, n = node.sources.length; i < n; i++) {
-            sync(node.sources[i]);
+function markHeap() {
+    if (markedHeap) {
+        return;
+    }
 
-            // Stop the loop here so we won't trigger updates on other parents unnecessarily
-            // If our computation changes to no longer use some sources, we don't
-            // want to update() a source we used last time, but now don't use.
-            if ((node.state as State) === DIRTY) {
+    markedHeap = true;
+
+    for (let i = 0; i <= maxDirty; i++) {
+        for (let el = dirtyHeap[i]; el !== undefined; el = el.nextHeap) {
+            markNode(el);
+        }
+    }
+}
+
+function markNode(el: Computed<unknown>, newState = STATE_DIRTY) {
+    let state = el.state;
+
+    if ((state & (STATE_CHECK | STATE_DIRTY)) >= newState) {
+        return;
+    }
+
+    el.state = state | newState;
+
+    for (let link = el.subs; link !== null; link = link.nextSub) {
+        markNode(link.sub, STATE_CHECK);
+    }
+}
+
+function recompute(el: Computed<unknown>, del: boolean) {
+    if (del) {
+        deleteFromHeap(el);
+    }
+    else {
+        el.nextHeap = undefined;
+        el.prevHeap = el;
+    }
+
+    cleanup(el);
+
+    let oldcontext = context,
+        ok = true,
+        value;
+
+    context = el;
+    el.depsTail = null;
+    el.state = STATE_RECOMPUTING;
+
+    try {
+        value = el.fn(oncleanup);
+    }
+    catch (e) {
+        ok = false;
+    }
+
+    context = oldcontext;
+    el.state = STATE_NONE;
+
+    let depsTail = el.depsTail as Link | null,
+        toRemove = depsTail !== null ? depsTail.nextDep : el.deps;
+
+    if (toRemove !== null) {
+        do {
+            toRemove = unlink(toRemove);
+        }
+        while (toRemove !== null);
+
+        if (depsTail !== null) {
+            depsTail.nextDep = null;
+        }
+        else {
+            el.deps = null;
+        }
+    }
+
+    if (ok && value !== el.value) {
+        el.value = value;
+
+        for (let s = el.subs; s !== null; s = s.nextSub) {
+            let o = s.sub,
+                state = o.state;
+
+            if (state & STATE_CHECK) {
+                o.state = state | STATE_DIRTY;
+            }
+
+            insertIntoHeap(o);
+        }
+    }
+}
+
+// https://github.com/stackblitz/alien-signals/blob/v2.0.3/src/system.ts#L100
+function unlink(link: Link): Link | null {
+    let dep = link.dep,
+        nextDep = link.nextDep,
+        nextSub = link.nextSub,
+        prevSub = link.prevSub;
+
+    if (nextSub !== null) {
+        nextSub.prevSub = prevSub;
+    }
+    else {
+        dep.subsTail = prevSub;
+    }
+
+    if (prevSub !== null) {
+        prevSub.nextSub = nextSub;
+    }
+     else {
+        dep.subs = nextSub;
+
+        if (nextSub === null && 'fn' in dep) {
+            dispose(dep);
+        }
+    }
+
+    return nextDep;
+}
+
+function update(el: Computed<unknown>): void {
+    if (el.state & STATE_CHECK) {
+        for (let d = el.deps; d; d = d.nextDep) {
+            let dep = d.dep;
+
+            if ('fn' in dep) {
+                update(dep);
+            }
+
+            if (el.state & STATE_DIRTY) {
                 break;
             }
         }
     }
 
-    if (node.state === DIRTY) {
-        update(node);
-    }
-    else {
-        node.state = CLEAN;
-    }
-}
-
-function update<T>(node: Reactive<T>) {
-    let i = index,
-        o = observer,
-        os = observers;
-
-    index = 0;
-    observer = node;
-    observers = null as typeof observers;
-
-    try {
-        node.dispatch('cleanup');
-        node.dispatch('update');
-
-        // @ts-ignore
-        let value = node.fn.call(null, node);
-
-        if (observers) {
-            removeSourceObservers(node, index);
-
-            if (node.sources !== null && index > 0) {
-                node.sources.length = index + observers.length;
-
-                for (let i = 0, n = observers.length; i < n; i++) {
-                    node.sources[index + i] = observers[i];
-                }
-            }
-            else {
-                node.sources = observers;
-            }
-
-            for (let i = index, n = node.sources.length; i < n; i++) {
-                let source = node.sources[i];
-
-                if (source.observers === null) {
-                    source.observers = [node];
-                }
-                else {
-                    source.observers.push(node);
-                }
-            }
-        }
-        else if (node.sources !== null && index < node.sources.length) {
-            removeSourceObservers(node, index);
-            node.sources.length = index;
-        }
-
-        if (node.type === COMPUTED) {
-            node.set(value as T);
-        }
-    }
-    finally {
-        index = i;
-        observer = o;
-        observers = os;
+    if (el.state & STATE_DIRTY) {
+        recompute(el, true);
     }
 
-    node.state = CLEAN;
+    el.state = STATE_NONE;
 }
 
 
-const computed = <T>(fn: Computed<T>['fn'], options?: Options) => {
-    let instance = new Reactive(DIRTY, COMPUTED, undefined as T);
+const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
+    let self: Computed<T> = {
+            [REACTIVE]: true,
+            cleanup: null,
+            deps: null,
+            depsTail: null,
+            fn: fn,
+            height: 0,
+            nextHeap: undefined,
+            prevHeap: null as any,
+            state: STATE_NONE,
+            subs: null,
+            subsTail: null,
+            value: undefined as T,
+        };
 
-    instance.changed = options?.changed || changed;
-    instance.fn = fn;
+    self.prevHeap = self;
 
-    return instance as Computed<T>;
-};
-
-const dispose = <T extends { dispose: VoidFunction }>(dispose?: T[] | T | null) => {
-    if (dispose == null) {
-    }
-    else if (isArray(dispose)) {
-        for (let i = 0, n = dispose.length; i < n; i++) {
-            dispose[i].dispose();
+    if (context) {
+        if (context.depsTail === null) {
+            self.height = context.height;
+            recompute(self, false);
         }
+        else {
+            self.height = context.height + 1;
+            insertIntoHeap(self);
+        }
+
+        link(self, context);
     }
     else {
-        dispose.dispose();
+        recompute(self, false);
     }
 
-    return dispose;
+    return self;
 };
 
-const effect = (fn: Effect['fn']) => {
-    let instance = new Reactive(DIRTY, EFFECT, null);
+const dispose = (el: Computed<unknown>) => {
+    deleteFromHeap(el);
 
-    instance.fn = fn;
-    instance.task = () => instance.get();
+    let dep = el.deps;
 
-    update(instance);
-
-    return instance as Effect;
-};
-
-const root = <T>(fn: NeverAsync<(instance: Root) => T>, scheduler?: Scheduler) => {
-    let o = observer,
-        s = scope;
-
-    if (scheduler === undefined) {
-        if (o?.type === EFFECT) {
-            scope = o.root;
-        }
-
-        if (scope === null) {
-            throw new Error('@esportsplus/reactivity: `root` cannot be created without a task scheduler');
-        }
-
-        scheduler = scope.scheduler;
+    while (dep !== null) {
+        dep = unlink(dep);
     }
 
-    observer = null;
+    el.deps = null;
 
-    scope = new Reactive(CLEAN, ROOT, null) as any as Root;
-    scope.scheduler = scheduler;
-    scope.tracking = fn.length > 0;
+    cleanup(el);
+}
 
-    let result = fn.call(null, scope);
-
-    observer = o;
-    scope = s;
-
-    return result;
+const isComputed = (value: unknown): value is Computed<unknown> => {
+    return isObject(value) && REACTIVE in value && 'fn' in value;
 };
 
-const signal = <T>(value: T, options?: Options) => {
-    let instance = new Reactive(CLEAN, SIGNAL, value);
+const isReactive = (value: unknown): value is Computed<unknown> | Signal<unknown> => {
+    return isObject(value) && REACTIVE in value;
+};
 
-    instance.changed = options?.changed || changed;
+const isSignal = (value: unknown): value is Signal<unknown> => {
+    return isObject(value) && REACTIVE in value && 'fn' in value === false;
+};
 
-    return instance as Signal<T>;
+const oncleanup = (fn: VoidFunction): typeof fn => {
+    if (!context) {
+        return fn;
+    }
+
+    let node = context;
+
+    if (!node.cleanup) {
+        node.cleanup = fn;
+    }
+    else if (isArray(node.cleanup)) {
+        node.cleanup.push(fn);
+    }
+    else {
+        node.cleanup = [node.cleanup, fn];
+    }
+
+    return fn;
+};
+
+const read = <T>(el: Signal<T> | Computed<T>): T => {
+    if (context) {
+        link(el, context);
+
+        if ('fn' in el) {
+            let height = el.height;
+
+            if (height >= context.height) {
+                context.height = height + 1;
+            }
+
+            if (
+                height >= minDirty ||
+                el.state & (STATE_DIRTY | STATE_CHECK)
+            ) {
+                markHeap();
+                update(el);
+            }
+        }
+    }
+
+    return el.value;
+};
+
+const root = <T>(fn: () => T) => {
+    let c = context;
+
+    context = null;
+
+    let value = fn();
+
+    context = c;
+
+    return value;
+};
+
+const signal = <T>(value: T): Signal<T> => {
+    return {
+        [REACTIVE]: true,
+        subs: null,
+        subsTail: null,
+        value,
+    };
+};
+
+signal.set = (el: Signal<unknown>, v: unknown) => {
+    if (el.value === v) {
+        return;
+    }
+
+    el.value = v;
+
+    for (let link = el.subs; link !== null; link = link.nextSub) {
+        markedHeap = false;
+        insertIntoHeap(link.sub);
+    }
+};
+
+const stabilize = () => {
+    for (minDirty = 0; minDirty <= maxDirty; minDirty++) {
+        let el = dirtyHeap[minDirty];
+
+        dirtyHeap[minDirty] = undefined;
+
+        while (el !== undefined) {
+            let next = el.nextHeap;
+
+            recompute(el, false);
+
+            el = next;
+        }
+    }
 };
 
 
-export { computed, dispose, effect, root, signal };
-export { Reactive };
+export {
+    computed,
+    dispose,
+    isComputed, isReactive, isSignal,
+    oncleanup,
+    read, root,
+    signal, stabilize
+};

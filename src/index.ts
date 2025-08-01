@@ -1,5 +1,3 @@
-export { default as macro } from './macro';
 export { default as reactive } from './reactive';
-export { computed, dispose, effect, root, signal } from './signal';
-export * from './constants';
+export { computed, dispose, oncleanup, root, signal, stabilize } from './signal';
 export * from './types';

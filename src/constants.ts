@@ -1,19 +1,14 @@
-const CLEAN = 0;
+const REACTIVE = Symbol('reactive');
 
-const CHECK = 1;
+const STATE_NONE = 0;
 
-const DIRTY = 2;
+const STATE_CHECK = 1 << 0;
 
-const DISPOSED = 3;
+const STATE_DIRTY = 1 << 1;
 
+const STATE_RECOMPUTING = 1 << 2;
 
-const COMPUTED = 0;
-
-const EFFECT = 1;
-
-const ROOT = 2;
-
-const SIGNAL = 3;
+const STATE_IN_HEAP = 1 << 3;
 
 
-export { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, ROOT, SIGNAL };
+export { REACTIVE, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING };

@@ -1,5 +1,5 @@
 import { isArray, isObject } from '@esportsplus/utilities';
-import { Options, Reactive } from '~/types';
+import { Reactive } from '~/types';
 import { default as array } from './array';
 import { default as object } from './object';
 
@@ -12,14 +12,14 @@ type Guard<T> =
             : never;
 
 
-export default <T>(data: Guard<T>, options: Options = {}) => {
+export default <T>(data: Guard<T>) => {
     let value;
 
     if (isArray(data)) {
-        value = array(data, options);
+        value = array(data);
     }
     else if (isObject(data)) {
-        value = object(data as { [K in keyof T]: T[K] }, options);
+        value = object(data as { [K in keyof T]: T[K] });
     }
     else {
         throw new Error(`@esportsplus/reactivity: 'reactive' received invalid input - ${JSON.stringify(data)}`);

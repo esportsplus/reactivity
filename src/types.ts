@@ -1,82 +1,61 @@
-import { Function, NeverAsync, Prettify } from '@esportsplus/utilities'
+import { REACTIVE, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
+import { oncleanup } from './signal';
 import { ReactiveArray } from './reactive/array';
 import { ReactiveObject } from './reactive/object';
-import { CHECK, CLEAN, COMPUTED, DIRTY, DISPOSED, EFFECT, ROOT, SIGNAL } from './constants';
-import { Reactive as ReactiveBase } from './signal';
 
 
-type Base<T> = Omit<ReactiveBase<T>, 'changed' | 'fn' | 'get' | 'scheduler' | 'set' | 'task' | 'tracking'>;
-
-type Changed = (a: unknown, b: unknown) => boolean;
-
-type Computed<T> = {
-    changed: Changed;
-    fn: NeverAsync<(instance: Computed<T>) => T>;
-    get(): T;
-} & Base<T>;
-
-type Effect = {
-    fn: NeverAsync<(instance: Effect) => void>;
-    root: Root;
-    task: Function;
-} & Omit<Base<void>, 'value'>;
+interface Computed<T> extends Signal<T> {
+    [REACTIVE]: true;
+    cleanup: VoidFunction | VoidFunction[] | null;
+    deps: Link | null;
+    depsTail: Link | null;
+    fn: (oc?: typeof oncleanup) => T;
+    height: number;
+    nextHeap: Computed<unknown> | undefined;
+    prevHeap: Computed<unknown>;
+    state:
+        typeof STATE_CHECK |
+        typeof STATE_DIRTY |
+        typeof STATE_IN_HEAP |
+        typeof STATE_NONE |
+        typeof STATE_RECOMPUTING;
+}
 
 type Infer<T> =
     T extends (...args: unknown[]) => unknown
         ? ReturnType<T>
         : T extends (infer U)[]
             ? ReactiveArray<U>
-            : T extends ReactiveObject<T>
-                ? ReactiveObject<T>
+            : T extends ReactiveObject<any>
+                ? T
                 : T extends Record<PropertyKey, unknown>
                     ? { [K in keyof T]: T[K] }
                     : T;
 
-type Event = 'cleanup' | 'dispose' | 'update' | string;
-
-type Listener<D> = {
-    once?: boolean;
-
-    <V>(data: D, value: V): void;
-};
-
-type Options = {
-    changed?: Changed;
-};
+interface Link {
+    dep: Signal<unknown> | Computed<unknown>;
+    sub: Computed<unknown>;
+    nextDep: Link | null;
+    nextSub: Link | null;
+    prevSub: Link | null;
+}
 
 type Reactive<T> = T extends Record<PropertyKey, unknown>
     ? ReactiveObject<T>
     : ReactiveArray<T>;
 
-type Root = {
-    scheduler: Scheduler;
-    tracking: boolean;
-    value: void;
-} & Omit<ReactiveBase<void>, 'root'>;
-
-type Scheduler = (fn: Function) => unknown;
-
 type Signal<T> = {
-    changed: Changed;
-    get(): T;
-    set(value: T): T;
-} & Base<T>;
-
-type State = typeof CHECK | typeof CLEAN | typeof DIRTY | typeof DISPOSED;
-
-type Type = typeof COMPUTED | typeof EFFECT | typeof ROOT | typeof SIGNAL;
+    [REACTIVE]: true;
+    subs: Link | null;
+    subsTail: Link | null;
+    value: T;
+};
 
 
 export type {
-    Changed, Computed,
-    Effect, Event,
-    Function,
+    Computed,
     Infer,
-    Listener,
-    NeverAsync,
-    Options,
-    Prettify,
-    Reactive, ReactiveArray, ReactiveObject, Root,
-    Scheduler, Signal, State,
-    Type
+    Link,
+    Signal,
+    Reactive, ReactiveArray, ReactiveObject
 };
