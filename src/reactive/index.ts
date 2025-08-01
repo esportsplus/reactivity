@@ -1,9 +1,17 @@
 import { isArray, isObject, isPromise } from '@esportsplus/utilities';
-import { Reactive } from '~/types';
 import array from './array';
 import object from './object';
 import promise from './promise';
 
+
+type API<T> =
+    T extends (...args: infer A) => Promise<infer R>
+        ? ReturnType<typeof promise<A, Promise<R>>>
+        : T extends Record<PropertyKey, unknown>
+            ? ReturnType<typeof object<T>>
+            : T extends unknown[]
+                ? ReturnType<typeof array<T>>
+                : never;
 
 type Guard<T> =
     T extends (...args: unknown[]) => Promise<unknown>
@@ -15,21 +23,16 @@ type Guard<T> =
                 : never;
 
 
-export default <T>(data: Guard<T>) => {
-    let value;
-
+export default <T>(data: Guard<T>): API<T> => {
     if (isArray(data)) {
-        value = array(data);
+        return array(data) as API<T>;
     }
     else if (isObject(data)) {
-        value = object(data);
+        return object(data) as API<T>;
     }
     else if (isPromise(data)) {
-        value = promise(data);
-    }
-    else {
-        throw new Error(`@esportsplus/reactivity: 'reactive' received invalid input - ${JSON.stringify(data)}`);
+        return promise(data) as API<T>;
     }
 
-    return value as Reactive<T>;
+    throw new Error(`@esportsplus/reactivity: 'reactive' received invalid input - ${JSON.stringify(data)}`);
 };
