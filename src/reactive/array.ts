@@ -33,7 +33,7 @@ type Events<T> = {
     };
 };
 
-type Item<T> = Computed<T> | ReactiveArray<T> | ReactiveObject<T extends Record<PropertyKey, unknown> ? T : never> | T;
+type Item<T> = Computed<T> | API<T> | ReactiveObject<T extends Record<PropertyKey, unknown> ? T : never> | T;
 
 type Listener<V> = {
     once?: boolean;
@@ -44,7 +44,7 @@ type Value<T> =
     T extends Record<PropertyKey, unknown>
         ? ReactiveObject<T>
         : T extends Array<infer U>
-            ? ReactiveArray<U>
+            ? API<U>
             : T;
 
 
@@ -85,7 +85,7 @@ class ReactiveArray<T> extends Disposable {
         return value;
     }
 
-    dispatch<D>(event: keyof Events<T>, value?: D) {
+    dispatch<K extends keyof Events<T>, V>(event: K, value?: V) {
         if (this.listeners === null || this.listeners[event] === undefined) {
             return;
         }
@@ -162,7 +162,7 @@ class ReactiveArray<T> extends Disposable {
         return values;
     }
 
-    on<T>(event: keyof Events<T>, listener: Listener<T>) {
+    on<K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) {
         if (this.listeners === null) {
             this.listeners = { [event]: [listener] };
         }
@@ -185,7 +185,7 @@ class ReactiveArray<T> extends Disposable {
         }
     }
 
-    once<T>(event: keyof Events<T>, listener: Listener<T>) {
+    once<K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) {
         listener.once = true;
         this.on(event, listener);
     }
@@ -291,7 +291,7 @@ function factory<T>(input: T[]) {
             items[i] = computed(value as Computed<T>['fn']);
         }
         else if (isObject(value)) {
-            items[i] = object(value);
+            items[i] = object(value) as Item<T>;
         }
         else {
             items[i] = value;
@@ -346,4 +346,4 @@ export default function array<T>(input: T[]) {
 
     return proxy;
 };
-export { ReactiveArray };
+export type { API as ReactiveArray };

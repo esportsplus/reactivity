@@ -121,4 +121,4 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> extends Disposable 
 export default function object<T extends Record<PropertyKey, unknown>>(input: T) {
     return new ReactiveObject(input) as API<T>;
 };
-export { ReactiveObject };
+export type { API as ReactiveObject };
