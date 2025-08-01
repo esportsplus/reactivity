@@ -1,15 +1,18 @@
-import { isArray, isObject } from '@esportsplus/utilities';
+import { isArray, isObject, isPromise } from '@esportsplus/utilities';
 import { Reactive } from '~/types';
-import { default as array } from './array';
-import { default as object } from './object';
+import array from './array';
+import object from './object';
+import promise from './promise';
 
 
 type Guard<T> =
-    T extends { dispose: any } | { signals: any }
-        ? { never: '[ dispose, signals ] are reserved keys' }
-        : T extends Record<PropertyKey, unknown> | unknown[]
-            ? T
-            : never;
+    T extends (...args: unknown[]) => Promise<unknown>
+        ? T
+        : T extends { dispose: any } | { signals: any }
+            ? { never: '[ dispose, signals ] are reserved keys' }
+            : T extends Record<PropertyKey, unknown> | unknown[]
+                ? T
+                : never;
 
 
 export default <T>(data: Guard<T>) => {
@@ -19,7 +22,10 @@ export default <T>(data: Guard<T>) => {
         value = array(data);
     }
     else if (isObject(data)) {
-        value = object(data as { [K in keyof T]: T[K] });
+        value = object(data);
+    }
+    else if (isPromise(data)) {
+        value = promise(data);
     }
     else {
         throw new Error(`@esportsplus/reactivity: 'reactive' received invalid input - ${JSON.stringify(data)}`);

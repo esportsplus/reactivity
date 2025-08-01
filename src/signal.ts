@@ -3,14 +3,14 @@ import { REACTIVE, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RE
 import { Computed, Link, Signal, } from './types';
 
 
-let context: Computed<unknown> | null = null,
-    dirtyHeap: (Computed<unknown> | undefined)[] = new Array(2000),
+let dirtyHeap: (Computed<unknown> | undefined)[] = new Array(2000),
     maxDirty = 0,
     markedHeap = false,
-    minDirty = 0;
+    minDirty = 0,
+    observer: Computed<unknown> | null = null;
 
 
-function cleanup(node: Computed<unknown>): void {
+function cleanup<T>(node: Computed<T>): void {
     if (!node.cleanup) {
         return;
     }
@@ -27,7 +27,7 @@ function cleanup(node: Computed<unknown>): void {
     node.cleanup = null;
 }
 
-function deleteFromHeap(n: Computed<unknown>) {
+function deleteFromHeap<T>(n: Computed<T>) {
     let state = n.state;
 
     if (!(state & STATE_IN_HEAP)) {
@@ -60,7 +60,7 @@ function deleteFromHeap(n: Computed<unknown>) {
     n.prevHeap = n;
 }
 
-function insertIntoHeap(n: Computed<unknown>) {
+function insertIntoHeap<T>(n: Computed<T>) {
     let state = n.state;
 
     if (state & STATE_IN_HEAP) {
@@ -94,7 +94,7 @@ function insertIntoHeap(n: Computed<unknown>) {
 }
 
 // https://github.com/stackblitz/alien-signals/blob/v2.0.3/src/system.ts#L52
-function link(dep: Signal<unknown> | Computed<unknown>, sub: Computed<unknown>) {
+function link<T>(dep: Signal<T> | Computed<T>, sub: Computed<T>) {
     let prevDep = sub.depsTail;
 
     if (prevDep !== null && prevDep.dep === dep) {
@@ -152,7 +152,7 @@ function markHeap() {
     }
 }
 
-function markNode(el: Computed<unknown>, newState = STATE_DIRTY) {
+function markNode<T>(el: Computed<T>, newState = STATE_DIRTY) {
     let state = el.state;
 
     if ((state & (STATE_CHECK | STATE_DIRTY)) >= newState) {
@@ -166,7 +166,7 @@ function markNode(el: Computed<unknown>, newState = STATE_DIRTY) {
     }
 }
 
-function recompute(el: Computed<unknown>, del: boolean) {
+function recompute<T>(el: Computed<T>, del: boolean) {
     if (del) {
         deleteFromHeap(el);
     }
@@ -177,11 +177,11 @@ function recompute(el: Computed<unknown>, del: boolean) {
 
     cleanup(el);
 
-    let oldcontext = context,
+    let o = observer,
         ok = true,
         value;
 
-    context = el;
+    observer = el;
     el.depsTail = null;
     el.state = STATE_RECOMPUTING;
 
@@ -192,7 +192,7 @@ function recompute(el: Computed<unknown>, del: boolean) {
         ok = false;
     }
 
-    context = oldcontext;
+    observer = o;
     el.state = STATE_NONE;
 
     let depsTail = el.depsTail as Link | null,
@@ -213,7 +213,7 @@ function recompute(el: Computed<unknown>, del: boolean) {
     }
 
     if (ok && value !== el.value) {
-        el.value = value;
+        el.value = value as T;
 
         for (let s = el.subs; s !== null; s = s.nextSub) {
             let o = s.sub,
@@ -256,7 +256,7 @@ function unlink(link: Link): Link | null {
     return nextDep;
 }
 
-function update(el: Computed<unknown>): void {
+function update<T>(el: Computed<T>): void {
     if (el.state & STATE_CHECK) {
         for (let d = el.deps; d; d = d.nextDep) {
             let dep = d.dep;
@@ -297,17 +297,17 @@ const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
 
     self.prevHeap = self;
 
-    if (context) {
-        if (context.depsTail === null) {
-            self.height = context.height;
+    if (observer) {
+        if (observer.depsTail === null) {
+            self.height = observer.height;
             recompute(self, false);
         }
         else {
-            self.height = context.height + 1;
+            self.height = observer.height + 1;
             insertIntoHeap(self);
         }
 
-        link(self, context);
+        link(self, observer);
     }
     else {
         recompute(self, false);
@@ -316,7 +316,7 @@ const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
     return self;
 };
 
-const dispose = (el: Computed<unknown>) => {
+const dispose = <T>(el: Computed<T>) => {
     deleteFromHeap(el);
 
     let dep = el.deps;
@@ -343,11 +343,11 @@ const isSignal = (value: unknown): value is Signal<unknown> => {
 };
 
 const oncleanup = (fn: VoidFunction): typeof fn => {
-    if (!context) {
+    if (!observer) {
         return fn;
     }
 
-    let node = context;
+    let node = observer;
 
     if (!node.cleanup) {
         node.cleanup = fn;
@@ -363,14 +363,14 @@ const oncleanup = (fn: VoidFunction): typeof fn => {
 };
 
 const read = <T>(el: Signal<T> | Computed<T>): T => {
-    if (context) {
-        link(el, context);
+    if (observer) {
+        link(el, observer);
 
         if ('fn' in el) {
             let height = el.height;
 
-            if (height >= context.height) {
-                context.height = height + 1;
+            if (height >= observer.height) {
+                observer.height = height + 1;
             }
 
             if (
@@ -387,13 +387,13 @@ const read = <T>(el: Signal<T> | Computed<T>): T => {
 };
 
 const root = <T>(fn: () => T) => {
-    let c = context;
+    let o = observer;
 
-    context = null;
+    observer = null;
 
     let value = fn();
 
-    context = c;
+    observer = o;
 
     return value;
 };
@@ -407,7 +407,7 @@ const signal = <T>(value: T): Signal<T> => {
     };
 };
 
-signal.set = (el: Signal<unknown>, v: unknown) => {
+signal.set = <T>(el: Signal<T>, v: T) => {
     if (el.value === v) {
         return;
     }
