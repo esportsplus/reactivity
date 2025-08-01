@@ -1,6 +1,7 @@
 import { isArray, isObject } from '@esportsplus/utilities';
 import { REACTIVE, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
 import { Computed, Link, Signal, } from './types';
+import { state } from './scheduler';
 
 
 let dirtyHeap: (Computed<unknown> | undefined)[] = new Array(2000),
@@ -226,6 +227,10 @@ function recompute<T>(el: Computed<T>, del: boolean) {
             insertIntoHeap(o);
         }
     }
+
+    if (state.value === STATE_NONE) {
+        root(() => signal.set(state, STATE_DIRTY));
+    }
 }
 
 // https://github.com/stackblitz/alien-signals/blob/v2.0.3/src/system.ts#L100
@@ -421,19 +426,23 @@ signal.set = <T>(el: Signal<T>, v: T) => {
 };
 
 const stabilize = () => {
-    for (minDirty = 0; minDirty <= maxDirty; minDirty++) {
-        let el = dirtyHeap[minDirty];
+    root(() => {
+        for (minDirty = 0; minDirty <= maxDirty; minDirty++) {
+            let el = dirtyHeap[minDirty];
 
-        dirtyHeap[minDirty] = undefined;
+            dirtyHeap[minDirty] = undefined;
 
-        while (el !== undefined) {
-            let next = el.nextHeap;
+            while (el !== undefined) {
+                let next = el.nextHeap;
 
-            recompute(el, false);
+                recompute(el, false);
 
-            el = next;
+                el = next;
+            }
         }
-    }
+
+        signal.set(state, STATE_NONE);
+    });
 };
 
 
