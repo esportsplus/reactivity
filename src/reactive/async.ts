@@ -6,7 +6,7 @@ import { Signal } from '~/types';
 let { set } = signal;
 
 
-class ReactivePromise<A extends unknown[], R extends Promise<unknown>> extends CustomFunction {
+class ReactiveAsyncFunction<A extends unknown[], R extends Promise<unknown>> extends CustomFunction {
     private arguments: Signal<A | null>;
     private okay: Signal<boolean | null>;
     private response: Signal<Awaited<R> | null>;
@@ -63,5 +63,5 @@ class ReactivePromise<A extends unknown[], R extends Promise<unknown>> extends C
 
 
 export default <A extends unknown[], R extends Promise<unknown>>(fn: (...args: A) => R) => {
-    return new ReactivePromise(fn);
+    return new ReactiveAsyncFunction(fn);
 };

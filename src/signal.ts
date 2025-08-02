@@ -1,13 +1,15 @@
-import { isArray, isObject } from '@esportsplus/utilities';
+import { defineProperty, isArray, isObject } from '@esportsplus/utilities';
 import { REACTIVE, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
 import { Computed, Link, Signal, } from './types';
 
 
-let dirtyHeap: (Computed<unknown> | undefined)[] = new Array(2000),
-    maxDirty = 0,
-    markedHeap = false,
-    minDirty = 0,
-    observer: Computed<unknown> | null = null;
+let heap: (Computed<unknown> | undefined)[] = new Array(2000),
+    iHeap = 0,
+    nHeap = 0,
+    notifiedHeap = false,
+    observer: Computed<unknown> | null = null,
+    scheduled = false,
+    scheduler: ((task: VoidFunction) => void) | null = null;
 
 
 function cleanup<T>(node: Computed<T>): void {
@@ -15,80 +17,82 @@ function cleanup<T>(node: Computed<T>): void {
         return;
     }
 
-    if (isArray(node.cleanup)) {
-        for (let i = 0; i < node.cleanup.length; i++) {
-            node.cleanup[i]();
+    let cleanup = node.cleanup;
+
+    if (isArray(cleanup)) {
+        for (let i = 0; i < cleanup.length; i++) {
+            cleanup[i]();
         }
     }
     else {
-        node.cleanup();
+        cleanup();
     }
 
     node.cleanup = null;
 }
 
-function deleteFromHeap<T>(n: Computed<T>) {
-    let state = n.state;
+function deleteFromHeap<T>(computed: Computed<T>) {
+    let state = computed.state;
 
     if (!(state & STATE_IN_HEAP)) {
         return;
     }
 
-    n.state = state & ~STATE_IN_HEAP;
+    computed.state = state & ~STATE_IN_HEAP;
 
-    let height = n.height;
+    let height = computed.height;
 
-    if (n.prevHeap === n) {
-        dirtyHeap[height] = undefined;
+    if (computed.prevHeap === computed) {
+        heap[height] = undefined;
     }
     else {
-        let next = n.nextHeap,
-            dhh = dirtyHeap[height]!,
+        let next = computed.nextHeap,
+            dhh = heap[height]!,
             end = next ?? dhh;
 
-        if (n === dhh) {
-            dirtyHeap[height] = next;
+        if (computed === dhh) {
+            heap[height] = next;
         }
         else {
-            n.prevHeap.nextHeap = next;
+            computed.prevHeap.nextHeap = next;
         }
 
-        end.prevHeap = n.prevHeap;
+        end.prevHeap = computed.prevHeap;
     }
 
-    n.nextHeap = undefined;
-    n.prevHeap = n;
+    computed.nextHeap = undefined;
+    computed.prevHeap = computed;
 }
 
-function insertIntoHeap<T>(n: Computed<T>) {
-    let state = n.state;
+function insertIntoHeap<T>(computed: Computed<T>) {
+    let state = computed.state;
 
     if (state & STATE_IN_HEAP) {
         return;
     }
 
-    n.state = state | STATE_IN_HEAP;
+    computed.state = state | STATE_IN_HEAP;
 
-    let height = n.height,
-        heapAtHeight = dirtyHeap[height];
+    let height = computed.height,
+        heapAtHeight = heap[height];
 
     if (heapAtHeight === undefined) {
-        dirtyHeap[height] = n;
+        heap[height] = computed;
     }
     else {
         let tail = heapAtHeight.prevHeap;
 
-        tail.nextHeap = n;
-        n.prevHeap = tail;
-        heapAtHeight.prevHeap = n;
+        tail.nextHeap = computed;
+        computed.prevHeap = tail;
+        heapAtHeight.prevHeap = computed;
     }
 
-    if (height > maxDirty) {
-        maxDirty = height;
+    if (height > nHeap) {
+        nHeap = height;
 
         // Simple auto adjust to avoid manual management within apps.
-        if (height >= dirtyHeap.length) {
-            dirtyHeap.length += 250;
+        if (height >= heap.length) {
+            heap.length += 250;
         }
     }
 }
@@ -138,65 +142,51 @@ function link<T>(dep: Signal<T> | Computed<T>, sub: Computed<T>) {
     }
 }
 
-function markHeap() {
-    if (markedHeap) {
-        return;
-    }
-
-    markedHeap = true;
-
-    for (let i = 0; i <= maxDirty; i++) {
-        for (let el = dirtyHeap[i]; el !== undefined; el = el.nextHeap) {
-            markNode(el);
-        }
-    }
-}
-
-function markNode<T>(el: Computed<T>, newState = STATE_DIRTY) {
-    let state = el.state;
+function notify<T>(computed: Computed<T>, newState = STATE_DIRTY) {
+    let state = computed.state;
 
     if ((state & (STATE_CHECK | STATE_DIRTY)) >= newState) {
         return;
     }
 
-    el.state = state | newState;
+    computed.state = state | newState;
 
-    for (let link = el.subs; link !== null; link = link.nextSub) {
-        markNode(link.sub, STATE_CHECK);
+    for (let link = computed.subs; link !== null; link = link.nextSub) {
+        notify(link.sub, STATE_CHECK);
     }
 }
 
-function recompute<T>(el: Computed<T>, del: boolean) {
+function recompute<T>(computed: Computed<T>, del: boolean) {
     if (del) {
-        deleteFromHeap(el);
+        deleteFromHeap(computed);
     }
     else {
-        el.nextHeap = undefined;
-        el.prevHeap = el;
+        computed.nextHeap = undefined;
+        computed.prevHeap = computed;
     }
 
-    cleanup(el);
+    cleanup(computed);
 
     let o = observer,
         ok = true,
         value;
 
-    observer = el;
-    el.depsTail = null;
-    el.state = STATE_RECOMPUTING;
+    observer = computed;
+    computed.depsTail = null;
+    computed.state = STATE_RECOMPUTING;
 
     try {
-        value = el.fn(oncleanup);
+        value = computed.fn(onCleanup);
     }
     catch (e) {
         ok = false;
     }
 
     observer = o;
-    el.state = STATE_NONE;
+    computed.state = STATE_NONE;
 
-    let depsTail = el.depsTail as Link | null,
-        toRemove = depsTail !== null ? depsTail.nextDep : el.deps;
+    let depsTail = computed.depsTail as Link | null,
+        toRemove = depsTail !== null ? depsTail.nextDep : computed.deps;
 
     if (toRemove !== null) {
         do {
@@ -208,15 +198,15 @@ function recompute<T>(el: Computed<T>, del: boolean) {
             depsTail.nextDep = null;
         }
         else {
-            el.deps = null;
+            computed.deps = null;
         }
     }
 
-    if (ok && value !== el.value) {
-        el.value = value as T;
+    if (ok && value !== computed.value) {
+        computed.value = value as T;
 
-        for (let s = el.subs; s !== null; s = s.nextSub) {
-            let o = s.sub,
+        for (let c = computed.subs; c !== null; c = c.nextSub) {
+            let o = c.sub,
                 state = o.state;
 
             if (state & STATE_CHECK) {
@@ -227,8 +217,12 @@ function recompute<T>(el: Computed<T>, del: boolean) {
         }
     }
 
-    if (stabilize.state.value === STATE_NONE) {
-        root(() => signal.set(stabilize.state, STATE_DIRTY));
+    if (!scheduled && scheduler) {
+        scheduled = true;
+        scheduler(stabilize);
+    }
+    else {
+        throw new Error('@esportsplus/reactivity: stabilize.scheduler has not been set to process updates.');
     }
 }
 
@@ -260,26 +254,26 @@ function unlink(link: Link): Link | null {
     return nextDep;
 }
 
-function update<T>(el: Computed<T>): void {
-    if (el.state & STATE_CHECK) {
-        for (let d = el.deps; d; d = d.nextDep) {
-            let dep = d.dep;
+function update<T>(computed: Computed<T>): void {
+    if (computed.state & STATE_CHECK) {
+        for (let link = computed.deps; link; link = link.nextDep) {
+            let dep = link.dep;
 
             if ('fn' in dep) {
                 update(dep);
             }
 
-            if (el.state & STATE_DIRTY) {
+            if (computed.state & STATE_DIRTY) {
                 break;
             }
         }
     }
 
-    if (el.state & STATE_DIRTY) {
-        recompute(el, true);
+    if (computed.state & STATE_DIRTY) {
+        recompute(computed, true);
     }
 
-    el.state = STATE_NONE;
+    computed.state = STATE_NONE;
 }
 
 
@@ -320,33 +314,29 @@ const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
     return self;
 };
 
-const dispose = <T>(el: Computed<T>) => {
-    deleteFromHeap(el);
+const dispose = <T>(computed: Computed<T>) => {
+    deleteFromHeap(computed);
 
-    let dep = el.deps;
+    let dep = computed.deps;
 
     while (dep !== null) {
         dep = unlink(dep);
     }
 
-    el.deps = null;
+    computed.deps = null;
 
-    cleanup(el);
-}
+    cleanup(computed);
+};
 
 const isComputed = (value: unknown): value is Computed<unknown> => {
     return isObject(value) && REACTIVE in value && 'fn' in value;
-};
-
-const isReactive = (value: unknown): value is Computed<unknown> | Signal<unknown> => {
-    return isObject(value) && REACTIVE in value;
 };
 
 const isSignal = (value: unknown): value is Signal<unknown> => {
     return isObject(value) && REACTIVE in value && 'fn' in value === false;
 };
 
-const oncleanup = (fn: VoidFunction): typeof fn => {
+const onCleanup = (fn: VoidFunction): typeof fn => {
     if (!observer) {
         return fn;
     }
@@ -366,28 +356,37 @@ const oncleanup = (fn: VoidFunction): typeof fn => {
     return fn;
 };
 
-const read = <T>(el: Signal<T> | Computed<T>): T => {
+const read = <T>(node: Signal<T> | Computed<T>): T => {
     if (observer) {
-        link(el, observer);
+        link(node, observer);
 
-        if ('fn' in el) {
-            let height = el.height;
+        if ('fn' in node) {
+            let height = node.height;
 
             if (height >= observer.height) {
                 observer.height = height + 1;
             }
 
             if (
-                height >= minDirty ||
-                el.state & (STATE_DIRTY | STATE_CHECK)
+                height >= iHeap ||
+                node.state & (STATE_DIRTY | STATE_CHECK)
             ) {
-                markHeap();
-                update(el);
+                if (!notifiedHeap) {
+                    notifiedHeap = true;
+
+                    for (let i = 0; i <= nHeap; i++) {
+                        for (let computed = heap[i]; computed !== undefined; computed = computed.nextHeap) {
+                            notify(computed);
+                        }
+                    }
+                }
+
+                update(node);
             }
         }
     }
 
-    return el.value;
+    return node.value;
 };
 
 const root = <T>(fn: () => T) => {
@@ -411,47 +410,54 @@ const signal = <T>(value: T): Signal<T> => {
     };
 };
 
-signal.set = <T>(el: Signal<T>, v: T) => {
-    if (el.value === v) {
+signal.set = <T>(signal: Signal<T>, value: T) => {
+    if (signal.value === value) {
         return;
     }
 
-    el.value = v;
+    notifiedHeap = false;
+    signal.value = value;
 
-    for (let link = el.subs; link !== null; link = link.nextSub) {
-        markedHeap = false;
+    for (let link = signal.subs; link !== null; link = link.nextSub) {
         insertIntoHeap(link.sub);
     }
 };
 
 const stabilize = () => {
     root(() => {
-        for (minDirty = 0; minDirty <= maxDirty; minDirty++) {
-            let el = dirtyHeap[minDirty];
+        for (iHeap = 0; iHeap <= nHeap; iHeap++) {
+            let computed = heap[iHeap];
 
-            dirtyHeap[minDirty] = undefined;
+            heap[iHeap] = undefined;
 
-            while (el !== undefined) {
-                let next = el.nextHeap;
+            while (computed !== undefined) {
+                let next = computed.nextHeap;
 
-                recompute(el, false);
+                recompute(computed, false);
 
-                el = next;
+                computed = next;
             }
         }
 
-        signal.set(stabilize.state, STATE_NONE);
+        scheduled = false;
     });
 };
 
-stabilize.state = signal(STATE_NONE);
+defineProperty(stabilize, 'scheduler', {
+    get() {
+        return scheduler;
+    },
+    set(s: typeof scheduler) {
+        scheduler = s;
+    },
+});
 
 
 export {
     computed,
     dispose,
-    isComputed, isReactive, isSignal,
-    oncleanup,
+    isComputed, isSignal,
+    onCleanup,
     read, root,
     signal, stabilize
 };

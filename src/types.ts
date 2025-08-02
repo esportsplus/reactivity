@@ -1,5 +1,5 @@
 import { REACTIVE, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
-import { oncleanup } from './signal';
+import { onCleanup } from './signal';
 import { ReactiveArray } from './reactive/array';
 import { ReactiveObject } from './reactive/object';
 
@@ -9,7 +9,7 @@ interface Computed<T> extends Signal<T> {
     cleanup: VoidFunction | VoidFunction[] | null;
     deps: Link | null;
     depsTail: Link | null;
-    fn: (oc?: typeof oncleanup) => T;
+    fn: (oc?: typeof onCleanup) => T;
     height: number;
     nextHeap: Computed<unknown> | undefined;
     prevHeap: Computed<unknown>;

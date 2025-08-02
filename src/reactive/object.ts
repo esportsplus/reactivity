@@ -3,7 +3,7 @@ import array, { ReactiveArray } from './array';
 import { computed, dispose, read, signal } from '~/signal';
 import { Computed, Infer, Signal } from '~/types';
 import { Disposable } from './disposable';
-import promise from './promise';
+import async from './async';
 
 
 type API<T extends Record<PropertyKey, unknown>> = Prettify<{ [K in keyof T]: Infer<T[K]> }> & ReactiveObject<T>;
@@ -45,7 +45,7 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> extends Disposable 
                 });
             }
             else if (isAsyncFunction(value)) {
-                let p = promise(value);
+                let p = async(value);
 
                 defineProperty(this, key, {
                     enumerable: true,
