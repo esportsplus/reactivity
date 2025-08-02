@@ -1,4 +1,4 @@
-import { isArray, isFunction, isInstanceOf, isNumber, isObject } from '@esportsplus/utilities';
+import { isFunction, isInstanceOf, isNumber, isObject } from '@esportsplus/utilities';
 import { computed, dispose, isComputed, read } from '~/signal';
 import { Computed, Infer } from '~/types';
 import object, { ReactiveObject } from './object';
@@ -284,10 +284,7 @@ function factory<T>(input: T[]) {
     for (let i = 0, n = input.length; i < n; i++) {
         let value = input[i];
 
-        if (isArray(value)) {
-            items[i] = array(value);
-        }
-        else if (isFunction(value)) {
+        if (isFunction(value)) {
             items[i] = computed(value as Computed<T>['fn']);
         }
         else if (isObject(value)) {
@@ -325,7 +322,7 @@ export default function array<T>(input: T[]) {
                     let host = wrapped[key];
 
                     if (host === undefined || !isComputed(host)) {
-                        wrapped[key] = factory([value] as T[])[0];
+                        a.splice(key, 1, value);
                     }
                     else {
                         return false;

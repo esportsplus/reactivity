@@ -1,7 +1,6 @@
 import { isArray, isObject } from '@esportsplus/utilities';
 import { REACTIVE, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
 import { Computed, Link, Signal, } from './types';
-import { state } from './scheduler';
 
 
 let dirtyHeap: (Computed<unknown> | undefined)[] = new Array(2000),
@@ -228,8 +227,8 @@ function recompute<T>(el: Computed<T>, del: boolean) {
         }
     }
 
-    if (state.value === STATE_NONE) {
-        root(() => signal.set(state, STATE_DIRTY));
+    if (stabilize.state.value === STATE_NONE) {
+        root(() => signal.set(stabilize.state, STATE_DIRTY));
     }
 }
 
@@ -441,9 +440,11 @@ const stabilize = () => {
             }
         }
 
-        signal.set(state, STATE_NONE);
+        signal.set(stabilize.state, STATE_NONE);
     });
 };
+
+stabilize.state = signal(STATE_NONE);
 
 
 export {

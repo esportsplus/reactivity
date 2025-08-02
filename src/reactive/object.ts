@@ -1,4 +1,4 @@
-import { defineProperty, isArray, isAsyncFunction, isFunction, isInstanceOf, isObject, Prettify } from '@esportsplus/utilities';
+import { defineProperty, isArray, isAsyncFunction, isFunction, isInstanceOf, Prettify } from '@esportsplus/utilities';
 import array, { ReactiveArray } from './array';
 import { computed, dispose, read, signal } from '~/signal';
 import { Computed, Infer, Signal } from '~/types';
@@ -39,12 +39,12 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> extends Disposable 
                         return a;
                     },
                     set(v: typeof value) {
-                        set(t, !!t.value);
                         a = disposable[key] = array(v);
+                        set(t, !!t.value);
                     }
                 });
             }
-            if (isAsyncFunction(value)) {
+            else if (isAsyncFunction(value)) {
                 let p = promise(value);
 
                 defineProperty(this, key, {
@@ -64,32 +64,12 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> extends Disposable 
                     }
                 });
             }
-            else if (isObject(value)) {
-                let o = disposable[key] = new ReactiveObject(value),
-                    t = triggers[key] = signal(false);
-
-                defineProperty(this, key, {
-                    enumerable: true,
-                    get() {
-                        read(t);
-                        return o;
-                    },
-                    set(v: typeof value) {
-                        set(t, !!t.value);
-                        o = disposable[key] = new ReactiveObject(v);
-                    }
-                });
-            }
             else {
                 let s = signal(value);
 
                 defineProperty(this, key, {
                     enumerable: true,
                     get() {
-                        if (s === undefined) {
-                            s = signal(value);
-                        }
-
                         return read(s as Signal<typeof value>);
                     },
                     set(v: typeof value) {
