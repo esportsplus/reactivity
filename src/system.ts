@@ -345,7 +345,11 @@ const dispose = <T>(computed: Computed<T>) => {
 };
 
 const effect = <T>(fn: Computed<T>['fn']) => {
-    computed(fn);
+    let c = computed(fn);
+
+    return () => {
+        dispose(c);
+    };
 };
 
 const isComputed = (value: unknown): value is Computed<unknown> => {
