@@ -3,13 +3,15 @@ import { REACTIVE, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RE
 import { Computed, Link, Signal, } from './types';
 
 
-let heap: (Computed<unknown> | undefined)[] = new Array(2000),
-    iHeap = 0,
-    nHeap = 0,
-    notifiedHeap = false,
+let depth = 0,
+    heap: (Computed<unknown> | undefined)[] = new Array(2000),
+    index = 0,
+    length = 0,
+    notified = false,
     observer: Computed<unknown> | null = null,
     scheduled = false,
-    scheduler: ((task: VoidFunction) => void) | null = null;
+    scheduler: ((task: VoidFunction) => void) | null = null,
+    version = 0;
 
 
 function cleanup<T>(node: Computed<T>): void {
@@ -87,8 +89,8 @@ function insertIntoHeap<T>(computed: Computed<T>) {
         heapAtHeight.prevHeap = computed;
     }
 
-    if (height > nHeap) {
-        nHeap = height;
+    if (height > length) {
+        length = height;
 
         // Simple auto adjust to avoid manual management within apps.
         if (height >= heap.length) {
@@ -111,13 +113,24 @@ function link<T>(dep: Signal<T> | Computed<T>, sub: Computed<T>) {
         nextDep = prevDep !== null ? prevDep.nextDep : sub.deps;
 
         if (nextDep !== null && nextDep.dep === dep) {
+            nextDep.version = version;
             sub.depsTail = nextDep;
             return;
         }
     }
 
-    let prevSub = dep.subsTail,
-        newLink =
+    let prevSub = dep.subsTail;
+
+    // https://github.com/stackblitz/alien-signals/commit/54fe1b3947fac5c0aecb73b0b0eaff000806c454
+    if (
+        prevSub !== null &&
+        prevSub.version === version &&
+        prevSub.sub === sub
+    ) {
+        return;
+    }
+
+    let newLink =
             sub.depsTail =
                 dep.subsTail = {
                     dep,
@@ -125,6 +138,7 @@ function link<T>(dep: Signal<T> | Computed<T>, sub: Computed<T>) {
                     nextDep,
                     prevSub,
                     nextSub: null,
+                    version
                 };
 
     if (prevDep !== null) {
@@ -175,6 +189,9 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
     computed.depsTail = null;
     computed.state = STATE_RECOMPUTING;
 
+    depth++;
+    version++;
+
     try {
         value = computed.fn(onCleanup);
     }
@@ -217,21 +234,20 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
         }
     }
 
-    if (!scheduled && scheduler) {
-        scheduled = true;
-        scheduler(stabilize);
-    }
-    else {
-        throw new Error('@esportsplus/reactivity: stabilize.scheduler has not been set to process updates.');
+    if (!--depth) {
+        if (!scheduled && scheduler) {
+            scheduled = true;
+            scheduler(stabilize);
+        }
+        else {
+            throw new Error('@esportsplus/reactivity: stabilize.scheduler has not been set to process updates.');
+        }
     }
 }
 
 // https://github.com/stackblitz/alien-signals/blob/v2.0.3/src/system.ts#L100
 function unlink(link: Link): Link | null {
-    let dep = link.dep,
-        nextDep = link.nextDep,
-        nextSub = link.nextSub,
-        prevSub = link.prevSub;
+    let { dep, nextDep, nextSub, prevSub } = link;
 
     if (nextSub !== null) {
         nextSub.prevSub = prevSub;
@@ -328,6 +344,10 @@ const dispose = <T>(computed: Computed<T>) => {
     cleanup(computed);
 };
 
+const effect = <T>(fn: Computed<T>['fn']) => {
+    computed(fn);
+};
+
 const isComputed = (value: unknown): value is Computed<unknown> => {
     return isObject(value) && REACTIVE in value && 'fn' in value;
 };
@@ -368,13 +388,13 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
             }
 
             if (
-                height >= iHeap ||
+                height >= index ||
                 node.state & (STATE_DIRTY | STATE_CHECK)
             ) {
-                if (!notifiedHeap) {
-                    notifiedHeap = true;
+                if (!notified) {
+                    notified = true;
 
-                    for (let i = 0; i <= nHeap; i++) {
+                    for (let i = 0; i <= length; i++) {
                         for (let computed = heap[i]; computed !== undefined; computed = computed.nextHeap) {
                             notify(computed);
                         }
@@ -415,7 +435,7 @@ signal.set = <T>(signal: Signal<T>, value: T) => {
         return;
     }
 
-    notifiedHeap = false;
+    notified = false;
     signal.value = value;
 
     for (let link = signal.subs; link !== null; link = link.nextSub) {
@@ -425,10 +445,10 @@ signal.set = <T>(signal: Signal<T>, value: T) => {
 
 const stabilize = () => {
     root(() => {
-        for (iHeap = 0; iHeap <= nHeap; iHeap++) {
-            let computed = heap[iHeap];
+        for (index = 0; index <= length; index++) {
+            let computed = heap[index];
 
-            heap[iHeap] = undefined;
+            heap[index] = undefined;
 
             while (computed !== undefined) {
                 let next = computed.nextHeap;
@@ -456,6 +476,7 @@ defineProperty(stabilize, 'scheduler', {
 export {
     computed,
     dispose,
+    effect,
     isComputed, isSignal,
     onCleanup,
     read, root,

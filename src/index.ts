@@ -1,3 +1,3 @@
 export { default as reactive } from './reactive';
-export * from './signal';
+export * from './system';
 export * from './types';

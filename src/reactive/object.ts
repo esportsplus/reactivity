@@ -1,6 +1,6 @@
 import { defineProperty, isArray, isAsyncFunction, isFunction, isInstanceOf, Prettify } from '@esportsplus/utilities';
 import array, { ReactiveArray } from './array';
-import { computed, dispose, read, signal } from '~/signal';
+import { computed, dispose, read, signal } from '~/system';
 import { Computed, Infer, Signal } from '~/types';
 import { Disposable } from './disposable';
 import async from './async';

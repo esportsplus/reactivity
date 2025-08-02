@@ -1,5 +1,5 @@
 import { isFunction, isInstanceOf, isNumber, isObject } from '@esportsplus/utilities';
-import { computed, dispose, isComputed, read } from '~/signal';
+import { computed, dispose, isComputed, read } from '~/system';
 import { Computed, Infer } from '~/types';
 import object, { ReactiveObject } from './object';
 import { Disposable } from './disposable';

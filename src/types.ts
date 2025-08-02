@@ -1,5 +1,5 @@
 import { REACTIVE, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
-import { onCleanup } from './signal';
+import { onCleanup } from './system';
 import { ReactiveArray } from './reactive/array';
 import { ReactiveObject } from './reactive/object';
 
@@ -38,6 +38,7 @@ interface Link {
     nextDep: Link | null;
     nextSub: Link | null;
     prevSub: Link | null;
+    version: number;
 }
 
 type Reactive<T> = T extends Record<PropertyKey, unknown>

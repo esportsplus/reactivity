@@ -1,5 +1,5 @@
 import CustomFunction from '@esportsplus/custom-function';
-import { read, root, signal } from '~/signal';
+import { read, root, signal } from '~/system';
 import { Signal } from '~/types';
 
 
