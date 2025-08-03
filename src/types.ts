@@ -2,6 +2,7 @@ import { REACTIVE, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RE
 import { onCleanup } from './system';
 import { ReactiveArray } from './reactive/array';
 import { ReactiveObject } from './reactive/object';
+import { NeverAsync } from '@esportsplus/utilities';
 
 
 interface Computed<T> extends Signal<T> {
@@ -9,7 +10,7 @@ interface Computed<T> extends Signal<T> {
     cleanup: VoidFunction | VoidFunction[] | null;
     deps: Link | null;
     depsTail: Link | null;
-    fn: (oc?: typeof onCleanup) => T;
+    fn: NeverAsync<(oc?: typeof onCleanup) => T>;
     height: number;
     nextHeap: Computed<unknown> | undefined;
     prevHeap: Computed<unknown>;

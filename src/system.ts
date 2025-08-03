@@ -1,4 +1,4 @@
-import { isArray, isObject, isPromise } from '@esportsplus/utilities';
+import { isArray, isObject } from '@esportsplus/utilities';
 import {
     REACTIVE,
     STABILIZER_IDLE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
@@ -207,7 +207,6 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
         ok = false;
     }
 
-    depth--;
     observer = o;
     computed.state = STATE_NONE;
 
@@ -228,35 +227,22 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
         }
     }
 
-    if (ok) {
-        if (isPromise(value)) {
-            value.then(v => set(computed, v));
-        }
-        else {
-            set(computed, value);
+    if (ok && value !== computed.value) {
+        computed.value = value as T;
+
+        for (let c = computed.subs; c !== null; c = c.nextSub) {
+            let o = c.sub,
+                state = o.state;
+
+            if (state & STATE_CHECK) {
+                o.state = state | STATE_DIRTY;
+            }
+
+            insertIntoHeap(o);
         }
     }
-}
 
-function set<T>(computed: Computed<T>, value: T) {
-    if (computed.value === value) {
-        return;
-    }
-
-    computed.value = value;
-
-    for (let c = computed.subs; c !== null; c = c.nextSub) {
-        let o = c.sub,
-            state = o.state;
-
-        if (state & STATE_CHECK) {
-            o.state = state | STATE_DIRTY;
-        }
-
-        insertIntoHeap(o);
-    }
-
-    if (!depth && stabilizer === STABILIZER_IDLE) {
+    if (!--depth && stabilizer === STABILIZER_IDLE) {
         stabilizer = STABILIZER_SCHEDULED;
         scheduler(stabilize);
     }
