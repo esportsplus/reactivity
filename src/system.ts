@@ -1,4 +1,4 @@
-import { defineProperty, isArray, isObject } from '@esportsplus/utilities';
+import { isArray, isObject } from '@esportsplus/utilities';
 import { REACTIVE, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
 import { Computed, Link, Signal, } from './types';
 
@@ -10,7 +10,6 @@ let depth = 0,
     notified = false,
     observer: Computed<unknown> | null = null,
     scheduled = false,
-    scheduler: ((task: VoidFunction) => void) | null = null,
     version = 0;
 
 
@@ -234,15 +233,30 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
         }
     }
 
-    if (!--depth) {
-        if (!scheduled && scheduler) {
-            scheduled = true;
-            scheduler(stabilize);
-        }
-        else {
-            throw new Error('@esportsplus/reactivity: stabilize.scheduler has not been set to process updates.');
-        }
+    if (!--depth && !scheduled) {
+        scheduled = true;
+        queueMicrotask(stabilize);
     }
+}
+
+function stabilize() {
+    root(() => {
+        for (index = 0; index <= length; index++) {
+            let computed = heap[index];
+
+            heap[index] = undefined;
+
+            while (computed !== undefined) {
+                let next = computed.nextHeap;
+
+                recompute(computed, false);
+
+                computed = next;
+            }
+        }
+
+        scheduled = false;
+    });
 }
 
 // https://github.com/stackblitz/alien-signals/blob/v2.0.3/src/system.ts#L100
@@ -447,35 +461,6 @@ signal.set = <T>(signal: Signal<T>, value: T) => {
     }
 };
 
-const stabilize = () => {
-    root(() => {
-        for (index = 0; index <= length; index++) {
-            let computed = heap[index];
-
-            heap[index] = undefined;
-
-            while (computed !== undefined) {
-                let next = computed.nextHeap;
-
-                recompute(computed, false);
-
-                computed = next;
-            }
-        }
-
-        scheduled = false;
-    });
-};
-
-defineProperty(stabilize, 'scheduler', {
-    get() {
-        return scheduler;
-    },
-    set(s: typeof scheduler) {
-        scheduler = s;
-    },
-});
-
 
 export {
     computed,
@@ -484,5 +469,5 @@ export {
     isComputed, isSignal,
     onCleanup,
     read, root,
-    signal, stabilize
+    signal
 };
