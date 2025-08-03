@@ -1,5 +1,13 @@
 const REACTIVE = Symbol('reactive');
 
+
+const STABILIZER_IDLE = 0;
+
+const STABILIZER_RUNNING = 1;
+
+const STABILIZER_SCHEDULED = 2;
+
+
 const STATE_NONE = 0;
 
 const STATE_CHECK = 1 << 0;
@@ -13,6 +21,9 @@ const STATE_IN_HEAP = 1 << 3;
 
 export {
     REACTIVE,
+    STABILIZER_IDLE,
+    STABILIZER_RUNNING,
+    STABILIZER_SCHEDULED,
     STATE_CHECK,
     STATE_DIRTY,
     STATE_IN_HEAP,

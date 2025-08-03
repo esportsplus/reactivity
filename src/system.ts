@@ -1,5 +1,9 @@
-import { isArray, isObject } from '@esportsplus/utilities';
-import { REACTIVE, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
+import { isArray, isObject, isPromise } from '@esportsplus/utilities';
+import {
+    REACTIVE,
+    STABILIZER_IDLE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
+    STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING
+} from './constants';
 import { Computed, Link, Signal, } from './types';
 
 
@@ -9,7 +13,8 @@ let depth = 0,
     length = 0,
     notified = false,
     observer: Computed<unknown> | null = null,
-    scheduled = false,
+    scheduler = queueMicrotask,
+    stabilizer = STABILIZER_IDLE,
     version = 0;
 
 
@@ -95,6 +100,10 @@ function insertIntoHeap<T>(computed: Computed<T>) {
         if (height >= heap.length) {
             heap.length += 250;
         }
+    }
+
+    if (stabilizer === STABILIZER_RUNNING && index > height) {
+        stabilizer = STABILIZER_SCHEDULED;
     }
 }
 
@@ -198,6 +207,7 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
         ok = false;
     }
 
+    depth--;
     observer = o;
     computed.state = STATE_NONE;
 
@@ -218,29 +228,44 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
         }
     }
 
-    if (ok && value !== computed.value) {
-        computed.value = value as T;
-
-        for (let c = computed.subs; c !== null; c = c.nextSub) {
-            let o = c.sub,
-                state = o.state;
-
-            if (state & STATE_CHECK) {
-                o.state = state | STATE_DIRTY;
-            }
-
-            insertIntoHeap(o);
+    if (ok) {
+        if (isPromise(value)) {
+            value.then(v => set(computed, v));
+        }
+        else {
+            set(computed, value);
         }
     }
+}
 
-    if (!--depth && !scheduled) {
-        scheduled = true;
-        queueMicrotask(stabilize);
+function set<T>(computed: Computed<T>, value: T) {
+    if (computed.value === value) {
+        return;
+    }
+
+    computed.value = value;
+
+    for (let c = computed.subs; c !== null; c = c.nextSub) {
+        let o = c.sub,
+            state = o.state;
+
+        if (state & STATE_CHECK) {
+            o.state = state | STATE_DIRTY;
+        }
+
+        insertIntoHeap(o);
+    }
+
+    if (!depth && stabilizer === STABILIZER_IDLE) {
+        stabilizer = STABILIZER_SCHEDULED;
+        scheduler(stabilize);
     }
 }
 
 function stabilize() {
     root(() => {
+        stabilizer = STABILIZER_RUNNING;
+
         for (index = 0; index <= length; index++) {
             let computed = heap[index];
 
@@ -255,7 +280,12 @@ function stabilize() {
             }
         }
 
-        scheduled = false;
+        if (stabilizer === STABILIZER_SCHEDULED) {
+            scheduler(stabilize);
+        }
+        else {
+            stabilizer = STABILIZER_IDLE;
+        }
     });
 }
 

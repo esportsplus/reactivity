@@ -1,9 +1,8 @@
-import { defineProperty, isArray, isAsyncFunction, isFunction, isInstanceOf, Prettify } from '@esportsplus/utilities';
+import { defineProperty, isArray, isFunction, isInstanceOf, Prettify } from '@esportsplus/utilities';
 import array, { ReactiveArray } from './array';
 import { computed, dispose, read, signal } from '~/system';
 import { Computed, Infer, Signal } from '~/types';
 import { Disposable } from './disposable';
-import async from './async';
 
 
 type API<T extends Record<PropertyKey, unknown>> = Prettify<{ [K in keyof T]: Infer<T[K]> }> & ReactiveObject<T>;
@@ -44,23 +43,17 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> extends Disposable 
                     }
                 });
             }
-            else if (isAsyncFunction(value)) {
-                let p = async(value);
-
-                defineProperty(this, key, {
-                    enumerable: true,
-                    get() {
-                        return p;
-                    }
-                });
-            }
             else if (isFunction(value)) {
-                let c = disposable[key] = computed(value as Computed<T>['fn']);
+                let c: Computed<T> | undefined;
 
                 defineProperty(this, key, {
                     enumerable: true,
                     get() {
-                        return read(c as Computed<T>);
+                        if (c === undefined) {
+                            c = disposable[key] = computed(value as Computed<T>['fn']);
+                        }
+
+                        return read(c);
                     }
                 });
             }

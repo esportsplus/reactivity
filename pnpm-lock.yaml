@@ -12,8 +12,8 @@ importers:
         specifier: ^0.0.13
         version: 0.0.13
       '@esportsplus/utilities':
-        specifier: ^0.21.0
-        version: 0.21.0
+        specifier: ^0.21.1
+        version: 0.21.1
     devDependencies:
       '@esportsplus/typescript':
         specifier: ^0.9.2
@@ -31,8 +31,8 @@ packages:
     resolution: {integrity: sha512-7CLlWVhCbkEW3EodOk+zE0xMAFeyVs+EjYr3/H5mY+im1O+o6ig5RpY3TNWabUkEBW14Jo8TBoHQAsPJH6CnuQ==}
     hasBin: true
 
-  '@esportsplus/utilities@0.21.0':
-    resolution: {integrity: sha512-kJOiM/OoXv/2bTNUc1tIyn5l+DXx+MPeoihGjiKBXGUlPA766BfbLakq3e8Qid9htWhysMGFztrt3Xj5xOArHQ==}
+  '@esportsplus/utilities@0.21.1':
+    resolution: {integrity: sha512-Y9/6hJ27/yk/v9LNAv4SeoeZjXlu8LMB7RE/F5Ni9A0e+UsuqtDZmZad3E2Pyeh4PrGy/trmfriZxz+Xfq2AsQ==}
 
   '@nodelib/fs.scandir@2.1.5':
     resolution: {integrity: sha512-vq24Bq3ym5HEQm2NKCr3yXDwjc7vTsEThRDnkp2DK9p1uqLR+DHurm/NOTo0KG7HYHU7eppKZj3MyqYuMBf62g==}
@@ -200,7 +200,7 @@ snapshots:
       tsc-alias: 1.8.16
       typescript: 5.8.3
 
-  '@esportsplus/utilities@0.21.0': {}
+  '@esportsplus/utilities@0.21.1': {}
 
   '@nodelib/fs.scandir@2.1.5':
     dependencies:
