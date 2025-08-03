@@ -1,4 +1,4 @@
-import { isArray, isObject } from '@esportsplus/utilities';
+import { isArray, isObject, NeverAsync } from '@esportsplus/utilities';
 import array from './array';
 import object from './object';
 
@@ -11,8 +11,8 @@ type API<T> =
             : never;
 
 type Input<T> =
-    T extends (...args: unknown[]) => Promise<unknown>
-        ? T
+    T extends (...args: unknown[]) => unknown
+        ? NeverAsync<T>
         : T extends { dispose: any } | { signals: any }
             ? { never: '[ dispose, signals ] are reserved keys' }
             : T extends Record<PropertyKey, unknown> | unknown[]

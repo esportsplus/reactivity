@@ -24,7 +24,7 @@ interface Computed<T> extends Signal<T> {
 
 type Infer<T> =
     T extends (...args: unknown[]) => unknown
-        ? ReturnType<Awaited<T>>
+        ? ReturnType<T>
         : T extends (infer U)[]
             ? ReactiveArray<U>
             : T extends ReactiveObject<any>
