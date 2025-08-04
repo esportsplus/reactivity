@@ -25,7 +25,7 @@ type Infer<T> =
     T extends (...args: unknown[]) => ((...args: unknown[]) => Promise<infer R>)
         ? R
         : T extends (...args: any[]) => infer R
-            ? R
+            ? R | null
             : T extends (infer U)[]
                 ? ReactiveArray<U>
                 : T extends ReactiveObject<any>
