@@ -22,10 +22,10 @@ interface Computed<T> extends Signal<T> {
 }
 
 type Infer<T> =
-    T extends (...args: unknown[]) => ((...args: unknown[]) => Promise<infer R>)
-        ? R
+    T extends (...args: unknown[]) => Promise<infer R>
+        ? R | undefined
         : T extends (...args: any[]) => infer R
-            ? R | null
+            ? R
             : T extends (infer U)[]
                 ? ReactiveArray<U>
                 : T extends ReactiveObject<any>

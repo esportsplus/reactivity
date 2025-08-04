@@ -98,12 +98,8 @@ function insertIntoHeap<T>(computed: Computed<T>) {
 
         // Simple auto adjust to avoid manual management within apps.
         if (height >= heap.length) {
-            heap.length += 250;
+            heap.length *= 1.5;
         }
-    }
-
-    if (stabilizer === STABILIZER_RUNNING && index > height) {
-        stabilizer = STABILIZER_RESCHEDULE;
     }
 }
 
@@ -207,6 +203,7 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
         ok = false;
     }
 
+    depth--;
     observer = o;
     computed.state = STATE_NONE;
 
@@ -240,11 +237,18 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
 
             insertIntoHeap(o);
         }
-    }
 
-    if (!--depth && stabilizer === STABILIZER_IDLE) {
+        schedule();
+    }
+}
+
+function schedule() {
+    if (stabilizer === STABILIZER_IDLE && !depth) {
         stabilizer = STABILIZER_SCHEDULED;
         scheduler(stabilize);
+    }
+    else if (stabilizer === STABILIZER_RUNNING) {
+        stabilizer = STABILIZER_RESCHEDULE;
     }
 }
 
@@ -349,6 +353,7 @@ const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
         else {
             self.height = observer.height + 1;
             insertIntoHeap(self);
+            schedule();
         }
 
         link(self, observer);
@@ -472,14 +477,15 @@ signal.set = <T>(signal: Signal<T>, value: T) => {
     notified = false;
     signal.value = value;
 
-    for (let link = signal.subs; link !== null; link = link.nextSub) {
+    if (signal.subs === null) {
+        return;
+    }
+
+    for (let link: Link | null = signal.subs; link !== null; link = link.nextSub) {
         insertIntoHeap(link.sub);
     }
 
-    if (!depth && stabilizer === STABILIZER_IDLE) {
-        stabilizer = STABILIZER_SCHEDULED;
-        scheduler(stabilize);
-    }
+    schedule();
 };
 
 

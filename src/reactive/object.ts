@@ -1,6 +1,6 @@
-import { defineProperty, isArray, isAsyncFunction, isFunction, isInstanceOf, Prettify } from '@esportsplus/utilities';
+import { defineProperty, isArray, isFunction, isInstanceOf, isPromise, Prettify } from '@esportsplus/utilities';
 import array, { ReactiveArray } from './array';
-import { computed, dispose, effect, read, signal } from '~/system';
+import { computed, dispose, effect, read, root, signal } from '~/system';
 import { Computed, Infer, Signal } from '~/types';
 import { Disposable } from './disposable';
 
@@ -44,35 +44,37 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> extends Disposable 
                 });
             }
             else if (isFunction(value)) {
-                let c: Computed<T[typeof key]> | Signal<T[typeof key] | null> | undefined;
+                let c: Computed<T[typeof key]> | Signal<T[typeof key] | undefined> | undefined;
 
                 defineProperty(this, key, {
                     enumerable: true,
                     get() {
                         if (c === undefined) {
-                            c = disposable[key] = computed(value as Computed<T[typeof key]>['fn']);
+                            root(() => {
+                                c = disposable[key] = computed(value as Computed<T[typeof key]>['fn']);
 
-                            if (isAsyncFunction(c.value)) {
-                                let factory = c,
-                                    version = 0;
+                                if (isPromise(c.value)) {
+                                    let factory = c,
+                                        version = 0;
 
-                                c = signal(null);
+                                    c = signal(undefined);
 
-                                effect(() => {
-                                    let id = version++;
+                                    effect(() => {
+                                        let id = ++version;
 
-                                    (read(factory) as any as () => Promise<T[typeof key]>)().then((value) => {
-                                        if (id !== version) {
-                                            return;
-                                        }
+                                        (read(factory) as Promise<T[typeof key]>).then((value) => {
+                                            if (id !== version) {
+                                                return;
+                                            }
 
-                                        set(c!, value);
+                                            set(c!, value);
+                                        });
                                     });
-                                });
-                            }
+                                }
+                            });
                         }
 
-                        return read(c);
+                        return read(c!);
                     }
                 });
             }
