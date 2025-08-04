@@ -475,6 +475,11 @@ signal.set = <T>(signal: Signal<T>, value: T) => {
     for (let link = signal.subs; link !== null; link = link.nextSub) {
         insertIntoHeap(link.sub);
     }
+
+    if (!depth && stabilizer === STABILIZER_IDLE) {
+        stabilizer = STABILIZER_SCHEDULED;
+        scheduler(stabilize);
+    }
 };
 
 
