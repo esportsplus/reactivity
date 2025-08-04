@@ -13,12 +13,10 @@ type API<T> =
 type Input<T> =
     T extends { dispose: any } | { signals: any }
         ? { never: '[ dispose, signals ] are reserved keys' }
-        : T extends Record<PropertyKey, unknown> | unknown[]
-                ? T
-                : never;
+        : T;
 
 
-export default <T>(input: Input<T>): API<T> => {
+export default <T extends Record<PropertyKey, unknown> | unknown[]>(input: Input<T>): API<T> => {
     if (isArray(input)) {
         return array(input) as API<T>;
     }
