@@ -2,7 +2,6 @@ import { REACTIVE, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RE
 import { onCleanup } from './system';
 import { ReactiveArray } from './reactive/array';
 import { ReactiveObject } from './reactive/object';
-import { NeverAsync } from '@esportsplus/utilities';
 
 
 interface Computed<T> extends Signal<T> {
@@ -10,7 +9,7 @@ interface Computed<T> extends Signal<T> {
     cleanup: VoidFunction | VoidFunction[] | null;
     deps: Link | null;
     depsTail: Link | null;
-    fn: NeverAsync<(oc?: typeof onCleanup) => T>;
+    fn: (oc?: typeof onCleanup) => T;
     height: number;
     nextHeap: Computed<unknown> | undefined;
     prevHeap: Computed<unknown>;
@@ -23,15 +22,17 @@ interface Computed<T> extends Signal<T> {
 }
 
 type Infer<T> =
-    T extends (...args: unknown[]) => unknown
-        ? ReturnType<T>
-        : T extends (infer U)[]
-            ? ReactiveArray<U>
-            : T extends ReactiveObject<any>
-                ? T
-                : T extends Record<PropertyKey, unknown>
-                    ? { [K in keyof T]: T[K] }
-                    : T;
+    T extends (...args: unknown[]) => ((...args: unknown[]) => Promise<infer R>)
+        ? R
+        : T extends (...args: any[]) => infer R
+            ? R
+            : T extends (infer U)[]
+                ? ReactiveArray<U>
+                : T extends ReactiveObject<any>
+                    ? T
+                    : T extends Record<PropertyKey, unknown>
+                        ? { [K in keyof T]: T[K] }
+                        : T;
 
 interface Link {
     dep: Signal<unknown> | Computed<unknown>;
