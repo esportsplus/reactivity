@@ -1,7 +1,7 @@
 import { isArray, isObject } from '@esportsplus/utilities';
 import {
     REACTIVE,
-    STABILIZER_IDLE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
+    STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
     STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING
 } from './constants';
 import { Computed, Link, Signal, } from './types';
@@ -103,7 +103,7 @@ function insertIntoHeap<T>(computed: Computed<T>) {
     }
 
     if (stabilizer === STABILIZER_RUNNING && index > height) {
-        stabilizer = STABILIZER_SCHEDULED;
+        stabilizer = STABILIZER_RESCHEDULE;
     }
 }
 
@@ -266,7 +266,7 @@ function stabilize() {
             }
         }
 
-        if (stabilizer === STABILIZER_SCHEDULED) {
+        if (stabilizer === STABILIZER_RESCHEDULE) {
             scheduler(stabilize);
         }
         else {
