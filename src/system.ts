@@ -1,19 +1,19 @@
-import { isArray, isObject } from '@esportsplus/utilities';
+import { isArray, isObject, } from '@esportsplus/utilities';
 import {
-    REACTIVE,
+    COMPUTED, SIGNAL,
     STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
     STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING
 } from './constants';
-import { Computed, Link, Signal, } from './types';
+import { Computed, Link, Signal } from './types';
 
 
 let depth = 0,
-    heap: (Computed<unknown> | undefined)[] = new Array(2000),
+    heap: (Computed<unknown> | undefined)[] = new Array(2048),
     index = 0,
     length = 0,
+    microtask = queueMicrotask,
     notified = false,
     observer: Computed<unknown> | null = null,
-    scheduler = queueMicrotask,
     stabilizer = STABILIZER_IDLE,
     version = 0;
 
@@ -26,7 +26,7 @@ function cleanup<T>(node: Computed<T>): void {
     let cleanup = node.cleanup;
 
     if (isArray(cleanup)) {
-        for (let i = 0; i < cleanup.length; i++) {
+        for (let i = 0, n = cleanup.length; i < n; i++) {
             cleanup[i]();
         }
     }
@@ -98,7 +98,7 @@ function insertIntoHeap<T>(computed: Computed<T>) {
 
         // Simple auto adjust to avoid manual management within apps.
         if (height >= heap.length) {
-            heap.length *= 1.5;
+            heap.length = Math.round(heap.length * 1.5);
         }
     }
 }
@@ -245,7 +245,7 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
 function schedule() {
     if (stabilizer === STABILIZER_IDLE && !depth) {
         stabilizer = STABILIZER_SCHEDULED;
-        scheduler(stabilize);
+        microtask(stabilize);
     }
     else if (stabilizer === STABILIZER_RUNNING) {
         stabilizer = STABILIZER_RESCHEDULE;
@@ -253,30 +253,32 @@ function schedule() {
 }
 
 function stabilize() {
-    root(() => {
-        stabilizer = STABILIZER_RUNNING;
+    let o = observer;
 
-        for (index = 0; index <= length; index++) {
-            let computed = heap[index];
+    stabilizer = STABILIZER_RUNNING;
 
-            heap[index] = undefined;
+    for (index = 0; index <= length; index++) {
+        let computed = heap[index];
 
-            while (computed !== undefined) {
-                let next = computed.nextHeap;
+        heap[index] = undefined;
 
-                recompute(computed, false);
+        while (computed !== undefined) {
+            let next = computed.nextHeap;
 
-                computed = next;
-            }
+            recompute(computed, false);
+
+            computed = next;
         }
+    }
 
-        if (stabilizer === STABILIZER_RESCHEDULE) {
-            scheduler(stabilize);
-        }
-        else {
-            stabilizer = STABILIZER_IDLE;
-        }
-    });
+    observer = o;
+
+    if (stabilizer === STABILIZER_RESCHEDULE) {
+        microtask(stabilize);
+    }
+    else {
+        stabilizer = STABILIZER_IDLE;
+    }
 }
 
 // https://github.com/stackblitz/alien-signals/blob/v2.0.3/src/system.ts#L100
@@ -293,12 +295,8 @@ function unlink(link: Link): Link | null {
     if (prevSub !== null) {
         prevSub.nextSub = nextSub;
     }
-     else {
-        dep.subs = nextSub;
-
-        if (nextSub === null && 'fn' in dep) {
-            dispose(dep);
-        }
+    else if ((dep.subs = nextSub) === null && 'fn' in dep) {
+        dispose(dep);
     }
 
     return nextDep;
@@ -311,10 +309,10 @@ function update<T>(computed: Computed<T>): void {
 
             if ('fn' in dep) {
                 update(dep);
-            }
 
-            if (computed.state & STATE_DIRTY) {
-                break;
+                if (computed.state & STATE_DIRTY) {
+                    break;
+                }
             }
         }
     }
@@ -329,7 +327,7 @@ function update<T>(computed: Computed<T>): void {
 
 const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
     let self: Computed<T> = {
-            [REACTIVE]: true,
+            [COMPUTED]: true,
             cleanup: null,
             deps: null,
             depsTail: null,
@@ -357,6 +355,7 @@ const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
         }
 
         link(self, observer);
+        onCleanup(() => dispose(self));
     }
     else {
         recompute(self, false);
@@ -388,11 +387,11 @@ const effect = <T>(fn: Computed<T>['fn']) => {
 };
 
 const isComputed = (value: unknown): value is Computed<unknown> => {
-    return isObject(value) && REACTIVE in value && 'fn' in value;
+    return isObject(value) && COMPUTED in value;
 };
 
 const isSignal = (value: unknown): value is Signal<unknown> => {
-    return isObject(value) && REACTIVE in value && 'fn' in value === false;
+    return isObject(value) && SIGNAL in value;
 };
 
 const onCleanup = (fn: VoidFunction): typeof fn => {
@@ -400,16 +399,14 @@ const onCleanup = (fn: VoidFunction): typeof fn => {
         return fn;
     }
 
-    let node = observer;
-
-    if (!node.cleanup) {
-        node.cleanup = fn;
+    if (!observer.cleanup) {
+        observer.cleanup = fn;
     }
-    else if (isArray(node.cleanup)) {
-        node.cleanup.push(fn);
+    else if (isArray(observer.cleanup)) {
+        observer.cleanup.push(fn);
     }
     else {
-        node.cleanup = [node.cleanup, fn];
+        observer.cleanup = [observer.cleanup, fn];
     }
 
     return fn;
@@ -460,16 +457,7 @@ const root = <T>(fn: () => T) => {
     return value;
 };
 
-const signal = <T>(value: T): Signal<T> => {
-    return {
-        [REACTIVE]: true,
-        subs: null,
-        subsTail: null,
-        value,
-    };
-};
-
-signal.set = <T>(signal: Signal<T>, value: T) => {
+const set = <T>(signal: Signal<T>, value: T) => {
     if (signal.value === value) {
         return;
     }
@@ -488,6 +476,15 @@ signal.set = <T>(signal: Signal<T>, value: T) => {
     schedule();
 };
 
+const signal = <T>(value: T): Signal<T> => {
+    return {
+        [SIGNAL]: true,
+        subs: null,
+        subsTail: null,
+        value,
+    };
+};
+
 
 export {
     computed,
@@ -496,5 +493,6 @@ export {
     isComputed, isSignal,
     onCleanup,
     read, root,
-    signal
+    set, signal
 };
+export type { Computed, Signal };

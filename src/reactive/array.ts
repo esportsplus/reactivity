@@ -1,8 +1,8 @@
-import { isFunction, isInstanceOf, isNumber, isObject } from '@esportsplus/utilities';
-import { computed, dispose, isComputed, read } from '~/system';
+import { isFunction, isNumber, isObject } from '@esportsplus/utilities';
+import { REACTIVE_ARRAY } from '~/constants';
+import { computed, dispose, isComputed, onCleanup, read, root } from '~/system';
 import { Computed, Infer } from '~/types';
-import object, { ReactiveObject } from './object';
-import { Disposable } from './disposable';
+import object, { isReactiveObject, ReactiveObject } from './object';
 
 
 type API<T> = Infer<T>[] & ReactiveArray<T>;
@@ -33,7 +33,7 @@ type Events<T> = {
     };
 };
 
-type Item<T> = Computed<T> | API<T> | ReactiveObject<T extends Record<PropertyKey, unknown> ? T : never> | T;
+type Item<T> = T | Computed<T> | API<T> | ReactiveObject< T extends Record<PropertyKey, unknown> ? T : never >;
 
 type Listener<V> = {
     once?: boolean;
@@ -48,15 +48,15 @@ type Value<T> =
             : T;
 
 
-class ReactiveArray<T> extends Disposable {
+class ReactiveArray<T> {
+    [REACTIVE_ARRAY] = true;
+
     private data: Item<T>[];
     private listeners: Record<string, (Listener<any> | null)[]> | null = null;
     private proxy: API<T>;
 
 
     constructor(data: Item<T>[], proxy: API<T>) {
-        super();
-
         this.data = data;
         this.proxy = proxy;
     }
@@ -72,6 +72,16 @@ class ReactiveArray<T> extends Disposable {
         }
 
         this.splice(n);
+    }
+
+
+    private cleanup(item: Item<T>) {
+        if (isReactiveObject(item)) {
+            item.dispose();
+        }
+        else if (isComputed(item)) {
+            dispose(item);
+        }
     }
 
 
@@ -113,20 +123,9 @@ class ReactiveArray<T> extends Disposable {
     }
 
     dispose() {
-        let data = this.data;
-
-        for (let i = 0, n = data.length; i < n; i++) {
-            let value = data[i];
-
-            if (isInstanceOf(value, Disposable)) {
-                value.dispose();
-            }
-            else if (isComputed(value)) {
-                dispose(value);
-            }
+        for (let i = 0, n = this.data.length; i < n; i++) {
+            this.cleanup(this.data[i]);
         }
-
-        this.listeners = null;
     }
 
     map<R>(
@@ -194,10 +193,7 @@ class ReactiveArray<T> extends Disposable {
         let item = this.data.pop();
 
         if (item !== undefined) {
-            if (isComputed(item)) {
-                dispose(item);
-            }
-
+            this.cleanup(item);
             this.dispatch('pop', { item });
         }
 
@@ -224,10 +220,7 @@ class ReactiveArray<T> extends Disposable {
         let item = this.data.shift();
 
         if (item !== undefined) {
-            if (isComputed(item)) {
-                dispose(item);
-            }
-
+            this.cleanup(item);
             this.dispatch('shift', { item });
         }
 
@@ -250,11 +243,7 @@ class ReactiveArray<T> extends Disposable {
 
         if (items.length > 0 || removed.length > 0) {
             for (let i = 0, n = removed.length; i < n; i++) {
-                let item = removed[i];
-
-                if (isComputed(item)) {
-                    dispose(item);
-                }
+                this.cleanup(removed[i]);
             }
 
             this.dispatch('splice', {
@@ -299,48 +288,52 @@ function factory<T>(input: T[]) {
 }
 
 
+const isReactiveArray = (value: any): value is ReactiveArray<any> => {
+    return isObject(value) && REACTIVE_ARRAY in value;
+};
+
+
 export default function array<T>(input: T[]) {
-    let proxy = new Proxy({}, {
-            get(_: any, key: any) {
-                if (isNumber(key)) {
-                    let value = wrapped[key];
+    let { array, proxy } = root(() => {
+            let proxy = new Proxy({}, {
+                    get(_: any, key: any) {
+                        if (isNumber(key)) {
+                            let value = wrapped[key];
 
-                    if (isComputed(value)) {
-                        return read(value);
-                    }
+                            if (isComputed(value)) {
+                                return read(value);
+                            }
 
-                    return value;
-                }
-                else if (key in a) {
-                    return a[key as keyof typeof a];
-                }
+                            return value;
+                        }
+                        else if (key in array) {
+                            return array[key as keyof typeof array];
+                        }
 
-                return wrapped[key];
-            },
-            set(_: any, key: any, value: any) {
-                if (isNumber(key)) {
-                    let host = wrapped[key];
+                        return wrapped[key];
+                    },
+                    set(_: any, key: any, value: any) {
+                        if (isNumber(key)) {
+                            array.splice(key, 1, value);
+                            return true;
+                        }
+                        else if (key === 'length') {
+                            return array.length = value;
+                        }
 
-                    if (host === undefined || !isComputed(host)) {
-                        a.splice(key, 1, value);
-                    }
-                    else {
                         return false;
                     }
+                }) as API<T>,
+                wrapped = factory(input);
 
-                    return true;
-                }
-                else if (key === 'length') {
-                    return a.length = value;
-                }
+            let array = new ReactiveArray(wrapped, proxy);
 
-                return false;
-            }
-        }) as API<T>,
-        wrapped = factory(input);
+            return { array, proxy };
+        });
 
-    let a = new ReactiveArray(wrapped, proxy);
+    onCleanup(() => array.dispose());
 
     return proxy;
 };
+export { isReactiveArray };
 export type { API as ReactiveArray };

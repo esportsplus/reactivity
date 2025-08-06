@@ -11,9 +11,13 @@ type API<T> =
             : never;
 
 type Input<T> =
-    T extends { dispose: any } | { signals: any }
-        ? { never: '[ dispose, signals ] are reserved keys' }
-        : T;
+    T extends { dispose: any }
+        ? never
+        : T extends Record<PropertyKey, unknown>
+            ? T
+            : T extends unknown[]
+                ? Input<T[number]>[]
+                : never;
 
 
 export default <T extends Record<PropertyKey, unknown> | unknown[]>(input: Input<T>): API<T> => {
@@ -26,3 +30,4 @@ export default <T extends Record<PropertyKey, unknown> | unknown[]>(input: Input
 
     throw new Error(`@esportsplus/reactivity: 'reactive' received invalid input - ${JSON.stringify(input)}`);
 };
+export type { Input };

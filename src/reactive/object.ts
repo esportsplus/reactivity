@@ -1,45 +1,27 @@
-import { defineProperty, isArray, isFunction, isInstanceOf, isPromise, Prettify } from '@esportsplus/utilities';
-import array, { ReactiveArray } from './array';
-import { computed, dispose, effect, read, root, signal } from '~/system';
+import { defineProperty, isArray, isFunction, isObject, isPromise, Prettify } from '@esportsplus/utilities';
+import { computed, dispose, effect, isComputed, onCleanup, read, root, set, signal } from '~/system';
 import { Computed, Infer, Signal } from '~/types';
-import { Disposable } from './disposable';
+import { REACTIVE_OBJECT } from '~/constants';
+import array, { isReactiveArray } from './array';
 
 
 type API<T extends Record<PropertyKey, unknown>> = Prettify<{ [K in keyof T]: Infer<T[K]> }> & ReactiveObject<T>;
 
 
-let { set } = signal;
-
-
-class ReactiveObject<T extends Record<PropertyKey, unknown>> extends Disposable {
-    private disposable: Record<
-        PropertyKey,
-        Computed<any> | ReactiveArray<any> | ReactiveObject<any>
-    > = {};
-
+class ReactiveObject<T extends Record<PropertyKey, unknown>> {
+    [REACTIVE_OBJECT] = true;
 
     constructor(data: T) {
-        super();
-
-        let disposable = this.disposable,
-            triggers: Record<string, Signal<boolean>> = {};
-
         for (let key in data) {
             let value = data[key];
 
             if (isArray(value)) {
-                let a = disposable[key] = array(value),
-                    t = triggers[key] = signal(false);
+                let a = array(value);
 
                 defineProperty(this, key, {
                     enumerable: true,
                     get() {
-                        read(t);
                         return a;
-                    },
-                    set(v: typeof value) {
-                        a = disposable[key] = array(v);
-                        set(t, !!t.value);
                     }
                 });
             }
@@ -51,7 +33,7 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> extends Disposable 
                     get() {
                         if (c === undefined) {
                             root(() => {
-                                c = disposable[key] = computed(value as Computed<T[typeof key]>['fn']);
+                                c = computed(value as Computed<T[typeof key]>['fn']);
 
                                 if (isPromise(c.value)) {
                                     let factory = c,
@@ -67,7 +49,7 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> extends Disposable 
                                                 return;
                                             }
 
-                                            set(c!, value);
+                                            set(c as Signal<typeof value>, value);
                                         });
                                     });
                                 }
@@ -96,23 +78,33 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> extends Disposable 
 
 
     dispose() {
-        for (let key in this.disposable) {
-            let value = this.disposable[key];
+        let value;
 
-            if (isInstanceOf(value, Disposable)) {
+        for (let key in this) {
+            value = this[key];
+
+            if (isReactiveArray(value) || isReactiveObject(value)) {
                 value.dispose();
             }
-            else {
+            else if (isComputed(value)) {
                 dispose(value);
             }
         }
-
-        this.disposable = {};
     }
 }
 
 
-export default function object<T extends Record<PropertyKey, unknown>>(input: T) {
-    return new ReactiveObject(input) as API<T>;
+const isReactiveObject = (value: any): value is ReactiveObject<any> => {
+    return isObject(value) && REACTIVE_OBJECT in value;
 };
+
+
+export default function object<T extends Record<PropertyKey, unknown>>(input: T) {
+    let object = root(() => new ReactiveObject<T>(input));
+
+    onCleanup(() => object.dispose());
+
+    return object;
+};
+export { isReactiveObject };
 export type { API as ReactiveObject };

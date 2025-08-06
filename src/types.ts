@@ -1,15 +1,14 @@
-import { REACTIVE, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
-import { onCleanup } from './system';
+import { COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
 import { ReactiveArray } from './reactive/array';
 import { ReactiveObject } from './reactive/object';
 
 
-interface Computed<T> extends Signal<T> {
-    [REACTIVE]: true;
+interface Computed<T> {
+    [COMPUTED]: true;
     cleanup: VoidFunction | VoidFunction[] | null;
     deps: Link | null;
     depsTail: Link | null;
-    fn: (oc?: typeof onCleanup) => T;
+    fn: (onCleanup?: (fn: VoidFunction) => typeof fn) => T;
     height: number;
     nextHeap: Computed<unknown> | undefined;
     prevHeap: Computed<unknown>;
@@ -19,6 +18,9 @@ interface Computed<T> extends Signal<T> {
         typeof STATE_IN_HEAP |
         typeof STATE_NONE |
         typeof STATE_RECOMPUTING;
+    subs: Link | null;
+    subsTail: Link | null;
+    value: T;
 }
 
 type Infer<T> =
@@ -48,7 +50,7 @@ type Reactive<T> = T extends Record<PropertyKey, unknown>
     : ReactiveArray<T>;
 
 type Signal<T> = {
-    [REACTIVE]: true;
+    [SIGNAL]: true;
     subs: Link | null;
     subsTail: Link | null;
     value: T;

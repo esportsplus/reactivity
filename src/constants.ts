@@ -1,4 +1,10 @@
-const REACTIVE = Symbol('reactive');
+const COMPUTED = Symbol('computed');
+
+const REACTIVE_ARRAY = Symbol('reactive.array');
+
+const REACTIVE_OBJECT = Symbol('reactive.object');
+
+const SIGNAL = Symbol('signal');
 
 
 const STABILIZER_IDLE = 0;
@@ -22,7 +28,10 @@ const STATE_IN_HEAP = 1 << 3;
 
 
 export {
-    REACTIVE,
+    COMPUTED,
+    REACTIVE_ARRAY,
+    REACTIVE_OBJECT,
+    SIGNAL,
     STABILIZER_IDLE,
     STABILIZER_RESCHEDULE,
     STABILIZER_RUNNING,
