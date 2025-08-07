@@ -1,6 +1,6 @@
 import { isFunction, isNumber, isObject } from '@esportsplus/utilities';
 import { REACTIVE_ARRAY } from '~/constants';
-import { computed, dispose, isComputed, onCleanup, read, root } from '~/system';
+import { computed, dispose, isComputed, read } from '~/system';
 import { Computed, Infer } from '~/types';
 import object, { isReactiveObject, ReactiveObject } from './object';
 
@@ -50,6 +50,7 @@ type Value<T> =
 
 class ReactiveArray<T> {
     [REACTIVE_ARRAY] = true;
+    disposables: number = 0;
 
     private data: Item<T>[];
     private listeners: Record<string, (Listener<any> | null)[]> | null = null;
@@ -294,44 +295,38 @@ const isReactiveArray = (value: any): value is ReactiveArray<any> => {
 
 
 export default function array<T>(input: T[]) {
-    let { array, proxy } = root(() => {
-            let proxy = new Proxy({}, {
-                    get(_: any, key: any) {
-                        if (isNumber(key)) {
-                            let value = wrapped[key];
+    let proxy = new Proxy({}, {
+            get(_: any, key: any) {
+                if (isNumber(key)) {
+                    let value = wrapped[key];
 
-                            if (isComputed(value)) {
-                                return read(value);
-                            }
-
-                            return value;
-                        }
-                        else if (key in array) {
-                            return array[key as keyof typeof array];
-                        }
-
-                        return wrapped[key];
-                    },
-                    set(_: any, key: any, value: any) {
-                        if (isNumber(key)) {
-                            array.splice(key, 1, value);
-                            return true;
-                        }
-                        else if (key === 'length') {
-                            return array.length = value;
-                        }
-
-                        return false;
+                    if (isComputed(value)) {
+                        return read(value);
                     }
-                }) as API<T>,
-                wrapped = factory(input);
 
-            let array = new ReactiveArray(wrapped, proxy);
+                    return value;
+                }
+                else if (key in array) {
+                    return array[key as keyof typeof array];
+                }
 
-            return { array, proxy };
-        });
+                return wrapped[key];
+            },
+            set(_: any, key: any, value: any) {
+                if (isNumber(key)) {
+                    array.splice(key, 1, value);
+                    return true;
+                }
+                else if (key === 'length') {
+                    return array.length = value;
+                }
 
-    onCleanup(() => array.dispose());
+                return false;
+            }
+        }) as API<T>,
+        wrapped = factory(input);
+
+    let array = new ReactiveArray(wrapped, proxy);
 
     return proxy;
 };

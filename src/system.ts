@@ -1,4 +1,4 @@
-import { isArray, isObject, } from '@esportsplus/utilities';
+import { isArray, isObject } from '@esportsplus/utilities';
 import {
     COMPUTED, SIGNAL,
     STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
@@ -18,23 +18,23 @@ let depth = 0,
     version = 0;
 
 
-function cleanup<T>(node: Computed<T>): void {
-    if (!node.cleanup) {
+function cleanup<T>(computed: Computed<T>): void {
+    if (!computed.cleanup) {
         return;
     }
 
-    let cleanup = node.cleanup;
+    let value = computed.cleanup;
 
-    if (isArray(cleanup)) {
-        for (let i = 0, n = cleanup.length; i < n; i++) {
-            cleanup[i]();
+    if (isArray(value)) {
+        for (let i = 0, n = value.length; i < n; i++) {
+            value[i]();
         }
     }
     else {
-        cleanup();
+        value();
     }
 
-    node.cleanup = null;
+    computed.cleanup = null;
 }
 
 function deleteFromHeap<T>(computed: Computed<T>) {
@@ -208,13 +208,13 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
     computed.state = STATE_NONE;
 
     let depsTail = computed.depsTail as Link | null,
-        toRemove = depsTail !== null ? depsTail.nextDep : computed.deps;
+        remove = depsTail !== null ? depsTail.nextDep : computed.deps;
 
-    if (toRemove !== null) {
+    if (remove !== null) {
         do {
-            toRemove = unlink(toRemove);
+            remove = unlink(remove);
         }
-        while (toRemove !== null);
+        while (remove !== null);
 
         if (depsTail !== null) {
             depsTail.nextDep = null;
@@ -228,14 +228,14 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
         computed.value = value as T;
 
         for (let c = computed.subs; c !== null; c = c.nextSub) {
-            let o = c.sub,
-                state = o.state;
+            let s = c.sub,
+                state = s.state;
 
             if (state & STATE_CHECK) {
-                o.state = state | STATE_DIRTY;
+                s.state = state | STATE_DIRTY;
             }
 
-            insertIntoHeap(o);
+            insertIntoHeap(s);
         }
 
         schedule();
@@ -253,32 +253,30 @@ function schedule() {
 }
 
 function stabilize() {
-    let o = observer;
+    root(() => {
+        stabilizer = STABILIZER_RUNNING;
 
-    stabilizer = STABILIZER_RUNNING;
+        for (index = 0; index <= length; index++) {
+            let computed = heap[index];
 
-    for (index = 0; index <= length; index++) {
-        let computed = heap[index];
+            heap[index] = undefined;
 
-        heap[index] = undefined;
+            while (computed !== undefined) {
+                let next = computed.nextHeap;
 
-        while (computed !== undefined) {
-            let next = computed.nextHeap;
+                recompute(computed, false);
 
-            recompute(computed, false);
-
-            computed = next;
+                computed = next;
+            }
         }
-    }
 
-    observer = o;
-
-    if (stabilizer === STABILIZER_RESCHEDULE) {
-        microtask(stabilize);
-    }
-    else {
-        stabilizer = STABILIZER_IDLE;
-    }
+        if (stabilizer === STABILIZER_RESCHEDULE) {
+            microtask(stabilize);
+        }
+        else {
+            stabilizer = STABILIZER_IDLE;
+        }
+    });
 }
 
 // https://github.com/stackblitz/alien-signals/blob/v2.0.3/src/system.ts#L100
@@ -359,6 +357,7 @@ const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
     }
     else {
         recompute(self, false);
+        root.disposables++;
     }
 
     return self;
@@ -446,16 +445,21 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
 };
 
 const root = <T>(fn: () => T) => {
-    let o = observer;
+    let d = root.disposables,
+        o = observer;
 
     observer = null;
+    root.disposables = 0;
 
     let value = fn();
 
     observer = o;
+    root.disposables = d;
 
     return value;
 };
+
+root.disposables = 0;
 
 const set = <T>(signal: Signal<T>, value: T) => {
     if (signal.value === value) {

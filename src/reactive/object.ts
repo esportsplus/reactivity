@@ -1,5 +1,5 @@
 import { defineProperty, isArray, isFunction, isObject, isPromise, Prettify } from '@esportsplus/utilities';
-import { computed, dispose, effect, isComputed, onCleanup, read, root, set, signal } from '~/system';
+import { computed, dispose, effect, isComputed, read, root, set, signal } from '~/system';
 import { Computed, Infer, Signal } from '~/types';
 import { REACTIVE_OBJECT } from '~/constants';
 import array, { isReactiveArray } from './array';
@@ -10,6 +10,7 @@ type API<T extends Record<PropertyKey, unknown>> = Prettify<{ [K in keyof T]: In
 
 class ReactiveObject<T extends Record<PropertyKey, unknown>> {
     [REACTIVE_OBJECT] = true;
+
 
     constructor(data: T) {
         for (let key in data) {
@@ -100,11 +101,7 @@ const isReactiveObject = (value: any): value is ReactiveObject<any> => {
 
 
 export default function object<T extends Record<PropertyKey, unknown>>(input: T) {
-    let object = root(() => new ReactiveObject<T>(input));
-
-    onCleanup(() => object.dispose());
-
-    return object;
+    return new ReactiveObject<T>(input);
 };
 export { isReactiveObject };
 export type { API as ReactiveObject };

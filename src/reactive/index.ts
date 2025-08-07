@@ -1,4 +1,5 @@
 import { isArray, isObject } from '@esportsplus/utilities';
+import { onCleanup, root } from '~/system';
 import array from './array';
 import object from './object';
 
@@ -21,13 +22,25 @@ type Input<T> =
 
 
 export default <T extends Record<PropertyKey, unknown> | unknown[]>(input: Input<T>): API<T> => {
-    if (isArray(input)) {
-        return array(input) as API<T>;
-    }
-    else if (isObject(input)) {
-        return object(input) as API<T>;
-    }
+    let value: API<T> | undefined;
 
-    throw new Error(`@esportsplus/reactivity: 'reactive' received invalid input - ${JSON.stringify(input)}`);
+    return root(() => {
+        if (isArray(input)) {
+            value = array(input) as API<T>;
+        }
+        else if (isObject(input)) {
+            value = object(input) as API<T>;
+        }
+
+        if (value) {
+            if (root.disposables) {
+                onCleanup(() => value!.dispose());
+            }
+
+            return value;
+        }
+
+        throw new Error(`@esportsplus/reactivity: 'reactive' received invalid input - ${JSON.stringify(input)}`);
+    });
 };
 export type { Input };
