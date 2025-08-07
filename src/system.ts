@@ -253,30 +253,33 @@ function schedule() {
 }
 
 function stabilize() {
-    root(() => {
-        stabilizer = STABILIZER_RUNNING;
+    let o = observer;
 
-        for (index = 0; index <= length; index++) {
-            let computed = heap[index];
+    observer = null;
+    stabilizer = STABILIZER_RUNNING;
 
-            heap[index] = undefined;
+    for (index = 0; index <= length; index++) {
+        let computed = heap[index];
 
-            while (computed !== undefined) {
-                let next = computed.nextHeap;
+        heap[index] = undefined;
 
-                recompute(computed, false);
+        while (computed !== undefined) {
+            let next = computed.nextHeap;
 
-                computed = next;
-            }
+            recompute(computed, false);
+
+            computed = next;
         }
+    }
 
-        if (stabilizer === STABILIZER_RESCHEDULE) {
-            microtask(stabilize);
-        }
-        else {
-            stabilizer = STABILIZER_IDLE;
-        }
-    });
+    observer = o;
+
+    if (stabilizer === STABILIZER_RESCHEDULE) {
+        microtask(stabilize);
+    }
+    else {
+        stabilizer = STABILIZER_IDLE;
+    }
 }
 
 // https://github.com/stackblitz/alien-signals/blob/v2.0.3/src/system.ts#L100
