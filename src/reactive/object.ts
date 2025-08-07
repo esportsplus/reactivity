@@ -100,8 +100,8 @@ const isReactiveObject = (value: any): value is ReactiveObject<any> => {
 };
 
 
-export default function object<T extends Record<PropertyKey, unknown>>(input: T) {
-    return new ReactiveObject<T>(input);
+export default <T extends Record<PropertyKey, unknown>>(input: T) => {
+    return new ReactiveObject<T>(input) as API<T>;
 };
 export { isReactiveObject };
 export type { API as ReactiveObject };

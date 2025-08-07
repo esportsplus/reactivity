@@ -294,7 +294,7 @@ const isReactiveArray = (value: any): value is ReactiveArray<any> => {
 };
 
 
-export default function array<T>(input: T[]) {
+export default <T>(input: T[]) => {
     let proxy = new Proxy({}, {
             get(_: any, key: any) {
                 if (isNumber(key)) {
