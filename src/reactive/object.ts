@@ -1,8 +1,8 @@
 import { defineProperty, isArray, isFunction, isObject, isPromise, Prettify } from '@esportsplus/utilities';
-import { computed, dispose, effect, isComputed, read, root, set, signal } from '~/system';
+import { computed, dispose, effect, read, root, set, signal } from '~/system';
 import { Computed, Infer, Signal } from '~/types';
 import { REACTIVE_OBJECT } from '~/constants';
-import array, { isReactiveArray } from './array';
+import array from './array';
 
 
 type API<T extends Record<PropertyKey, unknown>> = Prettify<{ [K in keyof T]: Infer<T[K]> }> & ReactiveObject<T>;
@@ -12,65 +12,76 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
     [REACTIVE_OBJECT] = true;
 
 
+    private disposers: VoidFunction[] | null = null;
+
+
     constructor(data: T) {
-        for (let key in data) {
-            let value = data[key];
+        let keys = Object.keys(data);
+
+        for (let i = 0, n = keys.length; i < n; i++) {
+            let key = keys[i],
+                value = data[key];
 
             if (isArray(value)) {
-                let a = array(value);
+                let node = array(value);
+
+                (this.disposers ??= []).push( () => node.dispose() );
 
                 defineProperty(this, key, {
                     enumerable: true,
-                    get() {
-                        return a;
-                    }
+                    value: node
                 });
             }
             else if (isFunction(value)) {
-                let c: Computed<T[typeof key]> | Signal<T[typeof key] | undefined> | undefined;
+                let node: Computed<T[typeof key]> | Signal<T[typeof key] | undefined> | undefined;
 
                 defineProperty(this, key, {
                     enumerable: true,
-                    get() {
-                        if (c === undefined) {
+                    get: () => {
+                        if (node === undefined) {
                             root(() => {
-                                c = computed(value as Computed<T[typeof key]>['fn']);
+                                node = computed(value as Computed<T[typeof key]>['fn']);
 
-                                if (isPromise(c.value)) {
-                                    let factory = c,
+                                if (isPromise(node.value)) {
+                                    let factory = node,
                                         version = 0;
 
-                                    c = signal(undefined);
+                                    node = signal<T[typeof key] | undefined>(undefined);
 
-                                    effect(() => {
-                                        let id = ++version;
+                                    (this.disposers ??= []).push(
+                                        effect(() => {
+                                            let id = ++version;
 
-                                        (read(factory) as Promise<T[typeof key]>).then((value) => {
-                                            if (id !== version) {
-                                                return;
-                                            }
+                                            (read(factory) as Promise<T[typeof key]>).then((v) => {
+                                                if (id !== version) {
+                                                    return;
+                                                }
 
-                                            set(c as Signal<typeof value>, value);
-                                        });
-                                    });
+                                                set(node as Signal<typeof v>, v);
+                                            });
+                                        })
+                                    )
+                                }
+                                else {
+                                    (this.disposers ??= []).push(() => dispose(node as Computed<T[typeof key]>));
                                 }
                             });
                         }
 
-                        return read(c!);
+                        return read(node!);
                     }
                 });
             }
             else {
-                let s = signal(value);
+                let node = signal(value);
 
                 defineProperty(this, key, {
                     enumerable: true,
                     get() {
-                        return read(s);
+                        return read(node);
                     },
                     set(v: typeof value) {
-                        set(s, v);
+                        set(node, v);
                     }
                 });
             }
@@ -79,16 +90,11 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
 
 
     dispose() {
-        let value;
+        let disposers = this.disposers;
 
-        for (let key in this) {
-            value = this[key];
-
-            if (isReactiveArray(value) || isReactiveObject(value)) {
-                value.dispose();
-            }
-            else if (isComputed(value)) {
-                dispose(value);
+        if (disposers) {
+            for (let i = 0, n = disposers.length; i < n; i++) {
+                disposers[i]();
             }
         }
     }

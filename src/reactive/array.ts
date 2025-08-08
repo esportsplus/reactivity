@@ -53,7 +53,9 @@ class ReactiveArray<T> {
     disposables: number = 0;
 
     private data: Item<T>[];
+
     private listeners: Record<string, (Listener<any> | null)[]> | null = null;
+
     private proxy: API<T>;
 
 
@@ -134,8 +136,7 @@ class ReactiveArray<T> {
         i?: number,
         n?: number
     ) {
-        let { data, proxy } = this,
-            values: R[] = [];
+        let { data, proxy } = this;
 
         if (i === undefined) {
             i = 0;
@@ -147,15 +148,15 @@ class ReactiveArray<T> {
 
         n = Math.min(n, data.length);
 
+        let values: R[] = new Array(n - i);
+
         for (; i < n; i++) {
             let item = data[i];
 
-            values.push(
-                fn.call(
-                    proxy,
-                    (isComputed(item) ? item.value : item) as Value<T>,
-                    i
-                )
+            values[i] = fn.call(
+                proxy,
+                (isComputed(item) ? item.value : item) as Value<T>,
+                i
             );
         }
 
@@ -172,15 +173,21 @@ class ReactiveArray<T> {
             if (listeners === undefined) {
                 this.listeners[event] = [listener];
             }
-            else if (listeners.indexOf(listener) === -1) {
-                let i = listeners.indexOf(null);
+            else {
+                let hole = listeners.length;
 
-                if (i === -1) {
-                    listeners.push(listener);
+                for (let i = 0, n = hole; i < n; i++) {
+                    let l = listeners[i];
+
+                    if (l === listener) {
+                        return;
+                    }
+                    else if (l === null && hole === n) {
+                        hole = i;
+                    }
                 }
-                else {
-                    listeners[i] = listener;
-                }
+
+                listeners[hole] = listener;
             }
         }
     }
@@ -269,29 +276,25 @@ class ReactiveArray<T> {
 
 
 function factory<T>(input: T[]) {
-    let items: Item<T>[] = [];
+    let n = input.length,
+        output: Item<T>[] = new Array(n);
 
-    for (let i = 0, n = input.length; i < n; i++) {
+    for (let i = 0; i < n; i++) {
         let value = input[i];
 
         if (isFunction(value)) {
-            items[i] = computed(value as Computed<T>['fn']);
+            output[i] = computed(value as Computed<T>['fn']);
         }
         else if (isObject(value)) {
-            items[i] = object(value) as Item<T>;
+            output[i] = object(value) as Item<T>;
         }
         else {
-            items[i] = value;
+            output[i] = value;
         }
     }
 
-    return items;
+    return output;
 }
-
-
-const isReactiveArray = (value: any): value is ReactiveArray<any> => {
-    return isObject(value) && REACTIVE_ARRAY in value;
-};
 
 
 export default <T>(input: T[]) => {
@@ -318,7 +321,8 @@ export default <T>(input: T[]) => {
                     return true;
                 }
                 else if (key === 'length') {
-                    return array.length = value;
+                    array.length = value;
+                    return true;
                 }
 
                 return false;
@@ -330,5 +334,4 @@ export default <T>(input: T[]) => {
 
     return proxy;
 };
-export { isReactiveArray };
 export type { API as ReactiveArray };

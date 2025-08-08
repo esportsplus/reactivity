@@ -2,15 +2,15 @@ import { isArray, isObject } from '@esportsplus/utilities';
 import {
     COMPUTED, SIGNAL,
     STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
-    STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING
+    STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_NOTIFY_MASK, STATE_RECOMPUTING
 } from './constants';
 import { Computed, Link, Signal } from './types';
 
 
 let depth = 0,
-    heap: (Computed<unknown> | undefined)[] = new Array(2048),
-    index = 0,
-    length = 0,
+    heap: (Computed<unknown> | undefined)[] = new Array(64),
+    heap_i = 0,
+    heap_n = 0,
     microtask = queueMicrotask,
     notified = false,
     observer: Computed<unknown> | null = null,
@@ -93,12 +93,12 @@ function insertIntoHeap<T>(computed: Computed<T>) {
         heapAtHeight.prevHeap = computed;
     }
 
-    if (height > length) {
-        length = height;
+    if (height > heap_n) {
+        heap_n = height;
 
         // Simple auto adjust to avoid manual management within apps.
         if (height >= heap.length) {
-            heap.length = Math.round(heap.length * 1.5);
+            heap.length = Math.max(height + 1, Math.ceil(heap.length * 2));
         }
     }
 }
@@ -163,7 +163,7 @@ function link<T>(dep: Signal<T> | Computed<T>, sub: Computed<T>) {
 function notify<T>(computed: Computed<T>, newState = STATE_DIRTY) {
     let state = computed.state;
 
-    if ((state & (STATE_CHECK | STATE_DIRTY)) >= newState) {
+    if ((state & STATE_NOTIFY_MASK) >= newState) {
         return;
     }
 
@@ -183,7 +183,9 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
         computed.prevHeap = computed;
     }
 
-    cleanup(computed);
+    if (computed.cleanup) {
+        cleanup(computed);
+    }
 
     let o = observer,
         ok = true,
@@ -258,10 +260,10 @@ function stabilize() {
     observer = null;
     stabilizer = STABILIZER_RUNNING;
 
-    for (index = 0; index <= length; index++) {
-        let computed = heap[index];
+    for (heap_i = 0; heap_i <= heap_n; heap_i++) {
+        let computed = heap[heap_i];
 
-        heap[index] = undefined;
+        heap[heap_i] = undefined;
 
         while (computed !== undefined) {
             let next = computed.nextHeap;
@@ -270,6 +272,10 @@ function stabilize() {
 
             computed = next;
         }
+    }
+
+    while (heap_n > 0 && heap[heap_n] === undefined) {
+        heap_n--;
     }
 
     observer = o;
@@ -284,7 +290,10 @@ function stabilize() {
 
 // https://github.com/stackblitz/alien-signals/blob/v2.0.3/src/system.ts#L100
 function unlink(link: Link): Link | null {
-    let { dep, nextDep, nextSub, prevSub } = link;
+    let dep = link.dep,
+        nextDep = link.nextDep,
+        nextSub = link.nextSub,
+        prevSub = link.prevSub;
 
     if (nextSub !== null) {
         nextSub.prevSub = prevSub;
@@ -377,7 +386,9 @@ const dispose = <T>(computed: Computed<T>) => {
 
     computed.deps = null;
 
-    cleanup(computed);
+    if (computed.cleanup) {
+        cleanup(computed);
+    }
 };
 
 const effect = <T>(fn: Computed<T>['fn']) => {
@@ -401,14 +412,16 @@ const onCleanup = (fn: VoidFunction): typeof fn => {
         return fn;
     }
 
-    if (!observer.cleanup) {
+    let cleanup = observer.cleanup;
+
+    if (!cleanup) {
         observer.cleanup = fn;
     }
-    else if (isArray(observer.cleanup)) {
-        observer.cleanup.push(fn);
+    else if (isArray(cleanup)) {
+        cleanup.push(fn);
     }
     else {
-        observer.cleanup = [observer.cleanup, fn];
+        observer.cleanup = [cleanup, fn];
     }
 
     return fn;
@@ -425,14 +438,11 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
                 observer.height = height + 1;
             }
 
-            if (
-                height >= index ||
-                node.state & (STATE_DIRTY | STATE_CHECK)
-            ) {
+            if (height >= heap_i || node.state & STATE_NOTIFY_MASK) {
                 if (!notified) {
                     notified = true;
 
-                    for (let i = 0; i <= length; i++) {
+                    for (let i = 0; i <= heap_n; i++) {
                         for (let computed = heap[i]; computed !== undefined; computed = computed.nextHeap) {
                             notify(computed);
                         }
