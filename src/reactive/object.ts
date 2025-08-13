@@ -5,7 +5,7 @@ import { REACTIVE_OBJECT } from '~/constants';
 import array from './array';
 
 
-type API<T extends Record<PropertyKey, unknown>> = Prettify<{ [K in keyof T]: Infer<T[K]> }> & ReactiveObject<T>;
+type API<T> = Prettify<{ [K in keyof T]: Infer<T[K]> } & { dispose: VoidFunction } >;
 
 
 class ReactiveObject<T extends Record<PropertyKey, unknown>> {
@@ -90,12 +90,15 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
 
 
     dispose() {
-        let disposers = this.disposers;
+        let disposers = this.disposers,
+            disposer;
 
-        if (disposers) {
-            for (let i = 0, n = disposers.length; i < n; i++) {
-                disposers[i]();
-            }
+        if (!disposers) {
+            return;
+        }
+
+        while (disposer = disposers.pop()) {
+            disposer();
         }
     }
 }

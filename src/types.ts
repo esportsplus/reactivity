@@ -1,5 +1,4 @@
 import { COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
-import { ReactiveArray } from './reactive/array';
 import { ReactiveObject } from './reactive/object';
 
 
@@ -29,7 +28,7 @@ type Infer<T> =
         : T extends (...args: any[]) => infer R
             ? R
             : T extends (infer U)[]
-                ? ReactiveArray<U>
+                ? Infer<U>[]
                 : T extends ReactiveObject<any>
                     ? T
                     : T extends Record<PropertyKey, unknown>
@@ -45,10 +44,6 @@ interface Link {
     version: number;
 }
 
-type Reactive<T> = T extends Record<PropertyKey, unknown>
-    ? ReactiveObject<T>
-    : ReactiveArray<T>;
-
 type Signal<T> = {
     [SIGNAL]: true;
     subs: Link | null;
@@ -62,5 +57,5 @@ export type {
     Infer,
     Link,
     Signal,
-    Reactive, ReactiveArray, ReactiveObject
+    ReactiveObject
 };
