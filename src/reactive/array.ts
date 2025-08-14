@@ -1,6 +1,5 @@
 import { isNumber } from '@esportsplus/utilities';
 import { REACTIVE_ARRAY } from '~/constants';
-import { dispose as d, isComputed, read } from '~/system';
 import { Infer } from '~/types';
 import { isReactiveObject } from './object';
 
@@ -49,22 +48,9 @@ type Listener<V> = {
 type Listeners = Record<string, (Listener<any> | null)[]>;
 
 
-function at<T>(data: T[], i: number) {
-    let value = data[i];
-
-    if (isComputed(value)) {
-        return read(value);
-    }
-
-    return value;
-}
-
 function cleanup<T>(item: T) {
     if (isReactiveObject(item)) {
         item.dispose();
-    }
-    else if (isComputed(item)) {
-        d(item);
     }
 }
 
@@ -128,13 +114,7 @@ function map<T, R>(
     let values: R[] = new Array(n - i);
 
     for (; i < n; i++) {
-        let item = data[i];
-
-        values[i] = fn.call(
-            proxy,
-            (isComputed(item) ? item.value : item) as T,
-            i
-        );
+        values[i] = fn.call(proxy, data[i], i);
     }
 
     return values;
@@ -205,10 +185,7 @@ function shift<T>(data: T[], listeners: Listeners) {
 }
 
 function sort<T>(data: T[], listeners: Listeners, fn: (a: T, b: T) => number) {
-    data.sort((a, b) => fn(
-        (isComputed(a) ? a.value : a) as T,
-        (isComputed(b) ? b.value : b) as T
-    ));
+    data.sort((a, b) => fn(a, b));
     dispatch(listeners, 'sort');
 }
 
@@ -244,13 +221,7 @@ export default <T>(data: T[]) => {
         proxy = new Proxy({}, {
             get(_, key: any) {
                 if (isNumber(key)) {
-                    let value = data[key];
-
-                    if (isComputed(value)) {
-                        return read(value);
-                    }
-
-                    return value;
+                    return data[key];
                 }
                 else if (key in wrapper) {
                     return wrapper[key as keyof typeof wrapper];
@@ -284,7 +255,7 @@ export default <T>(data: T[]) => {
         }) as API<T>,
         wrapper = {
             [REACTIVE_ARRAY]: true,
-            at: (i: number) => at(data, i),
+            at: (i: number) => data[i],
             clear: () => {
                 clear(data, listeners);
                 return proxy;
