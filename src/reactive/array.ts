@@ -8,6 +8,10 @@ import { isReactiveObject } from './object';
 type API<T> = Infer<T[]> & {
     clear: () => void;
     dispose: () => void;
+    dispatch: <T, K extends keyof Events<T>, V>(event: K, value?: V) => void;
+    map: <T, R>(this: API<T>, fn: (this: API<T>, value: T, i: number) => R, i?: number, n?: number) => R[];
+    on: <T, K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) => void;
+    once: <T, K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) => void;
 };
 
 type Events<T> = {
