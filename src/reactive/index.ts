@@ -41,4 +41,3 @@ export default <T>(input: Input<T>): API<T> => {
         throw new Error(`@esportsplus/reactivity: 'reactive' received invalid input - ${JSON.stringify(input)}`);
     });
 };
-export type { Input };

@@ -327,3 +327,4 @@ export default <T>(data: T[]) => {
 
     return proxy;
 };
+export type { API as ReactiveArray };

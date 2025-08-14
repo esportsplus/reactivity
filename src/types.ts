@@ -1,4 +1,5 @@
 import { COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
+import { ReactiveArray } from './reactive/array';
 import { ReactiveObject } from './reactive/object';
 
 
@@ -57,5 +58,5 @@ export type {
     Infer,
     Link,
     Signal,
-    ReactiveObject
+    ReactiveArray, ReactiveObject
 };
