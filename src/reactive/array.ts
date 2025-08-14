@@ -1,17 +1,19 @@
-import { isNumber } from '@esportsplus/utilities';
+import { isNumber, Prettify } from '@esportsplus/utilities';
 import { REACTIVE_ARRAY } from '~/constants';
 import { Infer } from '~/types';
 import { isReactiveObject } from './object';
 
 
-type API<T> = Infer<T[]> & {
-    clear: () => void;
-    dispose: () => void;
-    dispatch: <T, K extends keyof Events<T>, V>(event: K, value?: V) => void;
-    map: <T, R>(this: API<T>, fn: (this: API<T>, value: T, i: number) => R, i?: number, n?: number) => R[];
-    on: <T, K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) => void;
-    once: <T, K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) => void;
-};
+type API<T extends unknown[]> = Prettify<
+    Infer<T> & {
+        clear: () => void;
+        dispose: () => void;
+        dispatch: <K extends keyof Events<T>, V>(event: K, value?: V) => void;
+        map: <R>(this: API<T>, fn: (this: API<T>, value: T, i: number) => R, i?: number, n?: number) => R[];
+        on: <K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) => void;
+        once: <K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) => void;
+    }
+>;
 
 type Events<T> = {
     clear: undefined,
@@ -94,10 +96,10 @@ function dispose<T>(data: T[]) {
     }
 }
 
-function map<T, R>(
-    data: T[],
+function map<T extends unknown[], R>(
+    data: T,
     proxy: API<T>,
-    fn: (this: API<T>, value: T, i: number) => R,
+    fn: (this: API<T>, value: T[number], i: number) => R,
     i?: number,
     n?: number
 ) {
@@ -184,12 +186,12 @@ function shift<T>(data: T[], listeners: Listeners) {
     return item;
 }
 
-function sort<T>(data: T[], listeners: Listeners, fn: (a: T, b: T) => number) {
+function sort<T extends unknown[]>(data: T, listeners: Listeners, fn: (a: T[number], b: T[number]) => number) {
     data.sort((a, b) => fn(a, b));
     dispatch(listeners, 'sort');
 }
 
-function splice<T>(data: T[], listeners: Listeners, start: number, deleteCount: number = data.length, items: T[] = []) {
+function splice<T extends unknown[]>(data: T, listeners: Listeners, start: number, deleteCount: number = data.length, items: T[] = []) {
     let removed = data.splice(start, deleteCount, ...items);
 
     if (items.length > 0 || removed.length > 0) {
@@ -216,7 +218,7 @@ function unshift<T>(data: T[], listeners: Listeners, items: T[]) {
 }
 
 
-export default <T>(data: T[]) => {
+export default <T extends unknown[]>(data: T) => {
     let listeners: Listeners = {},
         proxy = new Proxy({}, {
             get(_, key: any) {
@@ -269,7 +271,7 @@ export default <T>(data: T[]) => {
                 return proxy;
             },
             map: <R>(
-                fn: (this: API<T>, value: T, i: number) => R,
+                fn: (this: API<T>, value: T[number], i: number) => R,
                 i?: number,
                 n?: number
             ) => {
@@ -290,7 +292,7 @@ export default <T>(data: T[]) => {
                 return proxy;
             },
             shift: () => shift(data, listeners),
-            sort: (fn: (a: T, b: T) => number) => {
+            sort: (fn: (a: T[number], b: T[number]) => number) => {
                 sort(data, listeners, fn);
                 return proxy;
             },
