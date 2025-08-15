@@ -8,10 +8,10 @@ type ReactiveArray<T extends unknown[]> = Prettify<
     Infer<T> & {
         clear: () => void;
         dispose: () => void;
-        dispatch: <K extends keyof Events<T>, V>(event: K, value?: V) => void;
+        dispatch: <K extends keyof Events<T[number]>, V>(event: K, value?: V) => void;
         map: <R>(fn: (this: ReactiveArray<T>, value: T[number], i: number) => R, i?: number, n?: number) => R[];
-        on: <K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) => void;
-        once: <K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) => void;
+        on: <K extends keyof Events<T[number]>>(event: K, listener: Listener<Events<T[number]>[K]>) => void;
+        once: <K extends keyof Events<T[number]>>(event: K, listener: Listener<Events<T[number]>[K]>) => void;
     }
 >;
 
