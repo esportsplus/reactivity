@@ -4,12 +4,12 @@ import { Infer } from '~/types';
 import { isReactiveObject } from './object';
 
 
-type API<T extends unknown[]> = Prettify<
+type ReactiveArray<T extends unknown[]> = Prettify<
     Infer<T> & {
         clear: () => void;
         dispose: () => void;
         dispatch: <K extends keyof Events<T>, V>(event: K, value?: V) => void;
-        map: <R>(this: API<T>, fn: (this: API<T>, value: T, i: number) => R, i?: number, n?: number) => R[];
+        map: <R>(fn: (this: ReactiveArray<T>, value: T[number], i: number) => R, i?: number, n?: number) => R[];
         on: <K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) => void;
         once: <K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) => void;
     }
@@ -96,10 +96,10 @@ function dispose<T>(data: T[]) {
     }
 }
 
-function map<T extends unknown[], R>(
-    data: T,
-    proxy: API<T>,
-    fn: (this: API<T>, value: T[number], i: number) => R,
+function map<T, R>(
+    data: T[],
+    proxy: ReactiveArray<typeof data>,
+    fn: (this: ReactiveArray<typeof data>, value: T, i: number) => R,
     i?: number,
     n?: number
 ) {
@@ -186,12 +186,12 @@ function shift<T>(data: T[], listeners: Listeners) {
     return item;
 }
 
-function sort<T extends unknown[]>(data: T, listeners: Listeners, fn: (a: T[number], b: T[number]) => number) {
+function sort<T>(data: T[], listeners: Listeners, fn: (a: T, b: T) => number) {
     data.sort((a, b) => fn(a, b));
     dispatch(listeners, 'sort');
 }
 
-function splice<T extends unknown[]>(data: T, listeners: Listeners, start: number, deleteCount: number = data.length, items: T[] = []) {
+function splice<T>(data: T[], listeners: Listeners, start: number, deleteCount: number = data.length, items: T[] = []) {
     let removed = data.splice(start, deleteCount, ...items);
 
     if (items.length > 0 || removed.length > 0) {
@@ -218,7 +218,7 @@ function unshift<T>(data: T[], listeners: Listeners, items: T[]) {
 }
 
 
-export default <T extends unknown[]>(data: T) => {
+export default <T>(data: T[]) => {
     let listeners: Listeners = {},
         proxy = new Proxy({}, {
             get(_, key: any) {
@@ -254,7 +254,7 @@ export default <T extends unknown[]>(data: T) => {
 
                 return true;
             }
-        }) as API<T>,
+        }) as ReactiveArray<typeof data>,
         wrapper = {
             [REACTIVE_ARRAY]: true,
             at: (i: number) => data[i],
@@ -271,7 +271,7 @@ export default <T extends unknown[]>(data: T) => {
                 return proxy;
             },
             map: <R>(
-                fn: (this: API<T>, value: T[number], i: number) => R,
+                fn: (this: ReactiveArray<typeof data>, value: T, i: number) => R,
                 i?: number,
                 n?: number
             ) => {
@@ -292,7 +292,7 @@ export default <T extends unknown[]>(data: T) => {
                 return proxy;
             },
             shift: () => shift(data, listeners),
-            sort: (fn: (a: T[number], b: T[number]) => number) => {
+            sort: (fn: (a: T, b: T) => number) => {
                 sort(data, listeners, fn);
                 return proxy;
             },
@@ -304,4 +304,4 @@ export default <T extends unknown[]>(data: T) => {
 
     return proxy;
 };
-export type { API as ReactiveArray };
+export type { ReactiveArray };
