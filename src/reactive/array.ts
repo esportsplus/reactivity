@@ -9,7 +9,7 @@ type ReactiveArray<T extends unknown[]> = Prettify<
         clear: () => void;
         dispose: () => void;
         dispatch: <K extends keyof Events<T[number]>, V>(event: K, value?: V) => void;
-        map: <R>(fn: (this: ReactiveArray<T>, value: T[number], i: number) => R, i?: number, n?: number) => R[];
+        map: <R>(fn: (this: ReactiveArray<T>, value: T[number], i: number) => R) => R[];
         on: <K extends keyof Events<T[number]>>(event: K, listener: Listener<Events<T[number]>[K]>) => void;
         once: <K extends keyof Events<T[number]>>(event: K, listener: Listener<Events<T[number]>[K]>) => void;
     }
@@ -99,23 +99,12 @@ function dispose<T>(data: T[]) {
 function map<T, R>(
     data: T[],
     proxy: ReactiveArray<typeof data>,
-    fn: (this: ReactiveArray<typeof data>, value: T, i: number) => R,
-    i?: number,
-    n?: number
+    fn: (this: ReactiveArray<typeof data>, value: T, i: number) => R
 ) {
-    if (i === undefined) {
-        i = 0;
-    }
+    let n = data.length,
+        values: R[] = new Array(n);
 
-    if (n === undefined) {
-        n = data.length;
-    }
-
-    n = Math.min(n, data.length);
-
-    let values: R[] = new Array(n - i);
-
-    for (; i < n; i++) {
+    for (let i = 0; i < n; i++) {
         values[i] = fn.call(proxy, data[i], i);
     }
 
@@ -270,12 +259,8 @@ export default <T>(data: T[]) => {
                 dispose(data);
                 return proxy;
             },
-            map: <R>(
-                fn: (this: ReactiveArray<typeof data>, value: T, i: number) => R,
-                i?: number,
-                n?: number
-            ) => {
-                return map(data, proxy, fn, i, n);
+            map: <R>(fn: (this: ReactiveArray<typeof data>, value: T, i: number) => R) => {
+                return map(data, proxy, fn);
             },
             on: <K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) => {
                 on(listeners, event, listener);
