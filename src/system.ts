@@ -465,21 +465,33 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
 };
 
 const root = <T>(fn: (dispose?: VoidFunction) => T) => {
-    let d = root.disposables,
+    let c,
+        d = root.disposables,
         o = observer,
         s = scope,
         self: Computed<unknown> | null = null,
-        tracking = fn.length;
+        tracking = fn.length,
+        value: T;
 
     observer = null;
     root.disposables = 0;
-    scope = tracking ? (self = { cleanup: null } as Computed<unknown>) : null;
 
-    let value = fn( tracking ? () => dispose(self!) : undefined);
+    if (tracking) {
+        scope = self = { cleanup: null } as Computed<unknown>;
+        value = fn( c = () => dispose(self!) );
+    }
+    else {
+        scope = null;
+        value = fn();
+    }
 
     observer = o;
     root.disposables = d;
     scope = s;
+
+    if (c) {
+        onCleanup(c);
+    }
 
     return value;
 };
