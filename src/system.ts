@@ -464,7 +464,7 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
     return node.value;
 };
 
-const root = <T>(fn: (dispose?: VoidFunction) => T) => {
+const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
     let c,
         d = root.disposables,
         o = observer,
@@ -478,11 +478,11 @@ const root = <T>(fn: (dispose?: VoidFunction) => T) => {
 
     if (tracking) {
         scope = self = { cleanup: null } as Computed<unknown>;
-        value = fn( c = () => dispose(self!) );
+        value = (fn as (dispose: VoidFunction) => T)(c = () => dispose(self!));
     }
     else {
         scope = null;
-        value = fn();
+        value = (fn as () => T)();
     }
 
     observer = o;
