@@ -11,15 +11,10 @@ type API<T> =
             ? ReturnType<typeof array<T>>
             : never;
 
-type Input<T> =
-    T extends { dispose: any }
-        ? { never: '[ dispose, signals ] are reserved keys' }
-        : T extends Record<PropertyKey, unknown> | unknown[]
-            ? T
-            : never;
 
-
-export default <T>(input: Input<T>): API<T> => {
+export default <T extends Record<PropertyKey, any> | unknown[]>(
+    input: T extends { dispose: any } ? { never: '[ dispose ] are reserved keys' } : T
+): API<T> => {
     let dispose = false,
         value = root(() => {
             let response: API<T> | undefined;
