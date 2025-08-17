@@ -20,24 +20,31 @@ type Input<T> =
 
 
 export default <T>(input: Input<T>): API<T> => {
-    let value: API<T> | undefined;
+    let dispose = false,
+        value = root(() => {
+            let response: API<T> | undefined;
 
-    return root(() => {
-        if (isArray(input)) {
-            value = array(input) as API<T>;
-        }
-        else if (isObject(input)) {
-            value = object(input) as API<T>;
-        }
-
-        if (value) {
-            if (root.disposables) {
-                onCleanup(() => value!.dispose());
+            if (isArray(input)) {
+                response = array(input) as API<T>;
+            }
+            else if (isObject(input)) {
+                response = object(input) as API<T>;
             }
 
-            return value;
-        }
+            if (response) {
+                if (root.disposables) {
+                    dispose = true;
+                }
 
-        throw new Error(`@esportsplus/reactivity: 'reactive' received invalid input - ${JSON.stringify(input)}`);
-    });
+                return response;
+            }
+
+            throw new Error(`@esportsplus/reactivity: 'reactive' received invalid input - ${JSON.stringify(input)}`);
+        });
+
+    if (dispose) {
+        onCleanup(() => value.dispose());
+    }
+
+    return value;
 };

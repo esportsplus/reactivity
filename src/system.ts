@@ -14,6 +14,7 @@ let depth = 0,
     microtask = queueMicrotask,
     notified = false,
     observer: Computed<unknown> | null = null,
+    scope: Computed<unknown> | null = null,
     stabilizer = STABILIZER_IDLE,
     version = 0;
 
@@ -370,6 +371,10 @@ const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
     else {
         recompute(self, false);
         root.disposables++;
+
+        if (scope) {
+            onCleanup(() => dispose(self));
+        }
     }
 
     return self;
@@ -408,20 +413,22 @@ const isSignal = (value: unknown): value is Signal<unknown> => {
 };
 
 const onCleanup = (fn: VoidFunction): typeof fn => {
-    if (!observer) {
+    let parent = observer || scope;
+
+    if (!parent) {
         return fn;
     }
 
-    let cleanup = observer.cleanup;
+    let cleanup = parent.cleanup;
 
     if (!cleanup) {
-        observer.cleanup = fn;
+        parent.cleanup = fn;
     }
     else if (isArray(cleanup)) {
         cleanup.push(fn);
     }
     else {
-        observer.cleanup = [cleanup, fn];
+        parent.cleanup = [cleanup, fn];
     }
 
     return fn;
@@ -457,17 +464,22 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
     return node.value;
 };
 
-const root = <T>(fn: () => T) => {
+const root = <T>(fn: (dispose?: VoidFunction) => T) => {
     let d = root.disposables,
-        o = observer;
+        o = observer,
+        s = scope,
+        self: Computed<unknown> | null = null,
+        tracking = fn.length;
 
     observer = null;
     root.disposables = 0;
+    scope = tracking ? (self = { cleanup: null } as Computed<unknown>) : null;
 
-    let value = fn();
+    let value = fn( tracking ? () => dispose(self!) : undefined);
 
     observer = o;
     root.disposables = d;
+    scope = s;
 
     return value;
 };
