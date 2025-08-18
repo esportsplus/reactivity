@@ -12,8 +12,8 @@ type Infer<T> =
         ? R | undefined
         : T extends (...args: any[]) => infer R
             ? R
-            : T extends unknown[]
-                ? ReactiveArray<T>
+            : T extends (infer U)[]
+                ? ReactiveArray<U>
                 : T extends ReactiveObject<any>
                     ? T
                     : T extends Record<PropertyKey, unknown>
