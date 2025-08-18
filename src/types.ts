@@ -23,19 +23,6 @@ interface Computed<T> {
     value: T;
 }
 
-type Infer<T> =
-    T extends (...args: unknown[]) => Promise<infer R>
-        ? R | undefined
-        : T extends (...args: any[]) => infer R
-            ? R
-            : T extends (infer U)[]
-                ? Infer<U>[]
-                : T extends ReactiveObject<any>
-                    ? T
-                    : T extends Record<PropertyKey, unknown>
-                        ? { [K in keyof T]: T[K] }
-                        : T;
-
 interface Link {
     dep: Signal<unknown> | Computed<unknown>;
     sub: Computed<unknown>;
@@ -55,7 +42,6 @@ type Signal<T> = {
 
 export type {
     Computed,
-    Infer,
     Link,
     Signal,
     ReactiveArray, ReactiveObject
