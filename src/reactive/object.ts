@@ -1,11 +1,24 @@
 import { defineProperty, isArray, isFunction, isObject, isPromise, Prettify } from '@esportsplus/utilities';
 import { computed, dispose, effect, read, root, set, signal } from '~/system';
-import { Computed, Infer, Signal } from '~/types';
+import { Computed, Signal } from '~/types';
 import { REACTIVE_OBJECT } from '~/constants';
-import array from './array';
+import array, { ReactiveArray } from './array';
 
 
 type API<T> = Prettify<{ [K in keyof T]: Infer<T[K]> } & { dispose: VoidFunction } >;
+
+type Infer<T> =
+    T extends (...args: unknown[]) => Promise<infer R>
+        ? R | undefined
+        : T extends (...args: any[]) => infer R
+            ? R
+            : T extends unknown[]
+                ? ReactiveArray<T>
+                : T extends ReactiveObject<any>
+                    ? T
+                    : T extends Record<PropertyKey, unknown>
+                        ? { [K in keyof T]: T[K] }
+                        : T;
 
 
 class ReactiveObject<T extends Record<PropertyKey, unknown>> {

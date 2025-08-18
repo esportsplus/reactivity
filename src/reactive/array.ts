@@ -1,11 +1,10 @@
 import { isNumber, Prettify } from '@esportsplus/utilities';
 import { REACTIVE_ARRAY } from '~/constants';
-import { Infer } from '~/types';
 import { isReactiveObject } from './object';
 
 
 type ReactiveArray<T extends unknown[]> = Prettify<
-    Infer<T> & {
+    T & {
         clear: () => void;
         dispose: () => void;
         dispatch: <K extends keyof Events<T[number]>, V>(event: K, value?: V) => void;
