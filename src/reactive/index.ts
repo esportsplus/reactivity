@@ -1,14 +1,14 @@
 import { isArray, isObject } from '@esportsplus/utilities';
 import { onCleanup, root } from '~/system';
-import array from './array';
-import object from './object';
+import array, { ReactiveArray } from './array';
+import object, { ReactiveObject } from './object';
 
 
 type API<T> =
     T extends Record<PropertyKey, unknown>
-        ? ReturnType<typeof object<T>>
-        : T extends unknown[]
-            ? ReturnType<typeof array<T>>
+        ? ReactiveObject<T>
+        : T extends (infer U)[]
+            ? ReactiveArray<U>
             : never;
 
 

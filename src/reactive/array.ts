@@ -3,14 +3,14 @@ import { REACTIVE_ARRAY } from '~/constants';
 import { isReactiveObject } from './object';
 
 
-type ReactiveArray<T extends unknown[]> = Prettify<
-    T & {
+type ReactiveArray<T> = Prettify<
+    T[] & {
         clear: () => void;
         dispose: () => void;
-        dispatch: <K extends keyof Events<T[number]>, V>(event: K, value?: V) => void;
-        map: <R>(fn: (this: ReactiveArray<T>, value: T[number], i: number) => R) => R[];
-        on: <K extends keyof Events<T[number]>>(event: K, listener: Listener<Events<T[number]>[K]>) => void;
-        once: <K extends keyof Events<T[number]>>(event: K, listener: Listener<Events<T[number]>[K]>) => void;
+        dispatch: <K extends keyof Events<T>, V>(event: K, value?: V) => void;
+        map: <R>(fn: (this: ReactiveArray<T>, value: T, i: number) => R) => R[];
+        on: <K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) => void;
+        once: <K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) => void;
     }
 >;
 
@@ -97,8 +97,8 @@ function dispose<T>(data: T[]) {
 
 function map<T, R>(
     data: T[],
-    proxy: ReactiveArray<typeof data>,
-    fn: (this: ReactiveArray<typeof data>, value: T, i: number) => R
+    proxy: ReactiveArray<T>,
+    fn: (this: ReactiveArray<T>, value: T, i: number) => R
 ) {
     let n = data.length,
         values: R[] = new Array(n);
@@ -242,7 +242,7 @@ export default <T>(data: T[]) => {
 
                 return true;
             }
-        }) as ReactiveArray<typeof data>,
+        }) as ReactiveArray<T>,
         wrapper = {
             [REACTIVE_ARRAY]: true,
             at: (i: number) => data[i],
@@ -258,7 +258,7 @@ export default <T>(data: T[]) => {
                 dispose(data);
                 return proxy;
             },
-            map: <R>(fn: (this: ReactiveArray<typeof data>, value: T, i: number) => R) => {
+            map: <R>(fn: (this: ReactiveArray<T>, value: T, i: number) => R) => {
                 return map(data, proxy, fn);
             },
             on: <K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) => {
