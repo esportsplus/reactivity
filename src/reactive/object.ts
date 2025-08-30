@@ -1,24 +1,8 @@
-import { defineProperty, isArray, isFunction, isObject, isPromise, Prettify } from '@esportsplus/utilities';
+import { defineProperty, isArray, isObject, isPromise } from '@esportsplus/utilities';
 import { computed, dispose, effect, read, root, set, signal } from '~/system';
 import { Computed, Signal } from '~/types';
 import { REACTIVE_OBJECT } from '~/constants';
-import array, { ReactiveArray } from './array';
-
-
-type API<T> = Prettify<{ [K in keyof T]: Infer<T[K]> } & { dispose: VoidFunction } >;
-
-type Infer<T> =
-    T extends (...args: unknown[]) => Promise<infer R>
-        ? R | undefined
-        : T extends (...args: any[]) => infer R
-            ? R
-            : T extends (infer U)[]
-                ? ReactiveArray<U>
-                : T extends ReactiveObject<any>
-                    ? T
-                    : T extends Record<PropertyKey, unknown>
-                        ? { [K in keyof T]: T[K] }
-                        : T;
+import { ReactiveArray } from './array';
 
 
 class ReactiveObject<T extends Record<PropertyKey, unknown>> {
@@ -35,17 +19,9 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
             let key = keys[i],
                 value = data[key];
 
-            if (isArray(value)) {
-                let node = array(value);
+            let type = typeof value;
 
-                (this.disposers ??= []).push( () => node.dispose() );
-
-                defineProperty(this, key, {
-                    enumerable: true,
-                    value: node
-                });
-            }
-            else if (isFunction(value)) {
+            if (type === 'function') {
                 let node: Computed<T[typeof key]> | Signal<T[typeof key] | undefined> | undefined;
 
                 defineProperty(this, key, {
@@ -84,20 +60,37 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
                         return read(node!);
                     }
                 });
+
+                continue;
             }
-            else {
-                let node = signal(value);
+
+            if (value == null || type !== 'object') {
+                // Avoid isArray when possible
+            }
+            else if (isArray(value)) {
+                let node = new ReactiveArray(value);
+
+                (this.disposers ??= []).push( () => node.dispose() );
 
                 defineProperty(this, key, {
                     enumerable: true,
-                    get() {
-                        return read(node);
-                    },
-                    set(v: typeof value) {
-                        set(node, v);
-                    }
+                    value: node
                 });
+
+                continue;
             }
+
+            let node = signal(value);
+
+            defineProperty(this, key, {
+                enumerable: true,
+                get() {
+                    return read(node);
+                },
+                set(v: typeof value) {
+                    set(node, v);
+                }
+            });
         }
     }
 
@@ -122,8 +115,4 @@ const isReactiveObject = (value: any): value is ReactiveObject<any> => {
 };
 
 
-export default <T extends Record<PropertyKey, unknown>>(input: T) => {
-    return new ReactiveObject<T>(input) as API<T>;
-};
-export { isReactiveObject };
-export type { API as ReactiveObject };
+export { isReactiveObject, ReactiveObject };

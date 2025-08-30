@@ -1,4 +1,4 @@
-import { isArray, isObject } from '@esportsplus/utilities';
+import { isObject } from '@esportsplus/utilities';
 import {
     COMPUTED, SIGNAL,
     STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
@@ -26,13 +26,13 @@ function cleanup<T>(computed: Computed<T>): void {
 
     let value = computed.cleanup;
 
-    if (isArray(value)) {
+    if (typeof value === 'function') {
+        value();
+    }
+    else {
         for (let i = 0, n = value.length; i < n; i++) {
             value[i]();
         }
-    }
-    else {
-        value();
     }
 
     computed.cleanup = null;
@@ -108,16 +108,16 @@ function insertIntoHeap<T>(computed: Computed<T>) {
 function link<T>(dep: Signal<T> | Computed<T>, sub: Computed<T>) {
     let prevDep = sub.depsTail;
 
-    if (prevDep !== null && prevDep.dep === dep) {
+    if (prevDep && prevDep.dep === dep) {
         return;
     }
 
     let nextDep: Link | null = null;
 
     if (sub.state & STATE_RECOMPUTING) {
-        nextDep = prevDep !== null ? prevDep.nextDep : sub.deps;
+        nextDep = prevDep ? prevDep.nextDep : sub.deps;
 
-        if (nextDep !== null && nextDep.dep === dep) {
+        if (nextDep && nextDep.dep === dep) {
             nextDep.version = version;
             sub.depsTail = nextDep;
             return;
@@ -128,7 +128,7 @@ function link<T>(dep: Signal<T> | Computed<T>, sub: Computed<T>) {
 
     // https://github.com/stackblitz/alien-signals/commit/54fe1b3947fac5c0aecb73b0b0eaff000806c454
     if (
-        prevSub !== null &&
+        prevSub &&
         prevSub.version === version &&
         prevSub.sub === sub
     ) {
@@ -146,14 +146,14 @@ function link<T>(dep: Signal<T> | Computed<T>, sub: Computed<T>) {
                     version
                 };
 
-    if (prevDep !== null) {
+    if (prevDep) {
         prevDep.nextDep = newLink;
     }
     else {
         sub.deps = newLink;
     }
 
-    if (prevSub !== null) {
+    if (prevSub) {
         prevSub.nextSub = newLink;
     }
     else {
@@ -170,7 +170,7 @@ function notify<T>(computed: Computed<T>, newState = STATE_DIRTY) {
 
     computed.state = state | newState;
 
-    for (let link = computed.subs; link !== null; link = link.nextSub) {
+    for (let link = computed.subs; link; link = link.nextSub) {
         notify(link.sub, STATE_CHECK);
     }
 }
@@ -211,15 +211,15 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
     computed.state = STATE_NONE;
 
     let depsTail = computed.depsTail as Link | null,
-        remove = depsTail !== null ? depsTail.nextDep : computed.deps;
+        remove = depsTail ? depsTail.nextDep : computed.deps;
 
-    if (remove !== null) {
+    if (remove) {
         do {
             remove = unlink(remove);
         }
-        while (remove !== null);
+        while (remove);
 
-        if (depsTail !== null) {
+        if (depsTail) {
             depsTail.nextDep = null;
         }
         else {
@@ -230,7 +230,7 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
     if (ok && value !== computed.value) {
         computed.value = value as T;
 
-        for (let c = computed.subs; c !== null; c = c.nextSub) {
+        for (let c = computed.subs; c; c = c.nextSub) {
             let s = c.sub,
                 state = s.state;
 
@@ -246,6 +246,10 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
 }
 
 function schedule() {
+    if (stabilizer === STABILIZER_SCHEDULED) {
+        return;
+    }
+
     if (stabilizer === STABILIZER_IDLE && !depth) {
         stabilizer = STABILIZER_SCHEDULED;
         microtask(stabilize);
@@ -296,14 +300,14 @@ function unlink(link: Link): Link | null {
         nextSub = link.nextSub,
         prevSub = link.prevSub;
 
-    if (nextSub !== null) {
+    if (nextSub) {
         nextSub.prevSub = prevSub;
     }
     else {
         dep.subsTail = prevSub;
     }
 
-    if (prevSub !== null) {
+    if (prevSub) {
         prevSub.nextSub = nextSub;
     }
     else if ((dep.subs = nextSub) === null && 'fn' in dep) {
@@ -385,7 +389,7 @@ const dispose = <T>(computed: Computed<T>) => {
 
     let dep = computed.deps;
 
-    while (dep !== null) {
+    while (dep) {
         dep = unlink(dep);
     }
 
@@ -424,11 +428,11 @@ const onCleanup = (fn: VoidFunction): typeof fn => {
     if (!cleanup) {
         parent.cleanup = fn;
     }
-    else if (isArray(cleanup)) {
-        cleanup.push(fn);
+    else if (typeof cleanup === 'function') {
+        parent.cleanup = [cleanup, fn];
     }
     else {
-        parent.cleanup = [cleanup, fn];
+        cleanup.push(fn);
     }
 
     return fn;
@@ -510,7 +514,7 @@ const set = <T>(signal: Signal<T>, value: T) => {
         return;
     }
 
-    for (let link: Link | null = signal.subs; link !== null; link = link.nextSub) {
+    for (let link: Link | null = signal.subs; link; link = link.nextSub) {
         insertIntoHeap(link.sub);
     }
 

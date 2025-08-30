@@ -1,18 +1,6 @@
-import { isNumber, Prettify } from '@esportsplus/utilities';
 import { REACTIVE_ARRAY } from '~/constants';
 import { isReactiveObject } from './object';
 
-
-type ReactiveArray<T> = Prettify<
-    T[] & {
-        clear: () => void;
-        dispose: () => void;
-        dispatch: <K extends keyof Events<T>, V>(event: K, value?: V) => void;
-        map: <R>(fn: (this: ReactiveArray<T>, value: T, i: number) => R) => R[];
-        on: <K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) => void;
-        once: <K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) => void;
-    }
->;
 
 type Events<T> = {
     clear: undefined,
@@ -49,243 +37,161 @@ type Listener<V> = {
 type Listeners = Record<string, (Listener<any> | null)[]>;
 
 
-function cleanup<T>(item: T) {
-    if (isReactiveObject(item)) {
-        item.dispose();
-    }
-}
+class ReactiveArray<T> extends Array<T> {
+    [REACTIVE_ARRAY] = true;
+    listeners: Listeners = {};
 
-function clear<T>(data: T[], listeners: Listeners) {
-    dispose(data);
-    dispatch(listeners, 'clear');
-}
 
-function dispatch<T, K extends keyof Events<T>, V>(listeners: Listeners, event: K, value?: V) {
-    if (listeners === null || listeners[event] === undefined) {
-        return;
+    constructor(...items: T[]) {
+        super(...items);
     }
 
-    let bucket = listeners[event];
 
-    for (let i = 0, n = bucket.length; i < n; i++) {
-        let listener = bucket[i];
+    clear() {
+        this.dispose();
+        this.dispatch('clear');
+    }
 
-        if (listener === null) {
-            continue;
+    dispatch<K extends keyof Events<T>, V>(event: K, value?: V) {
+        let listeners = this.listeners[event];
+
+        if (!listeners) {
+            return;
         }
 
-        try {
-            listener(value);
+        for (let i = 0, n = listeners.length; i < n; i++) {
+            let listener = listeners[i];
 
-            if (listener.once !== undefined) {
-                bucket[i] = null;
+            if (listener === null) {
+                continue;
+            }
+
+            try {
+                listener(value);
+
+                if (listener.once !== undefined) {
+                    listeners[i] = null;
+                }
+            }
+            catch {
+                listeners[i] = null;
             }
         }
-        catch {
-            bucket[i] = null;
-        }
-    }
-}
-
-function dispose<T>(data: T[]) {
-    let item;
-
-    while (item = data.pop()) {
-        cleanup(item);
-    }
-}
-
-function map<T, R>(
-    data: T[],
-    proxy: ReactiveArray<T>,
-    fn: (this: ReactiveArray<T>, value: T, i: number) => R
-) {
-    let n = data.length,
-        values: R[] = new Array(n);
-
-    for (let i = 0; i < n; i++) {
-        values[i] = fn.call(proxy, data[i], i);
     }
 
-    return values;
-}
+    dispose() {
+        let item;
 
-function on<T, K extends keyof Events<T>>(listeners: Listeners, event: K, listener: Listener<Events<T>[K]>) {
-    let bucket = listeners[event];
-
-    if (bucket === undefined) {
-        listeners[event] = [listener];
-    }
-    else {
-        let hole = bucket.length;
-
-        for (let i = 0, n = hole; i < n; i++) {
-            let l = bucket[i];
-
-            if (l === listener) {
-                return;
-            }
-            else if (l === null && hole === n) {
-                hole = i;
+        while (item = super.pop()) {
+            if (isReactiveObject(item)) {
+                item.dispose();
             }
         }
-
-        bucket[hole] = listener;
-    }
-}
-
-function once<T, K extends keyof Events<T>>(listeners: Listeners, event: K, listener: Listener<Events<T>[K]>) {
-    listener.once = true;
-    on(listeners, event, listener);
-}
-
-function pop<T>(data: T[], listeners: Listeners) {
-    let item = data.pop();
-
-    if (item !== undefined) {
-        cleanup(item);
-        dispatch(listeners, 'pop', { item });
     }
 
-    return item;
-}
+    on<K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) {
+        let listeners = this.listeners[event];
 
-function push<T>(data: T[], listeners: Listeners, items: T[]) {
-    let n = data.push(...items);
+        if (listeners === undefined) {
+            this.listeners[event] = [listener];
+        }
+        else {
+            let hole = listeners.length;
 
-    dispatch(listeners, 'push', { items });
+            for (let i = 0, n = hole; i < n; i++) {
+                let l = listeners[i];
 
-    return n;
-}
+                if (l === listener) {
+                    return;
+                }
+                else if (l === null && hole === n) {
+                    hole = i;
+                }
+            }
 
-function reverse<T>(data: T[], listeners: Listeners) {
-    data.reverse();
-    dispatch(listeners, 'reverse');
-}
-
-function shift<T>(data: T[], listeners: Listeners) {
-    let item = data.shift();
-
-    if (item !== undefined) {
-        cleanup(item);
-        dispatch(listeners, 'shift', { item });
+            listeners[hole] = listener;
+        }
     }
 
-    return item;
-}
+    once<K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) {
+        listener.once = true;
+        this.on(event, listener);
+    }
 
-function sort<T>(data: T[], listeners: Listeners, fn: (a: T, b: T) => number) {
-    data.sort((a, b) => fn(a, b));
-    dispatch(listeners, 'sort');
-}
+    pop() {
+        let item = super.pop();
 
-function splice<T>(data: T[], listeners: Listeners, start: number, deleteCount: number = data.length, items: T[] = []) {
-    let removed = data.splice(start, deleteCount, ...items);
-
-    if (items.length > 0 || removed.length > 0) {
-        for (let i = 0, n = removed.length; i < n; i++) {
-            cleanup(removed[i]);
+        if (item !== undefined) {
+            if (isReactiveObject(item)) {
+                item.dispose();
+            }
+            this.dispatch('pop', { item });
         }
 
-        dispatch(listeners, 'splice', {
-            deleteCount,
-            items,
-            start
-        });
+        return item;
     }
 
-    return removed;
-}
+    push(...items: T[]) {
+        let length = super.push(...items);
 
-function unshift<T>(data: T[], listeners: Listeners, items: T[]) {
-    let length = data.unshift(...items);
+        this.dispatch('push', { items });
 
-    dispatch(listeners, 'unshift', { items });
+        return length;
+    }
 
-    return length;
-}
+    reverse() {
+        super.reverse();
+        this.dispatch('reverse');
 
+        return this;
+    }
 
-export default <T>(data: T[]) => {
-    let listeners: Listeners = {},
-        proxy = new Proxy({}, {
-            get(_, key: any) {
-                if (isNumber(key)) {
-                    return data[key];
-                }
-                else if (key in wrapper) {
-                    return wrapper[key as keyof typeof wrapper];
-                }
-                else if (key === 'length') {
-                    return data.length;
-                }
+    shift() {
+        let item = super.shift();
 
-                return data[key];
-            },
-            set(_, key: any, value: any) {
-                if (isNumber(key)) {
-                    splice(data, listeners, key, 1, value);
-                }
-                else if (key === 'length') {
-                    if (value >= data.length) {
-                    }
-                    else if (value === 0) {
-                        clear(data, listeners);
-                    }
-                    else {
-                        splice(data, listeners, value);
-                    }
-                }
-                else {
-                    return false;
-                }
-
-                return true;
+        if (item !== undefined) {
+            if (isReactiveObject(item)) {
+                item.dispose();
             }
-        }) as ReactiveArray<T>,
-        wrapper = {
-            [REACTIVE_ARRAY]: true,
-            at: (i: number) => data[i],
-            clear: () => {
-                clear(data, listeners);
-                return proxy;
-            },
-            dispatch: <K extends keyof Events<T>, V>(event: K, value?: V) => {
-                dispatch(listeners, event, value);
-                return proxy;
-            },
-            dispose: () => {
-                dispose(data);
-                return proxy;
-            },
-            map: <R>(fn: (this: ReactiveArray<T>, value: T, i: number) => R) => {
-                return map(data, proxy, fn);
-            },
-            on: <K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) => {
-                on(listeners, event, listener);
-                return proxy;
-            },
-            once: <K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) => {
-                once(listeners, event, listener);
-                return proxy;
-            },
-            pop: () => pop(data, listeners),
-            push: (...items: T[]) => push(data, listeners, items),
-            reverse: () => {
-                reverse(data, listeners);
-                return proxy;
-            },
-            shift: () => shift(data, listeners),
-            sort: (fn: (a: T, b: T) => number) => {
-                sort(data, listeners, fn);
-                return proxy;
-            },
-            splice: (start: number, deleteCount?: number, ...items: T[]) => {
-                return splice(data, listeners, start, deleteCount, items);
-            },
-            unshift: (...items: T[]) => unshift(data, listeners, items),
-        };
+            this.dispatch('shift', { item });
+        }
 
-    return proxy;
-};
-export type { ReactiveArray };
+        return item;
+    }
+
+    sort(fn: (a: T, b: T) => number) {
+        super.sort(fn);
+        this.dispatch('sort');
+
+        return this;
+    }
+
+    splice(start: number, deleteCount: number = this.length, ...items: T[]) {
+        let removed = super.splice(start, deleteCount, ...items);
+
+        if (items.length > 0 || removed.length > 0) {
+            for (let i = 0, n = removed.length; i < n; i++) {
+                let item = removed[i];
+
+                if (isReactiveObject(item)) {
+                    item.dispose();
+                }
+            }
+
+            this.dispatch('splice', { deleteCount, items, start });
+        }
+
+        return removed;
+    }
+
+    unshift(...items: T[]) {
+        let length = super.unshift(...items);
+
+        this.dispatch('unshift', { items });
+
+        return length;
+    }
+}
+
+
+export { ReactiveArray };
