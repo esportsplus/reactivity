@@ -1,4 +1,4 @@
-import { defineProperty, isArray, isObject, isPromise } from '@esportsplus/utilities';
+import { defineProperty, isArray, isPromise } from '@esportsplus/utilities';
 import { computed, dispose, effect, read, root, set, signal } from '~/system';
 import { Computed, Signal } from '~/types';
 import { REACTIVE_OBJECT } from '~/constants';
@@ -13,13 +13,12 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
 
 
     constructor(data: T) {
-        let keys = Object.keys(data);
+        let keys = Object.keys(data),
+            key: keyof T | undefined;
 
-        for (let i = 0, n = keys.length; i < n; i++) {
-            let key = keys[i],
-                value = data[key];
-
-            let type = typeof value;
+        while (key = keys.pop()) {
+            let value = data[key],
+                type = typeof value;
 
             if (type === 'function') {
                 let node: Computed<T[typeof key]> | Signal<T[typeof key] | undefined> | undefined;
@@ -29,19 +28,19 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
                     get: () => {
                         if (node === undefined) {
                             root(() => {
-                                node = computed(value as Computed<T[typeof key]>['fn']);
+                                node = computed(value as Computed<T[keyof T]>['fn']);
 
                                 if (isPromise(node.value)) {
                                     let factory = node,
                                         version = 0;
 
-                                    node = signal<T[typeof key] | undefined>(undefined);
+                                    node = signal<T[keyof T] | undefined>(undefined);
 
                                     (this.disposers ??= []).push(
                                         effect(() => {
                                             let id = ++version;
 
-                                            (read(factory) as Promise<T[typeof key]>).then((v) => {
+                                            (read(factory) as Promise<T[keyof T]>).then((v) => {
                                                 if (id !== version) {
                                                     return;
                                                 }
@@ -52,7 +51,7 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
                                     )
                                 }
                                 else {
-                                    (this.disposers ??= []).push(() => dispose(node as Computed<T[typeof key]>));
+                                    (this.disposers ??= []).push(() => dispose(node as Computed<T[keyof T]>));
                                 }
                             });
                         }
@@ -65,7 +64,7 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
             }
 
             if (value == null || type !== 'object') {
-                // Avoid isArray when possible
+                // Skip isArray when possible
             }
             else if (isArray(value)) {
                 let node = new ReactiveArray(value);
@@ -111,7 +110,7 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
 
 
 const isReactiveObject = (value: any): value is ReactiveObject<any> => {
-    return isObject(value) && REACTIVE_OBJECT in value;
+    return typeof value === 'object' && value !== null && REACTIVE_OBJECT in value;
 };
 
 
