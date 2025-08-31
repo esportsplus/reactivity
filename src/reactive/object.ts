@@ -67,7 +67,7 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
                 // Skip isArray when possible
             }
             else if (isArray(value)) {
-                let node = new ReactiveArray(value);
+                let node = new ReactiveArray(...value);
 
                 (this.disposers ??= []).push( () => node.dispose() );
 
