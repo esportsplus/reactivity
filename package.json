@@ -2,7 +2,7 @@
     "author": "ICJR",
     "dependencies": {
         "@esportsplus/custom-function": "^0.0.13",
-        "@esportsplus/utilities": "^0.22.1"
+        "@esportsplus/utilities": "^0.22.2"
     },
     "devDependencies": {
         "@esportsplus/typescript": "^0.9.2"

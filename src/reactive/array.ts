@@ -1,4 +1,5 @@
 import { REACTIVE_ARRAY } from '~/constants';
+import { read, set, signal } from '~/system';
 import { isReactiveObject } from './object';
 
 
@@ -40,6 +41,7 @@ type Listeners = Record<string, (Listener<any> | null)[]>;
 class ReactiveArray<T> extends Array<T> {
     [REACTIVE_ARRAY] = true;
     listeners: Listeners = {};
+    trigger = signal(false);
 
 
     constructor(...items: T[]) {
@@ -47,9 +49,22 @@ class ReactiveArray<T> extends Array<T> {
     }
 
 
+    get length() {
+        read(this.trigger);
+
+        return super.length;
+    }
+
+    set length(n: number) {
+        super.length = n;
+        set(this.trigger, !this.trigger.value);
+    }
+
+
     clear() {
         this.dispose();
         this.dispatch('clear');
+        set(this.trigger, !this.trigger.value);
     }
 
     dispatch<K extends keyof Events<T>, V>(event: K, value?: V) {
@@ -126,6 +141,7 @@ class ReactiveArray<T> extends Array<T> {
                 item.dispose();
             }
             this.dispatch('pop', { item });
+            set(this.trigger, !this.trigger.value);
         }
 
         return item;
@@ -135,6 +151,7 @@ class ReactiveArray<T> extends Array<T> {
         let length = super.push(...items);
 
         this.dispatch('push', { items });
+        set(this.trigger, !this.trigger.value);
 
         return length;
     }
@@ -142,6 +159,7 @@ class ReactiveArray<T> extends Array<T> {
     reverse() {
         super.reverse();
         this.dispatch('reverse');
+        set(this.trigger, !this.trigger.value);
 
         return this;
     }
@@ -154,6 +172,7 @@ class ReactiveArray<T> extends Array<T> {
                 item.dispose();
             }
             this.dispatch('shift', { item });
+            set(this.trigger, !this.trigger.value);
         }
 
         return item;
@@ -162,6 +181,7 @@ class ReactiveArray<T> extends Array<T> {
     sort(fn: (a: T, b: T) => number) {
         super.sort(fn);
         this.dispatch('sort');
+        set(this.trigger, !this.trigger.value);
 
         return this;
     }
@@ -179,6 +199,7 @@ class ReactiveArray<T> extends Array<T> {
             }
 
             this.dispatch('splice', { deleteCount, items, start });
+            set(this.trigger, !this.trigger.value);
         }
 
         return removed;
@@ -188,6 +209,7 @@ class ReactiveArray<T> extends Array<T> {
         let length = super.unshift(...items);
 
         this.dispatch('unshift', { items });
+        set(this.trigger, !this.trigger.value);
 
         return length;
     }
