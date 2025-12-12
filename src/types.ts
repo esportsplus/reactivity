@@ -8,7 +8,7 @@ interface Computed<T> {
     cleanup: VoidFunction | VoidFunction[] | null;
     deps: Link | null;
     depsTail: Link | null;
-    fn: (onCleanup?: (fn: VoidFunction) => typeof fn) => T;
+    fn: (this: Computed<T>, onCleanup?: (fn: VoidFunction) => typeof fn) => T;
     height: number;
     nextHeap: Computed<unknown> | undefined;
     prevHeap: Computed<unknown>;
