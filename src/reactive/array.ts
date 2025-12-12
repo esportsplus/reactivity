@@ -22,7 +22,9 @@ type Events<T> = {
     shift: {
         item: T;
     };
-    sort: undefined;
+    sort: {
+        order: number[];
+    };
     splice: {
         deleteCount: number;
         items: T[];
@@ -200,8 +202,46 @@ class ReactiveArray<T> extends Array<T> {
     }
 
     sort(fn?: (a: T, b: T) => number) {
+        let before = new Array(this.length) as T[];
+
+        for (let i = 0, n = before.length; i < n; i++) {
+            before[i] = this[i];
+        }
+
         super.sort(fn);
-        this.dispatch('sort');
+
+        let buckets = new Map<any, number[]>(),
+            cursors = new Map<any, number>(),
+            order = new Array(this.length);
+
+        for (let i = 0, n = before.length; i < n; i++) {
+            let value = before[i],
+                list = buckets.get(value);
+
+            if (!list) {
+                buckets.set(value, [i]);
+            }
+            else {
+                list.push(i);
+            }
+        }
+
+        for (let i = 0, n = this.length; i < n; i++) {
+            let value = this[i],
+                list = buckets.get(value);
+
+            if (!list) {
+                order[i] = i;
+                continue;
+            }
+
+            let cursor = cursors.get(value) || 0;
+
+            order[i] = list[cursor];
+            cursors.set(value, cursor + 1);
+        }
+
+        this.dispatch('sort', { order });
 
         return this;
     }
