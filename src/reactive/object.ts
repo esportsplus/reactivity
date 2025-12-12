@@ -1,23 +1,20 @@
 import { defineProperty, isArray, isPromise } from '@esportsplus/utilities';
 import { computed, dispose, effect, read, root, set, signal } from '~/system';
 import { Computed, Signal } from '~/types';
-import { REACTIVE_OBJECT } from '~/constants';
+import { REACTIVE_OBJECT, TYPE } from '~/constants';
 import { ReactiveArray } from './array';
 
 
 class ReactiveObject<T extends Record<PropertyKey, unknown>> {
-    [REACTIVE_OBJECT] = true;
-
-
     private disposers: VoidFunction[] | null = null;
 
 
     constructor(data: T) {
-        let keys = Object.keys(data),
-            key: keyof T | undefined;
+        let keys = Object.keys(data);
 
-        while (key = keys.pop()) {
-            let value = data[key],
+        for (let i = 0, n = keys.length; i < n; ++i) {
+            let key: keyof T | undefined = keys[i],
+                value = data[key],
                 type = typeof value;
 
             if (type === 'function') {
@@ -108,9 +105,11 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
     }
 }
 
+Object.defineProperty(ReactiveObject.prototype, TYPE, { value: REACTIVE_OBJECT });
+
 
 const isReactiveObject = (value: any): value is ReactiveObject<any> => {
-    return typeof value === 'object' && value !== null && REACTIVE_OBJECT in value;
+    return typeof value === 'object' && value !== null && value[TYPE] === REACTIVE_OBJECT;
 };
 
 

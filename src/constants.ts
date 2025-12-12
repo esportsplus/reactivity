@@ -1,10 +1,10 @@
-const COMPUTED = Symbol('computed');
+const COMPUTED = Symbol('reactivity.computed');
 
-const REACTIVE_ARRAY = Symbol('reactive.array');
+const REACTIVE_ARRAY = Symbol('reactivity.reactive.array');
 
-const REACTIVE_OBJECT = Symbol('reactive.object');
+const REACTIVE_OBJECT = Symbol('reactivity.reactive.object');
 
-const SIGNAL = Symbol('signal');
+const SIGNAL = Symbol('reactivity.signal');
 
 
 const STABILIZER_IDLE = 0;
@@ -29,6 +29,9 @@ const STATE_IN_HEAP = 1 << 3;
 const STATE_NOTIFY_MASK = (STATE_CHECK | STATE_DIRTY);
 
 
+const TYPE = Symbol('reactivity.type');
+
+
 export {
     COMPUTED,
     REACTIVE_ARRAY,
@@ -43,5 +46,6 @@ export {
     STATE_DIRTY,
     STATE_IN_HEAP,
     STATE_NONE,
-    STATE_RECOMPUTING
+    STATE_RECOMPUTING,
+    TYPE
 };

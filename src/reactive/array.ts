@@ -1,5 +1,5 @@
 import { isArray } from '@esportsplus/utilities';
-import { REACTIVE_ARRAY } from '~/constants';
+import { REACTIVE_ARRAY, TYPE } from '~/constants';
 import { isReactiveObject } from './object';
 
 
@@ -42,7 +42,6 @@ type Listeners = Record<string, (Listener<any> | null)[]>;
 
 
 class ReactiveArray<T> extends Array<T> {
-    [REACTIVE_ARRAY] = true;
     listeners: Listeners = {};
 
 
@@ -67,15 +66,16 @@ class ReactiveArray<T> extends Array<T> {
             if (isArray(item)) {
                 for (let j = 0, o = item.length; j < o; j++) {
                     added.push(item[j]);
+                    super.push(item[j]);
                 }
             }
             else {
                 added.push(item as T);
+                super.push(item as T);
             }
         }
 
         if (added.length) {
-            super.push(...added);
             this.dispatch('concat', { items: added });
         }
 
@@ -107,12 +107,18 @@ class ReactiveArray<T> extends Array<T> {
                 listeners[i] = null;
             }
         }
+
+        while (listeners.length && listeners[listeners.length - 1] === null) {
+            listeners.pop();
+        }
     }
 
     dispose() {
         let item;
 
-        while (item = super.pop()) {
+        while (this.length) {
+            item = super.pop();
+
             if (isReactiveObject(item)) {
                 item.dispose();
             }
@@ -140,6 +146,10 @@ class ReactiveArray<T> extends Array<T> {
             }
 
             listeners[hole] = listener;
+
+            while (listeners.length && listeners[listeners.length - 1] === null) {
+                listeners.pop();
+            }
         }
     }
 
@@ -189,7 +199,7 @@ class ReactiveArray<T> extends Array<T> {
         return item;
     }
 
-    sort(fn: (a: T, b: T) => number) {
+    sort(fn?: (a: T, b: T) => number) {
         super.sort(fn);
         this.dispatch('sort');
 
@@ -222,6 +232,8 @@ class ReactiveArray<T> extends Array<T> {
         return length;
     }
 }
+
+Object.defineProperty(ReactiveArray.prototype, TYPE, { value: REACTIVE_ARRAY });
 
 
 export { ReactiveArray };

@@ -2,7 +2,8 @@ import { isObject } from '@esportsplus/utilities';
 import {
     COMPUTED, SIGNAL,
     STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
-    STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_NOTIFY_MASK, STATE_RECOMPUTING
+    STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_NOTIFY_MASK, STATE_RECOMPUTING,
+    TYPE
 } from './constants';
 import { Computed, Link, Signal } from './types';
 
@@ -321,7 +322,7 @@ function unlink(link: Link): Link | null {
     if (prevSub) {
         prevSub.nextSub = nextSub;
     }
-    else if ((dep.subs = nextSub) === null && 'fn' in dep) {
+    else if ((dep.subs = nextSub) === null && dep[TYPE] === COMPUTED) {
         dispose(dep);
     }
 
@@ -340,7 +341,7 @@ function update<T>(computed: Computed<T>): void {
         for (let link = computed.deps; link; link = link.nextDep) {
             let dep = link.dep;
 
-            if ('fn' in dep) {
+            if (dep[TYPE] === COMPUTED) {
                 update(dep);
 
                 if (computed.state & STATE_DIRTY) {
@@ -360,7 +361,7 @@ function update<T>(computed: Computed<T>): void {
 
 const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
     let self: Computed<T> = {
-            [COMPUTED]: true,
+            [TYPE]: COMPUTED,
             cleanup: null,
             deps: null,
             depsTail: null,
@@ -427,11 +428,11 @@ const effect = <T>(fn: Computed<T>['fn']) => {
 };
 
 const isComputed = (value: unknown): value is Computed<unknown> => {
-    return isObject(value) && COMPUTED in value;
+    return isObject(value) && value[TYPE] === COMPUTED;
 };
 
 const isSignal = (value: unknown): value is Signal<unknown> => {
-    return isObject(value) && SIGNAL in value;
+    return isObject(value) && value[TYPE] === SIGNAL;
 };
 
 const onCleanup = (fn: VoidFunction): typeof fn => {
@@ -460,7 +461,7 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
     if (observer) {
         link(node, observer);
 
-        if ('fn' in node) {
+        if (node[TYPE] === COMPUTED) {
             let height = node.height;
 
             if (height >= observer.height) {
@@ -541,7 +542,7 @@ const set = <T>(signal: Signal<T>, value: T) => {
 
 const signal = <T>(value: T): Signal<T> => {
     return {
-        [SIGNAL]: true,
+        [TYPE]: SIGNAL,
         subs: null,
         subsTail: null,
         value,
