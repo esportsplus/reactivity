@@ -1,7 +1,7 @@
 import { defineProperty, isArray, isPromise } from '@esportsplus/utilities';
 import { computed, dispose, effect, read, root, set, signal } from '~/system';
 import { Computed, Signal } from '~/types';
-import { REACTIVE_OBJECT, TYPE } from '~/constants';
+import { REACTIVE_OBJECT } from '~/constants';
 import { ReactiveArray } from './array';
 
 
@@ -105,11 +105,11 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
     }
 }
 
-Object.defineProperty(ReactiveObject.prototype, TYPE, { value: REACTIVE_OBJECT });
+Object.defineProperty(ReactiveObject.prototype, REACTIVE_OBJECT, { value: true });
 
 
 const isReactiveObject = (value: any): value is ReactiveObject<any> => {
-    return typeof value === 'object' && value !== null && value[TYPE] === REACTIVE_OBJECT;
+    return typeof value === 'object' && value !== null && value[REACTIVE_OBJECT] === true;
 };
 
 

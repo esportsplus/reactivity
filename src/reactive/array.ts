@@ -1,5 +1,5 @@
 import { isArray } from '@esportsplus/utilities';
-import { REACTIVE_ARRAY, TYPE } from '~/constants';
+import { REACTIVE_ARRAY } from '~/constants';
 import { isReactiveObject } from './object';
 
 
@@ -233,7 +233,7 @@ class ReactiveArray<T> extends Array<T> {
     }
 }
 
-Object.defineProperty(ReactiveArray.prototype, TYPE, { value: REACTIVE_ARRAY });
+Object.defineProperty(ReactiveArray.prototype, REACTIVE_ARRAY, { value: true });
 
 
 export { ReactiveArray };

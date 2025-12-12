@@ -2,8 +2,7 @@ import { isObject } from '@esportsplus/utilities';
 import {
     COMPUTED, SIGNAL,
     STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
-    STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_NOTIFY_MASK, STATE_RECOMPUTING,
-    TYPE
+    STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_NOTIFY_MASK, STATE_RECOMPUTING
 } from './constants';
 import { Computed, Link, Signal } from './types';
 
@@ -322,7 +321,7 @@ function unlink(link: Link): Link | null {
     if (prevSub) {
         prevSub.nextSub = nextSub;
     }
-    else if ((dep.subs = nextSub) === null && dep[TYPE] === COMPUTED) {
+    else if ((dep.subs = nextSub) === null && dep.type === COMPUTED) {
         dispose(dep);
     }
 
@@ -341,7 +340,7 @@ function update<T>(computed: Computed<T>): void {
         for (let link = computed.deps; link; link = link.nextDep) {
             let dep = link.dep;
 
-            if (dep[TYPE] === COMPUTED) {
+            if (dep.type === COMPUTED) {
                 update(dep);
 
                 if (computed.state & STATE_DIRTY) {
@@ -361,7 +360,6 @@ function update<T>(computed: Computed<T>): void {
 
 const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
     let self: Computed<T> = {
-            [TYPE]: COMPUTED,
             cleanup: null,
             deps: null,
             depsTail: null,
@@ -372,6 +370,7 @@ const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
             state: STATE_NONE,
             subs: null,
             subsTail: null,
+            type: COMPUTED,
             value: undefined as T,
         };
 
@@ -428,11 +427,11 @@ const effect = <T>(fn: Computed<T>['fn']) => {
 };
 
 const isComputed = (value: unknown): value is Computed<unknown> => {
-    return isObject(value) && value[TYPE] === COMPUTED;
+    return isObject(value) && value.type === COMPUTED;
 };
 
 const isSignal = (value: unknown): value is Signal<unknown> => {
-    return isObject(value) && value[TYPE] === SIGNAL;
+    return isObject(value) && value.type === SIGNAL;
 };
 
 const onCleanup = (fn: VoidFunction): typeof fn => {
@@ -461,7 +460,7 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
     if (observer) {
         link(node, observer);
 
-        if (node[TYPE] === COMPUTED) {
+        if (node.type === COMPUTED) {
             let height = node.height;
 
             if (height >= observer.height) {
@@ -542,9 +541,9 @@ const set = <T>(signal: Signal<T>, value: T) => {
 
 const signal = <T>(value: T): Signal<T> => {
     return {
-        [TYPE]: SIGNAL,
         subs: null,
         subsTail: null,
+        type: SIGNAL,
         value,
     };
 };

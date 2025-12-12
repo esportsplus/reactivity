@@ -29,9 +29,6 @@ const STATE_IN_HEAP = 1 << 3;
 const STATE_NOTIFY_MASK = (STATE_CHECK | STATE_DIRTY);
 
 
-const TYPE = Symbol('reactivity.type');
-
-
 export {
     COMPUTED,
     REACTIVE_ARRAY,
@@ -46,6 +43,5 @@ export {
     STATE_DIRTY,
     STATE_IN_HEAP,
     STATE_NONE,
-    STATE_RECOMPUTING,
-    TYPE
+    STATE_RECOMPUTING
 };

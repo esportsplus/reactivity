@@ -1,10 +1,9 @@
-import { COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING, TYPE } from './constants';
+import { COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
 import { ReactiveArray } from './reactive/array';
 import { ReactiveObject } from './reactive/object';
 
 
 interface Computed<T> {
-    [TYPE]: typeof COMPUTED;
     cleanup: VoidFunction | VoidFunction[] | null;
     deps: Link | null;
     depsTail: Link | null;
@@ -20,6 +19,7 @@ interface Computed<T> {
         typeof STATE_RECOMPUTING;
     subs: Link | null;
     subsTail: Link | null;
+    type: typeof COMPUTED;
     value: T;
 }
 
@@ -33,9 +33,9 @@ interface Link {
 }
 
 type Signal<T> = {
-    [TYPE]: typeof SIGNAL;
     subs: Link | null;
     subsTail: Link | null;
+    type: typeof SIGNAL;
     value: T;
 };
 
