@@ -1,9 +1,13 @@
+import { isArray } from '@esportsplus/utilities';
 import { REACTIVE_ARRAY } from '~/constants';
 import { isReactiveObject } from './object';
 
 
 type Events<T> = {
     clear: undefined,
+    concat: {
+        items: T[];
+    };
     pop: {
         item: T;
     };
@@ -50,6 +54,32 @@ class ReactiveArray<T> extends Array<T> {
     clear() {
         this.dispose();
         this.dispatch('clear');
+    }
+
+    concat(...items: ConcatArray<T>[]): ReactiveArray<T>;
+    concat(...items: (T | ConcatArray<T>)[]): ReactiveArray<T>;
+    concat(...items: (T | ConcatArray<T>)[]) {
+        let added: T[] = [];
+
+        for (let i = 0, n = items.length; i < n; i++) {
+            let item = items[i];
+
+            if (isArray(item)) {
+                for (let j = 0, o = item.length; j < o; j++) {
+                    added.push(item[j]);
+                }
+            }
+            else {
+                added.push(item as T);
+            }
+        }
+
+        if (added.length) {
+            super.push(...added);
+            this.dispatch('concat', { items: added });
+        }
+
+        return this;
     }
 
     dispatch<K extends keyof Events<T>, V>(event: K, value?: V) {
