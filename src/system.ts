@@ -211,7 +211,7 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
     version++;
 
     try {
-        value = computed.fn(onCleanup);
+        value = computed.fn.call(computed, onCleanup);
     }
     catch (e) {
         ok = false;
