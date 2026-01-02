@@ -1,0 +1,72 @@
+import ts from 'typescript';
+import type { Bindings, TransformOptions, TransformResult } from '~/types';
+import { mightNeedTransform } from './detector';
+import { injectAutoDispose } from './transforms/auto-dispose';
+import { transformReactiveArrays } from './transforms/reactive-array';
+import { transformReactiveObjects } from './transforms/reactive-object';
+
+
+const transform = (
+    sourceFile: ts.SourceFile,
+    options?: TransformOptions
+): TransformResult => {
+    let bindings: Bindings = new Map(),
+        code = sourceFile.getFullText(),
+        current = sourceFile,
+        result: string;
+
+    if (!mightNeedTransform(code)) {
+        return { code, sourceFile, transformed: false };
+    }
+
+    result = transformReactiveObjects(current, bindings);
+
+    if (result !== code) {
+        current = ts.createSourceFile(sourceFile.fileName, result, sourceFile.languageVersion, true);
+        code = result;
+    }
+
+    result = transformReactiveArrays(current, bindings);
+
+    if (result !== code) {
+        current = ts.createSourceFile(sourceFile.fileName, result, sourceFile.languageVersion, true);
+        code = result;
+    }
+
+    if (options?.autoDispose) {
+        result = injectAutoDispose(current);
+
+        if (result !== code) {
+            current = ts.createSourceFile(sourceFile.fileName, result, sourceFile.languageVersion, true);
+        }
+    }
+
+    if (current === sourceFile) {
+        return { code: result, sourceFile, transformed: false };
+    }
+
+    return {
+        code: result,
+        sourceFile: current,
+        transformed: true
+    };
+};
+
+function createTransformer(
+    _program: ts.Program,
+    options?: TransformOptions
+): ts.TransformerFactory<ts.SourceFile> {
+    return (_context: ts.TransformationContext) => {
+        return (sourceFile: ts.SourceFile): ts.SourceFile => {
+            let result = transform(sourceFile, options);
+
+            return result.transformed ? result.sourceFile : sourceFile;
+        };
+    };
+}
+
+
+export { createTransformer, mightNeedTransform, transform };
+export { injectAutoDispose } from './transforms/auto-dispose';
+export { transformReactiveArrays } from './transforms/reactive-array';
+export { transformReactiveObjects } from './transforms/reactive-object';

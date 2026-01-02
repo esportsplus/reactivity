@@ -1,6 +1,12 @@
 import { isArray } from '@esportsplus/utilities';
-import { REACTIVE_ARRAY } from '~/constants';
-import { isReactiveObject } from './object';
+import { REACTIVE_ARRAY, REACTIVE_OBJECT } from '~/constants';
+import { read, set, signal } from '~/system';
+import { Signal } from '~/types';
+
+
+function isReactiveObject(value: unknown): value is { dispose(): void } {
+    return value !== null && typeof value === 'object' && (value as any)[REACTIVE_OBJECT] === true;
+}
 
 
 type Events<T> = {
@@ -44,16 +50,42 @@ type Listeners = Record<string, (Listener<any> | null)[]>;
 
 
 class ReactiveArray<T> extends Array<T> {
+    private _length: Signal<number>;
+
     listeners: Listeners = {};
 
 
     constructor(...items: T[]) {
         super(...items);
+        this._length = signal(items.length);
     }
 
 
+    // Compiler-targeted accessor for reactive length
+    $length() {
+        return read(this._length);
+    }
+
+    // Compiler-targeted accessor for reactive index assignment
+    $set(i: number, value: T) {
+        let prev = this[i];
+
+        if (prev === value) {
+            return;
+        }
+
+        this[i] = value;
+
+        if (i >= super.length) {
+            set(this._length, i + 1);
+        }
+
+        this.dispatch('set', { index: i, item: value });
+    }
+
     clear() {
         this.dispose();
+        set(this._length, 0);
         this.dispatch('clear');
     }
 
@@ -78,6 +110,7 @@ class ReactiveArray<T> extends Array<T> {
         }
 
         if (added.length) {
+            set(this._length, super.length);
             this.dispatch('concat', { items: added });
         }
 
@@ -125,6 +158,8 @@ class ReactiveArray<T> extends Array<T> {
                 item.dispose();
             }
         }
+
+        set(this._length, 0);
     }
 
     on<K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) {
@@ -164,9 +199,12 @@ class ReactiveArray<T> extends Array<T> {
         let item = super.pop();
 
         if (item !== undefined) {
+            set(this._length, super.length);
+
             if (isReactiveObject(item)) {
                 item.dispose();
             }
+
             this.dispatch('pop', { item });
         }
 
@@ -176,6 +214,7 @@ class ReactiveArray<T> extends Array<T> {
     push(...items: T[]) {
         let length = super.push(...items);
 
+        set(this._length, length);
         this.dispatch('push', { items });
 
         return length;
@@ -192,9 +231,12 @@ class ReactiveArray<T> extends Array<T> {
         let item = super.shift();
 
         if (item !== undefined) {
+            set(this._length, super.length);
+
             if (isReactiveObject(item)) {
                 item.dispose();
             }
+
             this.dispatch('shift', { item });
         }
 
@@ -250,6 +292,8 @@ class ReactiveArray<T> extends Array<T> {
         let removed = super.splice(start, deleteCount, ...items);
 
         if (items.length > 0 || removed.length > 0) {
+            set(this._length, super.length);
+
             for (let i = 0, n = removed.length; i < n; i++) {
                 let item = removed[i];
 
@@ -267,6 +311,7 @@ class ReactiveArray<T> extends Array<T> {
     unshift(...items: T[]) {
         let length = super.unshift(...items);
 
+        set(this._length, length);
         this.dispatch('unshift', { items });
 
         return length;
