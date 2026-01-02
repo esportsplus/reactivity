@@ -1,19 +1,28 @@
 import { resolve } from 'path';
 import { defineConfig } from 'vite';
-import { plugin as reactivity } from '../build/refactoring/plugins/vite.js';
+import { plugin as reactivity } from '../build/plugins/vite.js';
 
 
 export default defineConfig({
     build: {
         lib: {
-            entry: resolve(__dirname, 'index.ts'),
-            fileName: 'index',
+            entry: {
+                arrays: resolve(__dirname, 'arrays.ts'),
+                effects: resolve(__dirname, 'effects.ts'),
+                index: resolve(__dirname, 'index.ts'),
+                nested: resolve(__dirname, 'nested.ts'),
+                objects: resolve(__dirname, 'objects.ts'),
+                primitives: resolve(__dirname, 'primitives.ts')
+            },
             formats: ['es']
         },
         minify: false,
         outDir: resolve(__dirname, 'build'),
         rollupOptions: {
-            external: ['@esportsplus/utilities']
+            external: ['@esportsplus/utilities'],
+            output: {
+                entryFileNames: '[name].js'
+            }
         },
         target: 'esnext'
     },
@@ -22,9 +31,9 @@ export default defineConfig({
     ],
     resolve: {
         alias: {
-            '@esportsplus/reactivity/constants': resolve(__dirname, '../src/refactoring/constants'),
-            '@esportsplus/reactivity/reactive/array': resolve(__dirname, '../src/refactoring/reactive/array'),
-            '@esportsplus/reactivity': resolve(__dirname, '../src/refactoring'),
+            '@esportsplus/reactivity/constants': resolve(__dirname, '../src/constants'),
+            '@esportsplus/reactivity/reactive/array': resolve(__dirname, '../src/reactive/array'),
+            '@esportsplus/reactivity': resolve(__dirname, '../src'),
             '~': resolve(__dirname, '../src')
         }
     }

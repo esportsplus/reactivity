@@ -4,7 +4,7 @@ import { ReactiveArray, ReactiveObject } from './reactive';
 
 
 // Transformer types
-type BindingType = 'array' | 'object';
+type BindingType = 'array' | 'computed' | 'object' | 'signal';
 
 type Bindings = Map<string, BindingType>;
 

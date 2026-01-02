@@ -2,8 +2,9 @@ import ts from 'typescript';
 import { createTransformer } from '~/core';
 
 
-const transformer = (program: ts.Program): ts.TransformerFactory<ts.SourceFile> => {
-    return createTransformer(program);
+// TypeScript custom transformers API requires program parameter, but we don't use it
+const transformer = (_program: ts.Program): ts.TransformerFactory<ts.SourceFile> => {
+    return createTransformer();
 };
 
 

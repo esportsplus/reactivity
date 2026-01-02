@@ -1,12 +1,6 @@
 import ts from 'typescript';
 import type { Bindings } from '~/types';
-
-
-interface Replacement {
-    end: number;
-    newText: string;
-    start: number;
-}
+import { applyReplacements, Replacement } from './utils';
 
 
 function getPropertyPath(node: ts.PropertyAccessExpression): string | null {
@@ -60,7 +54,9 @@ const transformReactiveArrays = (
     let code = sourceFile.getFullText(),
         replacements: Replacement[] = [];
 
-    function collectBindings(node: ts.Node): void {
+    // Single-pass visitor: collect bindings and find replacements together
+    function visit(node: ts.Node): void {
+        // Collect array bindings from variable declarations
         if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
             if (ts.isIdentifier(node.initializer) && bindings.get(node.initializer.text) === 'array') {
                 bindings.set(node.name.text, 'array');
@@ -75,8 +71,11 @@ const transformReactiveArrays = (
             }
         }
 
+        // Collect array bindings from function parameters
         if ((ts.isFunctionDeclaration(node) || ts.isArrowFunction(node)) && node.parameters) {
-            for (let param of node.parameters) {
+            for (let i = 0, n = node.parameters.length; i < n; i++) {
+                let param = node.parameters[i];
+
                 if (ts.isIdentifier(param.name) && param.type) {
                     if (ts.isTypeReferenceNode(param.type) &&
                         ts.isIdentifier(param.type.typeName) &&
@@ -87,12 +86,7 @@ const transformReactiveArrays = (
             }
         }
 
-        ts.forEachChild(node, collectBindings);
-    }
-
-    collectBindings(sourceFile);
-
-    function findReplacements(node: ts.Node): void {
+        // Find .length access replacements
         if (ts.isPropertyAccessExpression(node) &&
             node.name.text === 'length' &&
             !isAssignmentTarget(node)) {
@@ -110,6 +104,7 @@ const transformReactiveArrays = (
             }
         }
 
+        // Find array[i] = value replacements
         if (ts.isBinaryExpression(node) &&
             node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
             ts.isElementAccessExpression(node.left)) {
@@ -130,26 +125,12 @@ const transformReactiveArrays = (
             }
         }
 
-        ts.forEachChild(node, findReplacements);
+        ts.forEachChild(node, visit);
     }
 
-    findReplacements(sourceFile);
+    visit(sourceFile);
 
-    if (replacements.length === 0) {
-        return code;
-    }
-
-    replacements.sort((a, b) => b.start - a.start);
-
-    let result = code;
-
-    for (let i = 0, n = replacements.length; i < n; i++) {
-        let r = replacements[i];
-
-        result = result.substring(0, r.start) + r.newText + result.substring(r.end);
-    }
-
-    return result;
+    return applyReplacements(code, replacements);
 };
 
 

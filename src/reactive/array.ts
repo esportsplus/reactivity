@@ -212,6 +212,10 @@ class ReactiveArray<T> extends Array<T> {
     }
 
     push(...items: T[]) {
+        if (!items.length) {
+            return super.length;
+        }
+
         let length = super.push(...items);
 
         set(this._length, length);

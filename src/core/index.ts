@@ -4,6 +4,7 @@ import { mightNeedTransform } from './detector';
 import { injectAutoDispose } from './transforms/auto-dispose';
 import { transformReactiveArrays } from './transforms/reactive-array';
 import { transformReactiveObjects } from './transforms/reactive-object';
+import { transformReactivePrimitives } from './transforms/reactive-primitives';
 
 
 const transform = (
@@ -13,12 +14,14 @@ const transform = (
     let bindings: Bindings = new Map(),
         code = sourceFile.getFullText(),
         current = sourceFile,
+        original = code,
         result: string;
 
     if (!mightNeedTransform(code)) {
         return { code, sourceFile, transformed: false };
     }
 
+    // Run all transforms, only re-parse between transforms if code changed
     result = transformReactiveObjects(current, bindings);
 
     if (result !== code) {
@@ -33,30 +36,37 @@ const transform = (
         code = result;
     }
 
+    result = transformReactivePrimitives(current, bindings);
+
+    if (result !== code) {
+        current = ts.createSourceFile(sourceFile.fileName, result, sourceFile.languageVersion, true);
+        code = result;
+    }
+
     if (options?.autoDispose) {
         result = injectAutoDispose(current);
 
         if (result !== code) {
             current = ts.createSourceFile(sourceFile.fileName, result, sourceFile.languageVersion, true);
+            code = result;
         }
     }
 
-    if (current === sourceFile) {
-        return { code: result, sourceFile, transformed: false };
+    if (code === original) {
+        return { code, sourceFile, transformed: false };
     }
 
     return {
-        code: result,
+        code,
         sourceFile: current,
         transformed: true
     };
 };
 
 function createTransformer(
-    _program: ts.Program,
     options?: TransformOptions
 ): ts.TransformerFactory<ts.SourceFile> {
-    return (_context: ts.TransformationContext) => {
+    return () => {
         return (sourceFile: ts.SourceFile): ts.SourceFile => {
             let result = transform(sourceFile, options);
 
@@ -70,3 +80,4 @@ export { createTransformer, mightNeedTransform, transform };
 export { injectAutoDispose } from './transforms/auto-dispose';
 export { transformReactiveArrays } from './transforms/reactive-array';
 export { transformReactiveObjects } from './transforms/reactive-object';
+export { transformReactivePrimitives } from './transforms/reactive-primitives';

@@ -1,4 +1,5 @@
 import ts from 'typescript';
+import { applyReplacements, Replacement } from './utils';
 
 
 interface Disposable {
@@ -11,12 +12,6 @@ interface FunctionEdit {
     cleanupBodyStart: number;
     disposeCode: string;
     effectsToCapture: { end: number; name: string; start: number }[];
-}
-
-interface Replacement {
-    end: number;
-    newText: string;
-    start: number;
 }
 
 
@@ -182,15 +177,7 @@ const injectAutoDispose = (
         });
     }
 
-    replacements.sort((a, b) => b.start - a.start);
-
-    let result = code;
-
-    for (let r of replacements) {
-        result = result.substring(0, r.start) + r.newText + result.substring(r.end);
-    }
-
-    return result;
+    return applyReplacements(code, replacements);
 };
 
 

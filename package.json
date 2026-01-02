@@ -16,24 +16,24 @@
             "types": "./build/index.d.ts"
         },
         "./constants": {
-            "import": "./build/refactoring/constants.js",
-            "types": "./build/refactoring/constants.d.ts"
+            "import": "./build/constants.js",
+            "types": "./build/constants.d.ts"
         },
         "./plugins/esbuild": {
-            "import": "./build/refactoring/plugins/esbuild.js",
-            "types": "./build/refactoring/plugins/esbuild.d.ts"
+            "import": "./build/plugins/esbuild.js",
+            "types": "./build/plugins/esbuild.d.ts"
         },
         "./plugins/tsc": {
-            "import": "./build/refactoring/plugins/tsc.js",
-            "types": "./build/refactoring/plugins/tsc.d.ts"
+            "import": "./build/plugins/tsc.js",
+            "types": "./build/plugins/tsc.d.ts"
         },
         "./plugins/vite": {
-            "import": "./build/refactoring/plugins/vite.js",
-            "types": "./build/refactoring/plugins/vite.d.ts"
+            "import": "./build/plugins/vite.js",
+            "types": "./build/plugins/vite.d.ts"
         },
         "./reactive/array": {
-            "import": "./build/refactoring/reactive/array.js",
-            "types": "./build/refactoring/reactive/array.d.ts"
+            "import": "./build/reactive/array.js",
+            "types": "./build/reactive/array.d.ts"
         }
     },
     "main": "build/index.js",

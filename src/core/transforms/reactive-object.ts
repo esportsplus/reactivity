@@ -1,5 +1,12 @@
 import ts from 'typescript';
 import type { Bindings } from '~/types';
+import { addMissingImports, applyReplacements, ExtraImport, Replacement } from './utils';
+
+
+let EXTRA_IMPORTS: ExtraImport[] = [
+    { module: '@esportsplus/reactivity/constants', specifier: 'REACTIVE_OBJECT' },
+    { module: '@esportsplus/reactivity/reactive/array', specifier: 'ReactiveArray' }
+];
 
 
 let classCounter = 0;
@@ -11,10 +18,6 @@ interface AnalyzedProperty {
     valueText: string;
 }
 
-
-function generateClassName(): string {
-    return `ReactiveObject_${(++classCounter).toString(36)}`;
-}
 
 function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.SourceFile): AnalyzedProperty | null {
     if (!ts.isPropertyAssignment(prop)) {
@@ -89,54 +92,6 @@ function buildClassCode(className: string, properties: AnalyzedProperty[]): stri
     }
 }`;
 }
-
-function addMissingImports(code: string, needed: Set<string>): string {
-    let reactivityImportMatch = code.match(
-        /(import\s*\{[^}]*\}\s*from\s*['"]@esportsplus\/reactivity['"])/
-    );
-
-    if (!reactivityImportMatch) {
-        return code;
-    }
-
-    let existingImport = reactivityImportMatch[1],
-        existingSpecifiers = existingImport.match(/\{([^}]*)\}/)?.[1] ?? '',
-        existing = new Set(existingSpecifiers.split(',').map(s => s.trim()));
-
-    let toAdd: string[] = [];
-
-    for (let imp of needed) {
-        if (imp !== 'ReactiveArray' && imp !== 'REACTIVE_OBJECT' && !existing.has(imp)) {
-            toAdd.push(imp);
-        }
-    }
-
-    if (toAdd.length > 0) {
-        let newSpecifiers = [...existing, ...toAdd].filter(Boolean).sort().join(', ');
-        let newImport = existingImport.replace(/\{[^}]*\}/, `{ ${newSpecifiers} }`);
-
-        code = code.replace(existingImport, newImport);
-    }
-
-    if (needed.has('ReactiveArray') && !code.includes("from '@esportsplus/reactivity/reactive/array'")) {
-        let insertPos = code.indexOf('import');
-
-        code = code.substring(0, insertPos) +
-               `import { ReactiveArray } from '@esportsplus/reactivity/reactive/array';\n` +
-               code.substring(insertPos);
-    }
-
-    if (needed.has('REACTIVE_OBJECT') && !code.includes('REACTIVE_OBJECT')) {
-        let insertPos = code.indexOf('import');
-
-        code = code.substring(0, insertPos) +
-               `import { REACTIVE_OBJECT } from '@esportsplus/reactivity/constants';\n` +
-               code.substring(insertPos);
-    }
-
-    return code;
-}
-
 
 interface ReactiveObjectCall {
     end: number;
@@ -230,16 +185,13 @@ const transformReactiveObjects = (
                     }
                 }
 
-                let className = generateClassName(),
-                    generatedClass = buildClassCode(className, properties);
-
                 for (let imp of needsImports) {
                     allNeededImports.add(imp);
                 }
 
                 calls.push({
                     end: node.end,
-                    generatedClass,
+                    generatedClass: buildClassCode(`ReactiveObject_${(++classCounter).toString(36)}`, properties),
                     needsImports,
                     start: node.pos,
                     varName
@@ -256,27 +208,32 @@ const transformReactiveObjects = (
         return code;
     }
 
-    calls.sort((a, b) => b.start - a.start);
+    let classCode = calls.map(c => c.generatedClass).join('\n\n'),
+        replacements: Replacement[] = [];
 
-    let result = code;
+    // Insert generated classes after imports
+    replacements.push({
+        end: lastImportEnd,
+        newText: code.substring(0, lastImportEnd) + '\n\n' + classCode + '\n',
+        start: 0
+    });
 
+    // Replace each reactive() call with new ClassName()
     for (let i = 0, n = calls.length; i < n; i++) {
         let call = calls[i],
             classMatch = call.generatedClass.match(/class (\w+)/),
             className = classMatch ? classMatch[1] : 'ReactiveObject';
 
-        result = result.substring(0, call.start) +
-                 ` new ${className}()` +
-                 result.substring(call.end);
+        replacements.push({
+            end: call.end,
+            newText: ` new ${className}()`,
+            start: call.start
+        });
     }
 
-    let classCode = calls.map(c => c.generatedClass).reverse().join('\n\n');
+    let result = applyReplacements(code, replacements);
 
-    result = result.substring(0, lastImportEnd) +
-             '\n\n' + classCode + '\n' +
-             result.substring(lastImportEnd);
-
-    result = addMissingImports(result, allNeededImports);
+    result = addMissingImports(result, allNeededImports, EXTRA_IMPORTS);
 
     return result;
 };
