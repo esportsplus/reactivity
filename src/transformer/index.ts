@@ -1,5 +1,4 @@
-import type { Bindings, TransformOptions, TransformResult } from '~/types';
-import { injectAutoDispose } from './transforms/auto-dispose';
+import type { Bindings, TransformResult } from '~/types';
 import { mightNeedTransform } from './detector';
 import { transformReactiveArrays } from './transforms/reactive-array';
 import { transformReactiveObjects } from './transforms/reactive-object';
@@ -7,17 +6,17 @@ import { transformReactivePrimitives } from './transforms/reactive-primitives';
 import ts from 'typescript';
 
 
-const createTransformer = (options?: TransformOptions): ts.TransformerFactory<ts.SourceFile> => {
+const createTransformer = (): ts.TransformerFactory<ts.SourceFile> => {
     return () => {
         return (sourceFile: ts.SourceFile): ts.SourceFile => {
-            let result = transform(sourceFile, options);
+            let result = transform(sourceFile);
 
             return result.transformed ? result.sourceFile : sourceFile;
         };
     };
 };
 
-const transform = (sourceFile: ts.SourceFile, options?: TransformOptions): TransformResult => {
+const transform = (sourceFile: ts.SourceFile): TransformResult => {
     let bindings: Bindings = new Map(),
         code = sourceFile.getFullText(),
         current = sourceFile,
@@ -50,15 +49,6 @@ const transform = (sourceFile: ts.SourceFile, options?: TransformOptions): Trans
         code = result;
     }
 
-    if (options?.autoDispose) {
-        result = injectAutoDispose(current);
-
-        if (result !== code) {
-            current = ts.createSourceFile(sourceFile.fileName, result, sourceFile.languageVersion, true);
-            code = result;
-        }
-    }
-
     if (code === original) {
         return { code, sourceFile, transformed: false };
     }
@@ -72,7 +62,6 @@ const transform = (sourceFile: ts.SourceFile, options?: TransformOptions): Trans
 
 
 export { createTransformer, mightNeedTransform, transform };
-export { injectAutoDispose } from './transforms/auto-dispose';
 export { transformReactiveArrays } from './transforms/reactive-array';
 export { transformReactiveObjects } from './transforms/reactive-object';
 export { transformReactivePrimitives } from './transforms/reactive-primitives';

@@ -1,12 +1,11 @@
 import { TRANSFORM_PATTERN } from '@esportsplus/typescript/transformer';
 import { mightNeedTransform, transform } from '~/transformer';
 import type { OnLoadArgs, Plugin, PluginBuild } from 'esbuild';
-import type { TransformOptions } from '~/types';
 import fs from 'fs';
 import ts from 'typescript';
 
 
-export default (options?: TransformOptions): Plugin => {
+export default (): Plugin => {
     return {
         name: '@esportsplus/reactivity/plugin-esbuild',
 
@@ -25,7 +24,7 @@ export default (options?: TransformOptions): Plugin => {
                             ts.ScriptTarget.Latest,
                             true
                         ),
-                        result = transform(sourceFile, options);
+                        result = transform(sourceFile);
 
                     if (!result.transformed) {
                         return null;
@@ -44,4 +43,3 @@ export default (options?: TransformOptions): Plugin => {
         }
     };
 };
-export type { TransformOptions as PluginOptions };

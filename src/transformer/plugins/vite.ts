@@ -1,11 +1,10 @@
 import { TRANSFORM_PATTERN } from '@esportsplus/typescript/transformer';
 import { mightNeedTransform, transform } from '~/transformer';
 import type { Plugin } from 'vite';
-import type { TransformOptions } from '~/types';
 import ts from 'typescript';
 
 
-export default (options?: TransformOptions): Plugin => {
+export default (): Plugin => {
     return {
         enforce: 'pre',
         name: '@esportsplus/reactivity/plugin-vite',
@@ -21,7 +20,7 @@ export default (options?: TransformOptions): Plugin => {
 
             try {
                 let sourceFile = ts.createSourceFile(id, code, ts.ScriptTarget.Latest, true),
-                    result = transform(sourceFile, options);
+                    result = transform(sourceFile);
 
                 if (!result.transformed) {
                     return null;
@@ -36,4 +35,3 @@ export default (options?: TransformOptions): Plugin => {
         }
     };
 };
-export type { TransformOptions as PluginOptions };

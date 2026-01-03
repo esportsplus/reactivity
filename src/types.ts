@@ -43,10 +43,6 @@ type Signal<T> = {
     value: T;
 };
 
-interface TransformOptions {
-    autoDispose?: boolean;
-}
-
 interface TransformResult {
     code: string;
     sourceFile: ts.SourceFile;
@@ -62,6 +58,5 @@ export type {
     ReactiveArray,
     ReactiveObject,
     Signal,
-    TransformOptions,
     TransformResult
 };

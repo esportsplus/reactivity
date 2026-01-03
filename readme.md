@@ -147,30 +147,6 @@ For direct TypeScript compilation using `ttsc` or `ts-patch`:
 }
 ```
 
-## Plugin Options
-
-All plugins accept the same options:
-
-```typescript
-interface TransformOptions {
-    // Inject automatic disposal tracking (experimental)
-    autoDispose?: boolean;
-}
-```
-
-Example with options:
-
-```typescript
-// vite.config.ts
-import { plugin as reactivity } from '@esportsplus/reactivity/plugins/vite';
-
-export default defineConfig({
-    plugins: [
-        reactivity({ autoDispose: true })
-    ]
-});
-```
-
 ## How It Works
 
 The transformer converts your code at compile time:
