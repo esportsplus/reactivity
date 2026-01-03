@@ -1,10 +1,21 @@
-import ts from 'typescript';
 import type { Bindings, TransformOptions, TransformResult } from '~/types';
-import { mightNeedTransform } from './detector';
 import { injectAutoDispose } from './transforms/auto-dispose';
+import { mightNeedTransform } from './detector';
 import { transformReactiveArrays } from './transforms/reactive-array';
 import { transformReactiveObjects } from './transforms/reactive-object';
 import { transformReactivePrimitives } from './transforms/reactive-primitives';
+import ts from 'typescript';
+
+
+const createTransformer = (options?: TransformOptions): ts.TransformerFactory<ts.SourceFile> => {
+    return () => {
+        return (sourceFile: ts.SourceFile): ts.SourceFile => {
+            let result = transform(sourceFile, options);
+
+            return result.transformed ? result.sourceFile : sourceFile;
+        };
+    };
+};
 
 
 const transform = (
@@ -62,18 +73,6 @@ const transform = (
         transformed: true
     };
 };
-
-function createTransformer(
-    options?: TransformOptions
-): ts.TransformerFactory<ts.SourceFile> {
-    return () => {
-        return (sourceFile: ts.SourceFile): ts.SourceFile => {
-            let result = transform(sourceFile, options);
-
-            return result.transformed ? result.sourceFile : sourceFile;
-        };
-    };
-}
 
 
 export { createTransformer, mightNeedTransform, transform };

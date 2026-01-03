@@ -1,16 +1,16 @@
+import { mightNeedTransform, transform } from '~/transformer/core';
 import type { Plugin } from 'vite';
-import ts from 'typescript';
-import { mightNeedTransform, transform } from '~/core';
 import type { TransformOptions } from '~/types';
+import ts from 'typescript';
 
 
-let TRANSFORM_PATTERN = /\.[tj]sx?$/;
+const TRANSFORM_PATTERN = /\.[tj]sx?$/;
 
 
-const plugin = (options?: TransformOptions): Plugin => {
+export default (options?: TransformOptions): Plugin => {
     return {
         enforce: 'pre',
-        name: 'vite-plugin-reactivity-compile',
+        name: '@esportsplus/reactivity/plugin-vite',
 
         transform(code: string, id: string) {
             if (!TRANSFORM_PATTERN.test(id) || id.includes('node_modules')) {
@@ -38,7 +38,4 @@ const plugin = (options?: TransformOptions): Plugin => {
         }
     };
 };
-
-
-export { plugin };
 export type { TransformOptions as PluginOptions };

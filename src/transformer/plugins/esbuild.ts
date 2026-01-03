@@ -1,13 +1,13 @@
+import { mightNeedTransform, transform } from '~/transformer/core';
 import type { OnLoadArgs, Plugin, PluginBuild } from 'esbuild';
+import type { TransformOptions } from '~/types';
 import fs from 'fs';
 import ts from 'typescript';
-import { mightNeedTransform, transform } from '~/core';
-import type { TransformOptions } from '~/types';
 
 
-const plugin = (options?: TransformOptions): Plugin => {
+export default (options?: TransformOptions): Plugin => {
     return {
-        name: 'reactivity-transform',
+        name: '@esportsplus/reactivity/plugin-esbuild',
 
         setup(build: PluginBuild) {
             build.onLoad({ filter: /\.[tj]sx?$/ }, async (args: OnLoadArgs) => {
@@ -43,7 +43,4 @@ const plugin = (options?: TransformOptions): Plugin => {
         }
     };
 };
-
-
-export { plugin };
 export type { TransformOptions as PluginOptions };

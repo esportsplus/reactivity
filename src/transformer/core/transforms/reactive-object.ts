@@ -1,15 +1,15 @@
-import ts from 'typescript';
 import type { Bindings } from '~/types';
-import { addMissingImports, applyReplacements, ExtraImport, Replacement } from './utils';
+import { uid } from '@esportsplus/typescript/transformer';
+import ts from 'typescript';
+import { addMissingImports, applyReplacements, ExtraImport, Replacement } from './utilities';
 
 
-let EXTRA_IMPORTS: ExtraImport[] = [
+const CLASS_NAME_REGEX = /class (\w+)/;
+
+const EXTRA_IMPORTS: ExtraImport[] = [
     { module: '@esportsplus/reactivity/constants', specifier: 'REACTIVE_OBJECT' },
     { module: '@esportsplus/reactivity/reactive/array', specifier: 'ReactiveArray' }
 ];
-
-
-let classCounter = 0;
 
 
 interface AnalyzedProperty {
@@ -17,6 +17,15 @@ interface AnalyzedProperty {
     type: 'array' | 'computed' | 'signal';
     valueText: string;
 }
+
+interface ReactiveObjectCall {
+    end: number;
+    generatedClass: string;
+    needsImports: Set<string>;
+    start: number;
+    varName: string | null;
+}
+
 
 
 function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.SourceFile): AnalyzedProperty | null {
@@ -26,10 +35,7 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.Sourc
 
     let key: string;
 
-    if (ts.isIdentifier(prop.name)) {
-        key = prop.name.text;
-    }
-    else if (ts.isStringLiteral(prop.name)) {
+    if (ts.isIdentifier(prop.name) || ts.isStringLiteral(prop.name)) {
         key = prop.name.text;
     }
     else {
@@ -61,9 +67,11 @@ function buildClassCode(className: string, properties: AnalyzedProperty[]): stri
         let { key, type, valueText } = properties[i];
 
         if (type === 'signal') {
+            let param = uid('v');
+
             fields.push(`#${key} = signal(${valueText});`);
             accessors.push(`get ${key}() { return read(this.#${key}); }`);
-            accessors.push(`set ${key}(v) { set(this.#${key}, v); }`);
+            accessors.push(`set ${key}(${param}) { set(this.#${key}, ${param}); }`);
         }
         else if (type === 'array') {
             let elements = valueText.slice(1, -1);
@@ -78,34 +86,22 @@ function buildClassCode(className: string, properties: AnalyzedProperty[]): stri
         }
     }
 
-    let disposeBody = disposeStatements.length > 0
-        ? disposeStatements.join('\n        ')
-        : '';
+    let disposeBody = disposeStatements.length > 0 ? disposeStatements.join('\n') : '';
 
-    return `class ${className} {
-    ${fields.join('\n    ')}
+    return `
+        class ${className} {
+            ${fields.join('\n')}
+            ${accessors.join('\n')}
 
-    ${accessors.join('\n    ')}
-
-    dispose() {
-        ${disposeBody}
-    }
-}`;
-}
-
-interface ReactiveObjectCall {
-    end: number;
-    generatedClass: string;
-    needsImports: Set<string>;
-    start: number;
-    varName: string | null;
+            dispose() {
+                ${disposeBody}
+            }
+        }
+    `;
 }
 
 
-const transformReactiveObjects = (
-    sourceFile: ts.SourceFile,
-    bindings: Bindings
-): string => {
+const transformReactiveObjects = (sourceFile: ts.SourceFile, bindings: Bindings): string => {
     let allNeededImports = new Set<string>(),
         calls: ReactiveObjectCall[] = [],
         code = sourceFile.getFullText(),
@@ -117,15 +113,19 @@ const transformReactiveObjects = (
         if (ts.isImportDeclaration(node)) {
             lastImportEnd = node.end;
 
-            if (ts.isStringLiteral(node.moduleSpecifier) &&
-                node.moduleSpecifier.text.includes('@esportsplus/reactivity')) {
-
+            if (
+                ts.isStringLiteral(node.moduleSpecifier) &&
+                node.moduleSpecifier.text.includes('@esportsplus/reactivity')
+            ) {
                 let clause = node.importClause;
 
                 if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
-                    for (let spec of clause.namedBindings.elements) {
-                        if (spec.name.text === 'reactive') {
+                    let elements = clause.namedBindings.elements;
+
+                    for (let i = 0, n = elements.length; i < n; i++) {
+                        if (elements[i].name.text === 'reactive') {
                             hasReactiveImport = true;
+                            break;
                         }
                     }
                 }
@@ -133,10 +133,12 @@ const transformReactiveObjects = (
         }
 
         // Process reactive() calls (only if import was found)
-        if (hasReactiveImport &&
+        if (
+            hasReactiveImport &&
             ts.isCallExpression(node) &&
             ts.isIdentifier(node.expression) &&
-            node.expression.text === 'reactive') {
+            node.expression.text === 'reactive'
+        ) {
 
             let arg = node.arguments[0];
 
@@ -153,7 +155,11 @@ const transformReactiveObjects = (
 
                 needsImports.add('REACTIVE_OBJECT');
 
-                for (let prop of arg.properties) {
+                let props = arg.properties;
+
+                for (let i = 0, n = props.length; i < n; i++) {
+                    let prop = props[i];
+
                     if (ts.isSpreadAssignment(prop)) {
                         return;
                     }
@@ -185,13 +191,11 @@ const transformReactiveObjects = (
                     }
                 }
 
-                for (let imp of needsImports) {
-                    allNeededImports.add(imp);
-                }
+                needsImports.forEach(imp => allNeededImports.add(imp));
 
                 calls.push({
                     end: node.end,
-                    generatedClass: buildClassCode(`ReactiveObject_${(++classCounter).toString(36)}`, properties),
+                    generatedClass: buildClassCode(uid('ReactiveObject'), properties),
                     needsImports,
                     start: node.pos,
                     varName
@@ -208,34 +212,32 @@ const transformReactiveObjects = (
         return code;
     }
 
-    let classCode = calls.map(c => c.generatedClass).join('\n\n'),
-        replacements: Replacement[] = [];
+    let replacements: Replacement[] = [];
 
     // Insert generated classes after imports
     replacements.push({
         end: lastImportEnd,
-        newText: code.substring(0, lastImportEnd) + '\n\n' + classCode + '\n',
+        newText: code.substring(0, lastImportEnd) + '\n' + calls.map(c => c.generatedClass).join('\n') + '\n',
         start: 0
     });
 
     // Replace each reactive() call with new ClassName()
     for (let i = 0, n = calls.length; i < n; i++) {
         let call = calls[i],
-            classMatch = call.generatedClass.match(/class (\w+)/),
-            className = classMatch ? classMatch[1] : 'ReactiveObject';
+            classMatch = call.generatedClass.match(CLASS_NAME_REGEX);
 
         replacements.push({
             end: call.end,
-            newText: ` new ${className}()`,
+            newText: ` new ${classMatch ? classMatch[1] : 'ReactiveObject'}()`,
             start: call.start
         });
     }
 
-    let result = applyReplacements(code, replacements);
-
-    result = addMissingImports(result, allNeededImports, EXTRA_IMPORTS);
-
-    return result;
+    return addMissingImports(
+        applyReplacements(code, replacements),
+        allNeededImports,
+        EXTRA_IMPORTS
+    );
 };
 
 

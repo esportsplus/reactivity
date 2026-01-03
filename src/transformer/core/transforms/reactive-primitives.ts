@@ -1,6 +1,7 @@
-import ts from 'typescript';
 import type { BindingType, Bindings } from '~/types';
-import { addMissingImports, applyReplacements, Replacement } from './utils';
+import { uid } from '@esportsplus/typescript/transformer';
+import ts from 'typescript';
+import { addMissingImports, applyReplacements, Replacement } from './utilities';
 
 
 interface ComputedArgRange {
@@ -19,14 +20,16 @@ function findEnclosingScope(node: ts.Node): ts.Node {
     let current = node.parent;
 
     while (current) {
-        if (ts.isBlock(current) ||
+        if (
+            ts.isBlock(current) ||
             ts.isSourceFile(current) ||
             ts.isFunctionDeclaration(current) ||
             ts.isFunctionExpression(current) ||
             ts.isArrowFunction(current) ||
             ts.isForStatement(current) ||
             ts.isForInStatement(current) ||
-            ts.isForOfStatement(current)) {
+            ts.isForOfStatement(current)
+        ) {
             return current;
         }
 
@@ -34,6 +37,30 @@ function findEnclosingScope(node: ts.Node): ts.Node {
     }
 
     return node.getSourceFile();
+}
+
+function findBinding(bindings: ScopeBinding[], name: string, node: ts.Node): ScopeBinding | undefined {
+    for (let i = 0, n = bindings.length; i < n; i++) {
+        let b = bindings[i];
+
+        if (b.name === name && isInScope(node, b)) {
+            return b;
+        }
+    }
+
+    return undefined;
+}
+
+function isInComputedRange(ranges: ComputedArgRange[], start: number, end: number): boolean {
+    for (let i = 0, n = ranges.length; i < n; i++) {
+        let r = ranges[i];
+
+        if (start >= r.start && end <= r.end) {
+            return true;
+        }
+    }
+
+    return false;
 }
 
 function isInScope(reference: ts.Node, binding: ScopeBinding): boolean {
@@ -101,9 +128,11 @@ function isWriteContext(node: ts.Identifier): 'simple' | 'compound' | 'increment
             return 'compound';
         }
 
-        if (op === ts.SyntaxKind.AmpersandAmpersandEqualsToken ||
+        if (
+            op === ts.SyntaxKind.AmpersandAmpersandEqualsToken ||
             op === ts.SyntaxKind.BarBarEqualsToken ||
-            op === ts.SyntaxKind.QuestionQuestionEqualsToken) {
+            op === ts.SyntaxKind.QuestionQuestionEqualsToken
+        ) {
             return 'compound';
         }
     }
@@ -120,23 +149,53 @@ function isWriteContext(node: ts.Identifier): 'simple' | 'compound' | 'increment
 }
 
 function getCompoundOperator(kind: ts.SyntaxKind): string {
-    switch (kind) {
-        case ts.SyntaxKind.PlusEqualsToken: return '+';
-        case ts.SyntaxKind.MinusEqualsToken: return '-';
-        case ts.SyntaxKind.AsteriskEqualsToken: return '*';
-        case ts.SyntaxKind.SlashEqualsToken: return '/';
-        case ts.SyntaxKind.PercentEqualsToken: return '%';
-        case ts.SyntaxKind.AsteriskAsteriskEqualsToken: return '**';
-        case ts.SyntaxKind.AmpersandEqualsToken: return '&';
-        case ts.SyntaxKind.BarEqualsToken: return '|';
-        case ts.SyntaxKind.CaretEqualsToken: return '^';
-        case ts.SyntaxKind.LessThanLessThanEqualsToken: return '<<';
-        case ts.SyntaxKind.GreaterThanGreaterThanEqualsToken: return '>>';
-        case ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken: return '>>>';
-        case ts.SyntaxKind.AmpersandAmpersandEqualsToken: return '&&';
-        case ts.SyntaxKind.BarBarEqualsToken: return '||';
-        case ts.SyntaxKind.QuestionQuestionEqualsToken: return '??';
-        default: return '+';
+    if (kind === ts.SyntaxKind.PlusEqualsToken) {
+        return '+';
+    }
+    else if (kind === ts.SyntaxKind.MinusEqualsToken) {
+        return '-';
+    }
+    else if (kind === ts.SyntaxKind.AsteriskEqualsToken) {
+        return '*';
+    }
+    else if (kind === ts.SyntaxKind.SlashEqualsToken) {
+        return '/';
+    }
+    else if (kind === ts.SyntaxKind.PercentEqualsToken) {
+        return '%';
+    }
+    else if (kind === ts.SyntaxKind.AsteriskAsteriskEqualsToken) {
+        return '**';
+    }
+    else if (kind === ts.SyntaxKind.AmpersandEqualsToken) {
+        return '&';
+    }
+    else if (kind === ts.SyntaxKind.BarEqualsToken) {
+        return '|';
+    }
+    else if (kind === ts.SyntaxKind.CaretEqualsToken) {
+        return '^';
+    }
+    else if (kind === ts.SyntaxKind.LessThanLessThanEqualsToken) {
+        return '<<';
+    }
+    else if (kind === ts.SyntaxKind.GreaterThanGreaterThanEqualsToken) {
+        return '>>';
+    }
+    else if (kind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken) {
+        return '>>>';
+    }
+    else if (kind === ts.SyntaxKind.AmpersandAmpersandEqualsToken) {
+        return '&&';
+    }
+    else if (kind === ts.SyntaxKind.BarBarEqualsToken) {
+        return '||';
+    }
+    else if (kind === ts.SyntaxKind.QuestionQuestionEqualsToken) {
+        return '??';
+    }
+    else {
+        return '+';
     }
 }
 
@@ -165,7 +224,7 @@ function transformComputedArg(
                 return;
             }
 
-            let binding = scopedBindings.find(b => b.name === node.text && isInScope(node, b));
+            let binding = findBinding(scopedBindings, node.text, node);
 
             if (binding) {
                 neededImports.add('read');
@@ -200,10 +259,11 @@ const transformReactivePrimitives = (
 
     // Single-pass visitor: detect imports, bindings, and usages together
     function visit(node: ts.Node): void {
-        // Detect reactive import
-        if (ts.isImportDeclaration(node) &&
+        if (
+            ts.isImportDeclaration(node) &&
             ts.isStringLiteral(node.moduleSpecifier) &&
-            node.moduleSpecifier.text.includes('@esportsplus/reactivity')) {
+            node.moduleSpecifier.text.includes('@esportsplus/reactivity')
+        ) {
             let clause = node.importClause;
 
             if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
@@ -216,12 +276,13 @@ const transformReactivePrimitives = (
             }
         }
 
-        // Detect reactive() calls and transform declarations
-        if (hasReactiveImport &&
+        if (
+            hasReactiveImport &&
             ts.isCallExpression(node) &&
             ts.isIdentifier(node.expression) &&
             node.expression.text === 'reactive' &&
-            node.arguments.length > 0) {
+            node.arguments.length > 0
+        ) {
 
             let arg = node.arguments[0],
                 classification = classifyReactiveArg(arg);
@@ -232,9 +293,11 @@ const transformReactivePrimitives = (
                 if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
                     varName = node.parent.name.text;
                 }
-                else if (ts.isBinaryExpression(node.parent) &&
-                         node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-                         ts.isIdentifier(node.parent.left)) {
+                else if (
+                    ts.isBinaryExpression(node.parent) &&
+                    node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+                    ts.isIdentifier(node.parent.left)
+                ) {
                     varName = node.parent.left.text;
                 }
 
@@ -288,23 +351,21 @@ const transformReactivePrimitives = (
             let nodeStart = node.getStart(sourceFile);
 
             // Skip if inside a computed arg we already transformed
-            let insideComputedArg = computedArgRanges.some(
-                r => nodeStart >= r.start && node.end <= r.end
-            );
+            let insideComputedArg = isInComputedRange(computedArgRanges, nodeStart, node.end);
 
             if (insideComputedArg) {
                 ts.forEachChild(node, visit);
                 return;
             }
 
-            let name = node.text,
-                binding = scopedBindings.find(b => b.name === name && isInScope(node, b));
+            let binding = findBinding(scopedBindings, node.text, node),
+                name = node.text;
 
             if (binding) {
-                // Skip reactive() reassignment
-                if (!isReactiveReassignment(node.parent) &&
-                    !(ts.isTypeOfExpression(node.parent) && node.parent.expression === node)) {
-
+                if (
+                    !isReactiveReassignment(node.parent) &&
+                    !(ts.isTypeOfExpression(node.parent) && node.parent.expression === node)
+                ) {
                     let writeCtx = isWriteContext(node);
 
                     if (writeCtx) {
@@ -352,9 +413,11 @@ const transformReactivePrimitives = (
                                     });
                                 }
                                 else {
+                                    let tmp = uid('tmp');
+
                                     replacements.push({
                                         end: parent.end,
-                                        newText: `((_v) => (set(${name}, _v ${delta}), _v))(${name}.value)`,
+                                        newText: `((${tmp}) => (set(${name}, ${tmp} ${delta}), ${tmp}))(${name}.value)`,
                                         start: parent.pos
                                     });
                                 }

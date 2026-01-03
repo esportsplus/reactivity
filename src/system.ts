@@ -1,10 +1,19 @@
-import { isObject } from '@esportsplus/utilities';
 import {
-    COMPUTED, SIGNAL,
-    STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
-    STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_NOTIFY_MASK, STATE_RECOMPUTING
+    COMPUTED,
+    SIGNAL,
+    STABILIZER_IDLE,
+    STABILIZER_RESCHEDULE,
+    STABILIZER_RUNNING,
+    STABILIZER_SCHEDULED,
+    STATE_CHECK,
+    STATE_DIRTY,
+    STATE_IN_HEAP,
+    STATE_NONE,
+    STATE_NOTIFY_MASK,
+    STATE_RECOMPUTING
 } from './constants';
 import { Computed, Link, Signal } from './types';
+import { isObject } from '@esportsplus/utilities';
 
 
 let depth = 0,

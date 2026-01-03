@@ -1,6 +1,6 @@
-import ts from 'typescript';
 import type { Bindings } from '~/types';
-import { applyReplacements, Replacement } from './utils';
+import ts from 'typescript';
+import { applyReplacements, Replacement } from './utilities';
 
 
 function getPropertyPath(node: ts.PropertyAccessExpression): string | null {
@@ -35,11 +35,11 @@ function getExpressionName(node: ts.Expression): string | null {
 function isAssignmentTarget(node: ts.Node): boolean {
     let parent = node.parent;
 
-    if (ts.isBinaryExpression(parent) && parent.left === node) {
-        return true;
-    }
-
-    if (ts.isPostfixUnaryExpression(parent) || ts.isPrefixUnaryExpression(parent)) {
+    if (
+        (ts.isBinaryExpression(parent) && parent.left === node) ||
+        ts.isPostfixUnaryExpression(parent) ||
+        ts.isPrefixUnaryExpression(parent)
+    ) {
         return true;
     }
 
@@ -76,21 +76,23 @@ const transformReactiveArrays = (
             for (let i = 0, n = node.parameters.length; i < n; i++) {
                 let param = node.parameters[i];
 
-                if (ts.isIdentifier(param.name) && param.type) {
-                    if (ts.isTypeReferenceNode(param.type) &&
-                        ts.isIdentifier(param.type.typeName) &&
-                        param.type.typeName.text === 'ReactiveArray') {
-                        bindings.set(param.name.text, 'array');
-                    }
+                if (
+                    (ts.isIdentifier(param.name) && param.type) &&
+                    ts.isTypeReferenceNode(param.type) &&
+                    ts.isIdentifier(param.type.typeName) &&
+                    param.type.typeName.text === 'ReactiveArray'
+                ) {
+                    bindings.set(param.name.text, 'array');
                 }
             }
         }
 
         // Find .length access replacements
-        if (ts.isPropertyAccessExpression(node) &&
+        if (
+            ts.isPropertyAccessExpression(node) &&
             node.name.text === 'length' &&
-            !isAssignmentTarget(node)) {
-
+            !isAssignmentTarget(node)
+        ) {
             let objName = getExpressionName(node.expression);
 
             if (objName && bindings.get(objName) === 'array') {
@@ -105,10 +107,11 @@ const transformReactiveArrays = (
         }
 
         // Find array[i] = value replacements
-        if (ts.isBinaryExpression(node) &&
+        if (
+            ts.isBinaryExpression(node) &&
             node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-            ts.isElementAccessExpression(node.left)) {
-
+            ts.isElementAccessExpression(node.left)
+        ) {
             let elemAccess = node.left,
                 objName = getExpressionName(elemAccess.expression);
 

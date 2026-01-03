@@ -1,14 +1,12 @@
-import ts from 'typescript';
 import { COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
 import { ReactiveArray, ReactiveObject } from './reactive';
+import ts from 'typescript';
 
 
-// Transformer types
 type BindingType = 'array' | 'computed' | 'object' | 'signal';
 
 type Bindings = Map<string, BindingType>;
 
-// Runtime types
 interface Computed<T> {
     cleanup: VoidFunction | VoidFunction[] | null;
     deps: Link | null;
@@ -31,10 +29,10 @@ interface Computed<T> {
 
 interface Link {
     dep: Signal<unknown> | Computed<unknown>;
-    sub: Computed<unknown>;
     nextDep: Link | null;
     nextSub: Link | null;
     prevSub: Link | null;
+    sub: Computed<unknown>;
     version: number;
 }
 
@@ -54,7 +52,6 @@ interface TransformResult {
     sourceFile: ts.SourceFile;
     transformed: boolean;
 }
-
 
 
 export type {

@@ -1,12 +1,7 @@
 import { isArray } from '@esportsplus/utilities';
-import { REACTIVE_ARRAY, REACTIVE_OBJECT } from '~/constants';
 import { read, set, signal } from '~/system';
-import { Signal } from '~/types';
-
-
-function isReactiveObject(value: unknown): value is { dispose(): void } {
-    return value !== null && typeof value === 'object' && (value as any)[REACTIVE_OBJECT] === true;
-}
+import { REACTIVE_ARRAY, REACTIVE_OBJECT } from '~/constants';
+import type { Signal } from '~/types';
 
 
 type Events<T> = {
@@ -49,6 +44,11 @@ type Listener<V> = {
 type Listeners = Record<string, (Listener<any> | null)[]>;
 
 
+function isReactiveObject(value: unknown): value is { dispose(): void } {
+    return value !== null && typeof value === 'object' && (value as any)[REACTIVE_OBJECT] === true;
+}
+
+
 class ReactiveArray<T> extends Array<T> {
     private _length: Signal<number>;
 
@@ -61,12 +61,10 @@ class ReactiveArray<T> extends Array<T> {
     }
 
 
-    // Compiler-targeted accessor for reactive length
     $length() {
         return read(this._length);
     }
 
-    // Compiler-targeted accessor for reactive index assignment
     $set(i: number, value: T) {
         let prev = this[i];
 
