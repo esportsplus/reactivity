@@ -1,8 +1,8 @@
 import type { Bindings, TransformResult } from '~/types';
 import { mightNeedTransform } from './detector';
-import { transformReactiveArrays } from './transforms/reactive-array';
-import { transformReactiveObjects } from './transforms/reactive-object';
-import { transformReactivePrimitives } from './transforms/reactive-primitives';
+import { transformReactiveArrays } from './transforms/array';
+import { transformReactiveObjects } from './transforms/object';
+import { transformReactivePrimitives } from './transforms/primitives';
 import ts from 'typescript';
 
 
@@ -62,6 +62,6 @@ const transform = (sourceFile: ts.SourceFile): TransformResult => {
 
 
 export { createTransformer, mightNeedTransform, transform };
-export { transformReactiveArrays } from './transforms/reactive-array';
-export { transformReactiveObjects } from './transforms/reactive-object';
-export { transformReactivePrimitives } from './transforms/reactive-primitives';
+export { transformReactiveArrays } from './transforms/array';
+export { transformReactiveObjects } from './transforms/object';
+export { transformReactivePrimitives } from './transforms/primitives';

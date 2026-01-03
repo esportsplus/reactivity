@@ -94,15 +94,13 @@ function buildClassCode(className: string, properties: AnalyzedProperty[]): stri
         }
     }
 
-    let disposeBody = disposeStatements.length > 0 ? disposeStatements.join('\n') : '';
-
     return `
         class ${className} {
             ${fields.join('\n')}
             ${accessors.join('\n')}
 
             dispose() {
-                ${disposeBody}
+                ${disposeStatements.length > 0 ? disposeStatements.join('\n') : ''}
             }
         }
     `;
