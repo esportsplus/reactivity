@@ -1,6 +1,6 @@
 import { uid } from '@esportsplus/typescript/transformer';
-import ts from 'typescript';
 import { applyReplacements, Replacement } from './utilities';
+import ts from 'typescript';
 
 
 const TRAILING_SEMICOLON = /;$/;

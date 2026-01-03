@@ -1,7 +1,7 @@
-import type { BindingType, Bindings } from '~/types';
 import { uid } from '@esportsplus/typescript/transformer';
-import ts from 'typescript';
+import type { BindingType, Bindings } from '~/types';
 import { addMissingImports, applyReplacements, Replacement } from './utilities';
+import ts from 'typescript';
 
 
 interface ComputedArgRange {

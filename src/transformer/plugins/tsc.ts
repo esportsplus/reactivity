@@ -1,4 +1,4 @@
-import { createTransformer } from '~/transformer/core';
+import { createTransformer } from '~/transformer';
 import ts from 'typescript';
 
 

@@ -1,4 +1,4 @@
-import { mightNeedTransform, transform } from '~/transformer/core';
+import { mightNeedTransform, transform } from '~/transformer';
 import type { OnLoadArgs, Plugin, PluginBuild } from 'esbuild';
 import type { TransformOptions } from '~/types';
 import fs from 'fs';

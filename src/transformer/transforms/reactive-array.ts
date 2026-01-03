@@ -1,6 +1,6 @@
 import type { Bindings } from '~/types';
-import ts from 'typescript';
 import { applyReplacements, Replacement } from './utilities';
+import ts from 'typescript';
 
 
 function getPropertyPath(node: ts.PropertyAccessExpression): string | null {

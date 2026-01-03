@@ -1,10 +1,13 @@
+import { mightNeedTransform as checkTransform } from '@esportsplus/typescript/transformer';
 import type { Bindings, TransformOptions, TransformResult } from '~/types';
 import { injectAutoDispose } from './transforms/auto-dispose';
-import { mightNeedTransform } from './detector';
 import { transformReactiveArrays } from './transforms/reactive-array';
 import { transformReactiveObjects } from './transforms/reactive-object';
 import { transformReactivePrimitives } from './transforms/reactive-primitives';
 import ts from 'typescript';
+
+
+const CHECK_TRANSFORM_REGEX = /import\s*\{[^}]*\breactive\b[^}]*\}\s*from\s*['"]@esportsplus\/reactivity/;
 
 
 const createTransformer = (options?: TransformOptions): ts.TransformerFactory<ts.SourceFile> => {
@@ -17,6 +20,9 @@ const createTransformer = (options?: TransformOptions): ts.TransformerFactory<ts
     };
 };
 
+const mightNeedTransform = (code: string): boolean => {
+    return checkTransform(code, { regex: CHECK_TRANSFORM_REGEX });
+};
 
 const transform = (
     sourceFile: ts.SourceFile,

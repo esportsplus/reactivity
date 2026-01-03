@@ -1,4 +1,4 @@
-import { mightNeedTransform, transform } from '~/transformer/core';
+import { mightNeedTransform, transform } from '~/transformer';
 import type { Plugin } from 'vite';
 import type { TransformOptions } from '~/types';
 import ts from 'typescript';
