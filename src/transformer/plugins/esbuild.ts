@@ -1,3 +1,4 @@
+import { TRANSFORM_PATTERN } from '@esportsplus/typescript/transformer';
 import { mightNeedTransform, transform } from '~/transformer';
 import type { OnLoadArgs, Plugin, PluginBuild } from 'esbuild';
 import type { TransformOptions } from '~/types';
@@ -10,7 +11,7 @@ export default (options?: TransformOptions): Plugin => {
         name: '@esportsplus/reactivity/plugin-esbuild',
 
         setup(build: PluginBuild) {
-            build.onLoad({ filter: /\.[tj]sx?$/ }, async (args: OnLoadArgs) => {
+            build.onLoad({ filter: TRANSFORM_PATTERN }, async (args: OnLoadArgs) => {
                 let code = await fs.promises.readFile(args.path, 'utf8');
 
                 if (!mightNeedTransform(code)) {

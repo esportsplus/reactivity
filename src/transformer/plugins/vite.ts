@@ -1,10 +1,8 @@
+import { TRANSFORM_PATTERN } from '@esportsplus/typescript/transformer';
 import { mightNeedTransform, transform } from '~/transformer';
 import type { Plugin } from 'vite';
 import type { TransformOptions } from '~/types';
 import ts from 'typescript';
-
-
-const TRANSFORM_PATTERN = /\.[tj]sx?$/;
 
 
 export default (options?: TransformOptions): Plugin => {

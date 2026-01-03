@@ -1,12 +1,15 @@
-import { uid } from '@esportsplus/typescript/transformer';
+import { uid, type Range } from '@esportsplus/typescript/transformer';
 import type { BindingType, Bindings } from '~/types';
 import { addMissingImports, applyReplacements, Replacement } from './utilities';
 import ts from 'typescript';
 
 
-interface ComputedArgRange {
-    end: number;
-    start: number;
+interface ArgContext {
+    argStart: number;
+    innerReplacements: Replacement[];
+    neededImports: Set<string>;
+    scopedBindings: ScopeBinding[];
+    sourceFile: ts.SourceFile;
 }
 
 interface ScopeBinding {
@@ -15,6 +18,40 @@ interface ScopeBinding {
     type: BindingType;
 }
 
+interface TransformContext {
+    bindings: Bindings;
+    computedArgRanges: Range[];
+    hasReactiveImport: boolean;
+    neededImports: Set<string>;
+    replacements: Replacement[];
+    scopedBindings: ScopeBinding[];
+    sourceFile: ts.SourceFile;
+}
+
+
+function classifyReactiveArg(arg: ts.Expression): 'computed' | 'signal' | null {
+    if (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) {
+        return 'computed';
+    }
+
+    if (ts.isObjectLiteralExpression(arg) || ts.isArrayLiteralExpression(arg)) {
+        return null;
+    }
+
+    return 'signal';
+}
+
+function findBinding(bindings: ScopeBinding[], name: string, node: ts.Node): ScopeBinding | undefined {
+    for (let i = 0, n = bindings.length; i < n; i++) {
+        let b = bindings[i];
+
+        if (b.name === name && isInScope(node, b)) {
+            return b;
+        }
+    }
+
+    return undefined;
+}
 
 function findEnclosingScope(node: ts.Node): ts.Node {
     let current = node.parent;
@@ -37,115 +74,6 @@ function findEnclosingScope(node: ts.Node): ts.Node {
     }
 
     return node.getSourceFile();
-}
-
-function findBinding(bindings: ScopeBinding[], name: string, node: ts.Node): ScopeBinding | undefined {
-    for (let i = 0, n = bindings.length; i < n; i++) {
-        let b = bindings[i];
-
-        if (b.name === name && isInScope(node, b)) {
-            return b;
-        }
-    }
-
-    return undefined;
-}
-
-function isInComputedRange(ranges: ComputedArgRange[], start: number, end: number): boolean {
-    for (let i = 0, n = ranges.length; i < n; i++) {
-        let r = ranges[i];
-
-        if (start >= r.start && end <= r.end) {
-            return true;
-        }
-    }
-
-    return false;
-}
-
-function isInScope(reference: ts.Node, binding: ScopeBinding): boolean {
-    let current: ts.Node | undefined = reference;
-
-    while (current) {
-        if (current === binding.scope) {
-            return true;
-        }
-
-        current = current.parent;
-    }
-
-    return false;
-}
-
-function classifyReactiveArg(arg: ts.Expression): 'computed' | 'signal' | null {
-    if (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) {
-        return 'computed';
-    }
-
-    if (ts.isObjectLiteralExpression(arg) || ts.isArrayLiteralExpression(arg)) {
-        return null;
-    }
-
-    return 'signal';
-}
-
-function isInDeclarationInit(node: ts.Node): boolean {
-    let parent = node.parent;
-
-    if (ts.isVariableDeclaration(parent) && parent.initializer === node) {
-        return true;
-    }
-
-    return false;
-}
-
-function isReactiveReassignment(node: ts.Node): boolean {
-    let parent = node.parent;
-
-    if (ts.isBinaryExpression(parent) &&
-        parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-        parent.right === node &&
-        ts.isCallExpression(node) &&
-        ts.isIdentifier((node as ts.CallExpression).expression) &&
-        ((node as ts.CallExpression).expression as ts.Identifier).text === 'reactive') {
-        return true;
-    }
-
-    return false;
-}
-
-function isWriteContext(node: ts.Identifier): 'simple' | 'compound' | 'increment' | false {
-    let parent = node.parent;
-
-    if (ts.isBinaryExpression(parent) && parent.left === node) {
-        let op = parent.operatorToken.kind;
-
-        if (op === ts.SyntaxKind.EqualsToken) {
-            return 'simple';
-        }
-
-        if (op >= ts.SyntaxKind.PlusEqualsToken && op <= ts.SyntaxKind.CaretEqualsToken) {
-            return 'compound';
-        }
-
-        if (
-            op === ts.SyntaxKind.AmpersandAmpersandEqualsToken ||
-            op === ts.SyntaxKind.BarBarEqualsToken ||
-            op === ts.SyntaxKind.QuestionQuestionEqualsToken
-        ) {
-            return 'compound';
-        }
-    }
-
-    if (ts.isPostfixUnaryExpression(parent) || ts.isPrefixUnaryExpression(parent)) {
-        let op = parent.operator;
-
-        if (op === ts.SyntaxKind.PlusPlusToken || op === ts.SyntaxKind.MinusMinusToken) {
-            return 'increment';
-        }
-    }
-
-    return false;
 }
 
 function getCompoundOperator(kind: ts.SyntaxKind): string {
@@ -199,50 +127,303 @@ function getCompoundOperator(kind: ts.SyntaxKind): string {
     }
 }
 
-function transformComputedArg(
-    arg: ts.Expression,
-    scopedBindings: ScopeBinding[],
-    sourceFile: ts.SourceFile,
-    neededImports: Set<string>
-): string {
-    let argStart = arg.getStart(sourceFile),
-        innerReplacements: Replacement[] = [],
-        text = arg.getText(sourceFile);
+function isInComputedRange(ranges: Range[], start: number, end: number): boolean {
+    for (let i = 0, n = ranges.length; i < n; i++) {
+        let r = ranges[i];
 
-    function visitArg(node: ts.Node): void {
-        // Only transform identifiers that are signal bindings
-        if (ts.isIdentifier(node)) {
-            // Skip if it's a property name in property access (obj.prop - skip prop)
-            if (ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) {
-                ts.forEachChild(node, visitArg);
-                return;
-            }
-
-            // Skip if it's the function name in a call expression
-            if (ts.isCallExpression(node.parent) && node.parent.expression === node) {
-                ts.forEachChild(node, visitArg);
-                return;
-            }
-
-            let binding = findBinding(scopedBindings, node.text, node);
-
-            if (binding) {
-                neededImports.add('read');
-
-                innerReplacements.push({
-                    end: node.end - argStart,
-                    newText: `read(${node.text})`,
-                    start: node.getStart(sourceFile) - argStart
-                });
-            }
+        if (start >= r.start && end <= r.end) {
+            return true;
         }
-
-        ts.forEachChild(node, visitArg);
     }
 
-    visitArg(arg);
+    return false;
+}
 
-    return applyReplacements(text, innerReplacements);
+function isInDeclarationInit(node: ts.Node): boolean {
+    let parent = node.parent;
+
+    if (ts.isVariableDeclaration(parent) && parent.initializer === node) {
+        return true;
+    }
+
+    return false;
+}
+
+function isInScope(reference: ts.Node, binding: ScopeBinding): boolean {
+    let current: ts.Node | undefined = reference;
+
+    while (current) {
+        if (current === binding.scope) {
+            return true;
+        }
+
+        current = current.parent;
+    }
+
+    return false;
+}
+
+function isReactiveReassignment(node: ts.Node): boolean {
+    let parent = node.parent;
+
+    if (
+        ts.isBinaryExpression(parent) &&
+        parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        parent.right === node &&
+        ts.isCallExpression(node) &&
+        ts.isIdentifier((node as ts.CallExpression).expression) &&
+        ((node as ts.CallExpression).expression as ts.Identifier).text === 'reactive'
+    ) {
+        return true;
+    }
+
+    return false;
+}
+
+function isWriteContext(node: ts.Identifier): 'simple' | 'compound' | 'increment' | false {
+    let parent = node.parent;
+
+    if (ts.isBinaryExpression(parent) && parent.left === node) {
+        let op = parent.operatorToken.kind;
+
+        if (op === ts.SyntaxKind.EqualsToken) {
+            return 'simple';
+        }
+
+        if (op >= ts.SyntaxKind.PlusEqualsToken && op <= ts.SyntaxKind.CaretEqualsToken) {
+            return 'compound';
+        }
+
+        if (
+            op === ts.SyntaxKind.AmpersandAmpersandEqualsToken ||
+            op === ts.SyntaxKind.BarBarEqualsToken ||
+            op === ts.SyntaxKind.QuestionQuestionEqualsToken
+        ) {
+            return 'compound';
+        }
+    }
+
+    if (ts.isPostfixUnaryExpression(parent) || ts.isPrefixUnaryExpression(parent)) {
+        let op = parent.operator;
+
+        if (op === ts.SyntaxKind.PlusPlusToken || op === ts.SyntaxKind.MinusMinusToken) {
+            return 'increment';
+        }
+    }
+
+    return false;
+}
+
+function visit(ctx: TransformContext, node: ts.Node): void {
+    if (
+        ts.isImportDeclaration(node) &&
+        ts.isStringLiteral(node.moduleSpecifier) &&
+        node.moduleSpecifier.text.includes('@esportsplus/reactivity')
+    ) {
+        let clause = node.importClause;
+
+        if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+            for (let i = 0, n = clause.namedBindings.elements.length; i < n; i++) {
+                if (clause.namedBindings.elements[i].name.text === 'reactive') {
+                    ctx.hasReactiveImport = true;
+                    break;
+                }
+            }
+        }
+    }
+
+    if (
+        ctx.hasReactiveImport &&
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === 'reactive' &&
+        node.arguments.length > 0
+    ) {
+        let arg = node.arguments[0],
+            classification = classifyReactiveArg(arg);
+
+        if (classification) {
+            let varName: string | null = null;
+
+            if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
+                varName = node.parent.name.text;
+            }
+            else if (
+                ts.isBinaryExpression(node.parent) &&
+                node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+                ts.isIdentifier(node.parent.left)
+            ) {
+                varName = node.parent.left.text;
+            }
+
+            if (varName) {
+                let scope = findEnclosingScope(node);
+
+                ctx.scopedBindings.push({ name: varName, scope, type: classification });
+                ctx.bindings.set(varName, classification);
+            }
+
+            if (classification === 'computed') {
+                ctx.computedArgRanges.push({
+                    end: arg.end,
+                    start: arg.getStart(ctx.sourceFile)
+                });
+
+                let argCtx: ArgContext = {
+                    argStart: arg.getStart(ctx.sourceFile),
+                    innerReplacements: [],
+                    neededImports: ctx.neededImports,
+                    scopedBindings: ctx.scopedBindings,
+                    sourceFile: ctx.sourceFile
+                };
+
+                visitArg(argCtx, arg);
+
+                let argText = applyReplacements(arg.getText(ctx.sourceFile), argCtx.innerReplacements);
+
+                ctx.replacements.push({
+                    end: node.end,
+                    newText: `computed(${argText})`,
+                    start: node.pos
+                });
+
+                ctx.neededImports.add('computed');
+            }
+            else {
+                let argText = arg.getText(ctx.sourceFile);
+
+                ctx.replacements.push({
+                    end: node.end,
+                    newText: `signal(${argText})`,
+                    start: node.pos
+                });
+
+                ctx.neededImports.add('signal');
+            }
+        }
+    }
+
+    if (ts.isIdentifier(node) && !isInDeclarationInit(node.parent)) {
+        if (ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) {
+            ts.forEachChild(node, n => visit(ctx, n));
+            return;
+        }
+
+        let nodeStart = node.getStart(ctx.sourceFile);
+
+        if (isInComputedRange(ctx.computedArgRanges, nodeStart, node.end)) {
+            ts.forEachChild(node, n => visit(ctx, n));
+            return;
+        }
+
+        let binding = findBinding(ctx.scopedBindings, node.text, node),
+            name = node.text;
+
+        if (binding) {
+            if (
+                !isReactiveReassignment(node.parent) &&
+                !(ts.isTypeOfExpression(node.parent) && node.parent.expression === node)
+            ) {
+                let writeCtx = isWriteContext(node);
+
+                if (writeCtx) {
+                    if (binding.type !== 'computed') {
+                        ctx.neededImports.add('set');
+
+                        let parent = node.parent;
+
+                        if (writeCtx === 'simple' && ts.isBinaryExpression(parent)) {
+                            let valueText = parent.right.getText(ctx.sourceFile);
+
+                            ctx.replacements.push({
+                                end: parent.end,
+                                newText: `set(${name}, ${valueText})`,
+                                start: parent.pos
+                            });
+                        }
+                        else if (writeCtx === 'compound' && ts.isBinaryExpression(parent)) {
+                            let op = getCompoundOperator(parent.operatorToken.kind),
+                                valueText = parent.right.getText(ctx.sourceFile);
+
+                            ctx.replacements.push({
+                                end: parent.end,
+                                newText: `set(${name}, ${name}.value ${op} ${valueText})`,
+                                start: parent.pos
+                            });
+                        }
+                        else if (writeCtx === 'increment') {
+                            let isPrefix = ts.isPrefixUnaryExpression(parent),
+                                op = (parent as ts.PrefixUnaryExpression | ts.PostfixUnaryExpression).operator,
+                                delta = op === ts.SyntaxKind.PlusPlusToken ? '+ 1' : '- 1';
+
+                            if (ts.isExpressionStatement(parent.parent)) {
+                                ctx.replacements.push({
+                                    end: parent.end,
+                                    newText: `set(${name}, ${name}.value ${delta})`,
+                                    start: parent.pos
+                                });
+                            }
+                            else if (isPrefix) {
+                                ctx.replacements.push({
+                                    end: parent.end,
+                                    newText: `(set(${name}, ${name}.value ${delta}), ${name}.value)`,
+                                    start: parent.pos
+                                });
+                            }
+                            else {
+                                let tmp = uid('tmp');
+
+                                ctx.replacements.push({
+                                    end: parent.end,
+                                    newText: `((${tmp}) => (set(${name}, ${tmp} ${delta}), ${tmp}))(${name}.value)`,
+                                    start: parent.pos
+                                });
+                            }
+                        }
+                    }
+                }
+                else {
+                    ctx.neededImports.add('read');
+
+                    ctx.replacements.push({
+                        end: node.end,
+                        newText: `read(${name})`,
+                        start: node.pos
+                    });
+                }
+            }
+        }
+    }
+
+    ts.forEachChild(node, n => visit(ctx, n));
+}
+
+function visitArg(ctx: ArgContext, node: ts.Node): void {
+    if (ts.isIdentifier(node)) {
+        if (ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) {
+            ts.forEachChild(node, n => visitArg(ctx, n));
+            return;
+        }
+
+        if (ts.isCallExpression(node.parent) && node.parent.expression === node) {
+            ts.forEachChild(node, n => visitArg(ctx, n));
+            return;
+        }
+
+        let binding = findBinding(ctx.scopedBindings, node.text, node);
+
+        if (binding) {
+            ctx.neededImports.add('read');
+
+            ctx.innerReplacements.push({
+                end: node.end - ctx.argStart,
+                newText: `read(${node.text})`,
+                start: node.getStart(ctx.sourceFile) - ctx.argStart
+            });
+        }
+    }
+
+    ts.forEachChild(node, n => visitArg(ctx, n));
 }
 
 
@@ -251,205 +432,26 @@ const transformReactivePrimitives = (
     bindings: Bindings
 ): string => {
     let code = sourceFile.getFullText(),
-        computedArgRanges: ComputedArgRange[] = [],
-        hasReactiveImport = false,
-        neededImports = new Set<string>(),
-        replacements: Replacement[] = [],
-        scopedBindings: ScopeBinding[] = [];
+        ctx: TransformContext = {
+            bindings,
+            computedArgRanges: [],
+            hasReactiveImport: false,
+            neededImports: new Set<string>(),
+            replacements: [],
+            scopedBindings: [],
+            sourceFile
+        };
 
-    // Single-pass visitor: detect imports, bindings, and usages together
-    function visit(node: ts.Node): void {
-        if (
-            ts.isImportDeclaration(node) &&
-            ts.isStringLiteral(node.moduleSpecifier) &&
-            node.moduleSpecifier.text.includes('@esportsplus/reactivity')
-        ) {
-            let clause = node.importClause;
+    visit(ctx, sourceFile);
 
-            if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
-                for (let i = 0, n = clause.namedBindings.elements.length; i < n; i++) {
-                    if (clause.namedBindings.elements[i].name.text === 'reactive') {
-                        hasReactiveImport = true;
-                        break;
-                    }
-                }
-            }
-        }
-
-        if (
-            hasReactiveImport &&
-            ts.isCallExpression(node) &&
-            ts.isIdentifier(node.expression) &&
-            node.expression.text === 'reactive' &&
-            node.arguments.length > 0
-        ) {
-
-            let arg = node.arguments[0],
-                classification = classifyReactiveArg(arg);
-
-            if (classification) {
-                let varName: string | null = null;
-
-                if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
-                    varName = node.parent.name.text;
-                }
-                else if (
-                    ts.isBinaryExpression(node.parent) &&
-                    node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-                    ts.isIdentifier(node.parent.left)
-                ) {
-                    varName = node.parent.left.text;
-                }
-
-                if (varName) {
-                    let scope = findEnclosingScope(node);
-
-                    scopedBindings.push({ name: varName, scope, type: classification });
-                    bindings.set(varName, classification);
-                }
-
-                if (classification === 'computed') {
-                    // Track range to skip identifiers inside when visitor continues
-                    computedArgRanges.push({
-                        end: arg.end,
-                        start: arg.getStart(sourceFile)
-                    });
-
-                    // Transform signal references inside the computed arg
-                    let argText = transformComputedArg(arg, scopedBindings, sourceFile, neededImports);
-
-                    replacements.push({
-                        end: node.end,
-                        newText: `computed(${argText})`,
-                        start: node.pos
-                    });
-
-                    neededImports.add('computed');
-                }
-                else {
-                    let argText = arg.getText(sourceFile);
-
-                    replacements.push({
-                        end: node.end,
-                        newText: `signal(${argText})`,
-                        start: node.pos
-                    });
-
-                    neededImports.add('signal');
-                }
-            }
-        }
-
-        // Transform identifier usages
-        if (ts.isIdentifier(node) && !isInDeclarationInit(node.parent)) {
-            // Skip if it's a property name in property access (obj.prop - skip prop)
-            if (ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) {
-                ts.forEachChild(node, visit);
-                return;
-            }
-
-            let nodeStart = node.getStart(sourceFile);
-
-            // Skip if inside a computed arg we already transformed
-            let insideComputedArg = isInComputedRange(computedArgRanges, nodeStart, node.end);
-
-            if (insideComputedArg) {
-                ts.forEachChild(node, visit);
-                return;
-            }
-
-            let binding = findBinding(scopedBindings, node.text, node),
-                name = node.text;
-
-            if (binding) {
-                if (
-                    !isReactiveReassignment(node.parent) &&
-                    !(ts.isTypeOfExpression(node.parent) && node.parent.expression === node)
-                ) {
-                    let writeCtx = isWriteContext(node);
-
-                    if (writeCtx) {
-                        if (binding.type !== 'computed') {
-                            neededImports.add('set');
-
-                            let parent = node.parent;
-
-                            if (writeCtx === 'simple' && ts.isBinaryExpression(parent)) {
-                                let valueText = parent.right.getText(sourceFile);
-
-                                replacements.push({
-                                    end: parent.end,
-                                    newText: `set(${name}, ${valueText})`,
-                                    start: parent.pos
-                                });
-                            }
-                            else if (writeCtx === 'compound' && ts.isBinaryExpression(parent)) {
-                                let op = getCompoundOperator(parent.operatorToken.kind),
-                                    valueText = parent.right.getText(sourceFile);
-
-                                replacements.push({
-                                    end: parent.end,
-                                    newText: `set(${name}, ${name}.value ${op} ${valueText})`,
-                                    start: parent.pos
-                                });
-                            }
-                            else if (writeCtx === 'increment') {
-                                let isPrefix = ts.isPrefixUnaryExpression(parent),
-                                    op = (parent as ts.PrefixUnaryExpression | ts.PostfixUnaryExpression).operator,
-                                    delta = op === ts.SyntaxKind.PlusPlusToken ? '+ 1' : '- 1';
-
-                                if (ts.isExpressionStatement(parent.parent)) {
-                                    replacements.push({
-                                        end: parent.end,
-                                        newText: `set(${name}, ${name}.value ${delta})`,
-                                        start: parent.pos
-                                    });
-                                }
-                                else if (isPrefix) {
-                                    replacements.push({
-                                        end: parent.end,
-                                        newText: `(set(${name}, ${name}.value ${delta}), ${name}.value)`,
-                                        start: parent.pos
-                                    });
-                                }
-                                else {
-                                    let tmp = uid('tmp');
-
-                                    replacements.push({
-                                        end: parent.end,
-                                        newText: `((${tmp}) => (set(${name}, ${tmp} ${delta}), ${tmp}))(${name}.value)`,
-                                        start: parent.pos
-                                    });
-                                }
-                            }
-                        }
-                    }
-                    else {
-                        neededImports.add('read');
-
-                        replacements.push({
-                            end: node.end,
-                            newText: `read(${name})`,
-                            start: node.pos
-                        });
-                    }
-                }
-            }
-        }
-
-        ts.forEachChild(node, visit);
-    }
-
-    visit(sourceFile);
-
-    if (replacements.length === 0) {
+    if (ctx.replacements.length === 0) {
         return code;
     }
 
-    let result = applyReplacements(code, replacements);
+    let result = applyReplacements(code, ctx.replacements);
 
-    if (neededImports.size > 0) {
-        result = addMissingImports(result, neededImports);
+    if (ctx.neededImports.size > 0) {
+        result = addMissingImports(result, ctx.neededImports);
     }
 
     return result;

@@ -26,6 +26,14 @@ interface ReactiveObjectCall {
     varName: string | null;
 }
 
+interface TransformContext {
+    allNeededImports: Set<string>;
+    bindings: Bindings;
+    calls: ReactiveObjectCall[];
+    hasReactiveImport: boolean;
+    lastImportEnd: number;
+    sourceFile: ts.SourceFile;
+}
 
 
 function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.SourceFile): AnalyzedProperty | null {
@@ -100,130 +108,131 @@ function buildClassCode(className: string, properties: AnalyzedProperty[]): stri
     `;
 }
 
+function visit(ctx: TransformContext, node: ts.Node): void {
+    if (ts.isImportDeclaration(node)) {
+        ctx.lastImportEnd = node.end;
 
-const transformReactiveObjects = (sourceFile: ts.SourceFile, bindings: Bindings): string => {
-    let allNeededImports = new Set<string>(),
-        calls: ReactiveObjectCall[] = [],
-        code = sourceFile.getFullText(),
-        hasReactiveImport = false,
-        lastImportEnd = 0;
-
-    function visit(node: ts.Node): void {
-        // Track imports (always at top of file)
-        if (ts.isImportDeclaration(node)) {
-            lastImportEnd = node.end;
-
-            if (
-                ts.isStringLiteral(node.moduleSpecifier) &&
-                node.moduleSpecifier.text.includes('@esportsplus/reactivity')
-            ) {
-                let clause = node.importClause;
-
-                if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
-                    let elements = clause.namedBindings.elements;
-
-                    for (let i = 0, n = elements.length; i < n; i++) {
-                        if (elements[i].name.text === 'reactive') {
-                            hasReactiveImport = true;
-                            break;
-                        }
-                    }
-                }
-            }
-        }
-
-        // Process reactive() calls (only if import was found)
         if (
-            hasReactiveImport &&
-            ts.isCallExpression(node) &&
-            ts.isIdentifier(node.expression) &&
-            node.expression.text === 'reactive'
+            ts.isStringLiteral(node.moduleSpecifier) &&
+            node.moduleSpecifier.text.includes('@esportsplus/reactivity')
         ) {
+            let clause = node.importClause;
 
-            let arg = node.arguments[0];
+            if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+                let elements = clause.namedBindings.elements;
 
-            if (arg && ts.isObjectLiteralExpression(arg)) {
-                let varName: string | null = null;
-
-                if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
-                    varName = node.parent.name.text;
-                    bindings.set(varName, 'object');
-                }
-
-                let needsImports = new Set<string>(),
-                    properties: AnalyzedProperty[] = [];
-
-                needsImports.add('REACTIVE_OBJECT');
-
-                let props = arg.properties;
-
-                for (let i = 0, n = props.length; i < n; i++) {
-                    let prop = props[i];
-
-                    if (ts.isSpreadAssignment(prop)) {
-                        return;
-                    }
-
-                    let analyzed = analyzeProperty(prop, sourceFile);
-
-                    if (!analyzed) {
-                        return;
-                    }
-
-                    properties.push(analyzed);
-
-                    if (analyzed.type === 'signal') {
-                        needsImports.add('read');
-                        needsImports.add('set');
-                        needsImports.add('signal');
-                    }
-                    else if (analyzed.type === 'array') {
-                        needsImports.add('ReactiveArray');
-
-                        if (varName) {
-                            bindings.set(`${varName}.${analyzed.key}`, 'array');
-                        }
-                    }
-                    else if (analyzed.type === 'computed') {
-                        needsImports.add('computed');
-                        needsImports.add('dispose');
-                        needsImports.add('read');
+                for (let i = 0, n = elements.length; i < n; i++) {
+                    if (elements[i].name.text === 'reactive') {
+                        ctx.hasReactiveImport = true;
+                        break;
                     }
                 }
-
-                needsImports.forEach(imp => allNeededImports.add(imp));
-
-                calls.push({
-                    end: node.end,
-                    generatedClass: buildClassCode(uid('ReactiveObject'), properties),
-                    needsImports,
-                    start: node.pos,
-                    varName
-                });
             }
         }
-
-        ts.forEachChild(node, visit);
     }
 
-    visit(sourceFile);
+    if (
+        ctx.hasReactiveImport &&
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === 'reactive'
+    ) {
+        let arg = node.arguments[0];
 
-    if (calls.length === 0) {
+        if (arg && ts.isObjectLiteralExpression(arg)) {
+            let varName: string | null = null;
+
+            if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
+                varName = node.parent.name.text;
+                ctx.bindings.set(varName, 'object');
+            }
+
+            let needsImports = new Set<string>(),
+                properties: AnalyzedProperty[] = [];
+
+            needsImports.add('REACTIVE_OBJECT');
+
+            let props = arg.properties;
+
+            for (let i = 0, n = props.length; i < n; i++) {
+                let prop = props[i];
+
+                if (ts.isSpreadAssignment(prop)) {
+                    ts.forEachChild(node, n => visit(ctx, n));
+                    return;
+                }
+
+                let analyzed = analyzeProperty(prop, ctx.sourceFile);
+
+                if (!analyzed) {
+                    ts.forEachChild(node, n => visit(ctx, n));
+                    return;
+                }
+
+                properties.push(analyzed);
+
+                if (analyzed.type === 'signal') {
+                    needsImports.add('read');
+                    needsImports.add('set');
+                    needsImports.add('signal');
+                }
+                else if (analyzed.type === 'array') {
+                    needsImports.add('ReactiveArray');
+
+                    if (varName) {
+                        ctx.bindings.set(`${varName}.${analyzed.key}`, 'array');
+                    }
+                }
+                else if (analyzed.type === 'computed') {
+                    needsImports.add('computed');
+                    needsImports.add('dispose');
+                    needsImports.add('read');
+                }
+            }
+
+            needsImports.forEach(imp => ctx.allNeededImports.add(imp));
+
+            ctx.calls.push({
+                end: node.end,
+                generatedClass: buildClassCode(uid('ReactiveObject'), properties),
+                needsImports,
+                start: node.pos,
+                varName
+            });
+        }
+    }
+
+    ts.forEachChild(node, n => visit(ctx, n));
+}
+
+
+const transformReactiveObjects = (sourceFile: ts.SourceFile, bindings: Bindings): string => {
+    let code = sourceFile.getFullText(),
+        ctx: TransformContext = {
+            allNeededImports: new Set<string>(),
+            bindings,
+            calls: [],
+            hasReactiveImport: false,
+            lastImportEnd: 0,
+            sourceFile
+        };
+
+    visit(ctx, sourceFile);
+
+    if (ctx.calls.length === 0) {
         return code;
     }
 
     let replacements: Replacement[] = [];
 
-    // Insert generated classes after imports
     replacements.push({
-        end: lastImportEnd,
-        newText: code.substring(0, lastImportEnd) + '\n' + calls.map(c => c.generatedClass).join('\n') + '\n',
+        end: ctx.lastImportEnd,
+        newText: code.substring(0, ctx.lastImportEnd) + '\n' + ctx.calls.map(c => c.generatedClass).join('\n') + '\n',
         start: 0
     });
 
-    // Replace each reactive() call with new ClassName()
-    for (let i = 0, n = calls.length; i < n; i++) {
-        let call = calls[i],
+    for (let i = 0, n = ctx.calls.length; i < n; i++) {
+        let call = ctx.calls[i],
             classMatch = call.generatedClass.match(CLASS_NAME_REGEX);
 
         replacements.push({
@@ -235,7 +244,7 @@ const transformReactiveObjects = (sourceFile: ts.SourceFile, bindings: Bindings)
 
     return addMissingImports(
         applyReplacements(code, replacements),
-        allNeededImports,
+        ctx.allNeededImports,
         EXTRA_IMPORTS
     );
 };

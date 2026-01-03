@@ -1,10 +1,14 @@
-import { uid } from '@esportsplus/typescript/transformer';
+import { uid, TRAILING_SEMICOLON } from '@esportsplus/typescript/transformer';
 import { applyReplacements, Replacement } from './utilities';
 import ts from 'typescript';
 
 
-const TRAILING_SEMICOLON = /;$/;
-
+interface BodyContext {
+    disposables: Disposable[];
+    effectsToCapture: { end: number; name: string; start: number }[];
+    parentBody: ts.Node;
+    returnStatement: ts.ReturnStatement | null;
+}
 
 interface Disposable {
     name: string;
@@ -18,70 +22,11 @@ interface FunctionEdit {
     effectsToCapture: { end: number; name: string; start: number }[];
 }
 
-interface VisitResult {
-    disposables: Disposable[];
-    effectsToCapture: { end: number; name: string; start: number }[];
-    returnStatement: ts.ReturnStatement | null;
+interface MainContext {
+    edits: FunctionEdit[];
+    sourceFile: ts.SourceFile;
 }
 
-
-function visitFunctionBody(
-    body: ts.Block,
-    parentBody: ts.Node
-): VisitResult {
-    let disposables: Disposable[] = [],
-        effectsToCapture: { end: number; name: string; start: number }[] = [],
-        returnStatement: ts.ReturnStatement | null = null;
-
-    function visit(n: ts.Node): void {
-        if (
-            ts.isVariableDeclaration(n) &&
-            ts.isIdentifier(n.name) &&
-            n.initializer &&
-            ts.isCallExpression(n.initializer) &&
-            ts.isIdentifier(n.initializer.expression) &&
-            n.initializer.expression.text === 'reactive'
-        ) {
-            disposables.push({ name: n.name.text, type: 'reactive' });
-        }
-
-        if (
-            ts.isCallExpression(n) &&
-            ts.isIdentifier(n.expression) &&
-            n.expression.text === 'effect'
-        ) {
-            if (ts.isVariableDeclaration(n.parent) && ts.isIdentifier(n.parent.name)) {
-                disposables.push({ name: n.parent.name.text, type: 'effect' });
-            }
-            else if (ts.isExpressionStatement(n.parent)) {
-                let name = uid('effect');
-
-                effectsToCapture.push({
-                    end: n.parent.end,
-                    name,
-                    start: n.parent.pos
-                });
-
-                disposables.push({ name, type: 'effect' });
-            }
-        }
-
-        if (
-            ts.isReturnStatement(n) &&
-            n.expression &&
-            (ts.isArrowFunction(n.expression) || ts.isFunctionExpression(n.expression)) &&
-            n.parent === parentBody
-        ) {
-            returnStatement = n;
-        }
-
-        ts.forEachChild(n, visit);
-    }
-
-    visit(body);
-
-    return { disposables, effectsToCapture, returnStatement };
-}
 
 function processFunction(
     node: ts.ArrowFunction | ts.FunctionDeclaration | ts.FunctionExpression,
@@ -92,16 +37,20 @@ function processFunction(
         return;
     }
 
-    let result = visitFunctionBody(node.body, node.body),
-        disposables = result.disposables,
-        effectsToCapture = result.effectsToCapture,
-        returnStatement = result.returnStatement;
+    let ctx: BodyContext = {
+            disposables: [],
+            effectsToCapture: [],
+            parentBody: node.body,
+            returnStatement: null
+        };
 
-    if (disposables.length === 0 || !returnStatement || !returnStatement.expression) {
+    visitBody(ctx, node.body);
+
+    if (ctx.disposables.length === 0 || !ctx.returnStatement || !ctx.returnStatement.expression) {
         return;
     }
 
-    let cleanupFn = returnStatement.expression as ts.ArrowFunction | ts.FunctionExpression;
+    let cleanupFn = ctx.returnStatement.expression as ts.ArrowFunction | ts.FunctionExpression;
 
     if (!cleanupFn.body) {
         return;
@@ -109,8 +58,8 @@ function processFunction(
 
     let disposeStatements: string[] = [];
 
-    for (let i = disposables.length - 1; i >= 0; i--) {
-        let d = disposables[i];
+    for (let i = ctx.disposables.length - 1; i >= 0; i--) {
+        let d = ctx.disposables[i];
 
         if (d.type === 'reactive') {
             disposeStatements.push(`${d.name}.dispose();`);
@@ -127,7 +76,7 @@ function processFunction(
             cleanupBodyEnd: cleanupFn.body.statements[0]?.pos ?? cleanupFn.body.end - 1,
             cleanupBodyStart: cleanupFn.body.pos + 1,
             disposeCode,
-            effectsToCapture
+            effectsToCapture: ctx.effectsToCapture
         });
     }
     else {
@@ -135,38 +84,86 @@ function processFunction(
             cleanupBodyEnd: cleanupFn.body.end,
             cleanupBodyStart: cleanupFn.body.pos,
             disposeCode: `{ ${disposeCode}\n return ${cleanupFn.body.getText(sourceFile)}; }`,
-            effectsToCapture
+            effectsToCapture: ctx.effectsToCapture
         });
     }
+}
+
+function visitBody(ctx: BodyContext, node: ts.Node): void {
+    if (
+        ts.isVariableDeclaration(node) &&
+        ts.isIdentifier(node.name) &&
+        node.initializer &&
+        ts.isCallExpression(node.initializer) &&
+        ts.isIdentifier(node.initializer.expression) &&
+        node.initializer.expression.text === 'reactive'
+    ) {
+        ctx.disposables.push({ name: node.name.text, type: 'reactive' });
+    }
+
+    if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === 'effect'
+    ) {
+        if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
+            ctx.disposables.push({ name: node.parent.name.text, type: 'effect' });
+        }
+        else if (ts.isExpressionStatement(node.parent)) {
+            let name = uid('effect');
+
+            ctx.effectsToCapture.push({
+                end: node.parent.end,
+                name,
+                start: node.parent.pos
+            });
+
+            ctx.disposables.push({ name, type: 'effect' });
+        }
+    }
+
+    if (
+        ts.isReturnStatement(node) &&
+        node.expression &&
+        (ts.isArrowFunction(node.expression) || ts.isFunctionExpression(node.expression)) &&
+        node.parent === ctx.parentBody
+    ) {
+        ctx.returnStatement = node;
+    }
+
+    ts.forEachChild(node, n => visitBody(ctx, n));
+}
+
+function visitMain(ctx: MainContext, node: ts.Node): void {
+    if (
+        ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isArrowFunction(node)
+    ) {
+        processFunction(node, ctx.sourceFile, ctx.edits);
+    }
+
+    ts.forEachChild(node, n => visitMain(ctx, n));
 }
 
 
 const injectAutoDispose = (sourceFile: ts.SourceFile): string => {
     let code = sourceFile.getFullText(),
-        edits: FunctionEdit[] = [];
+        ctx: MainContext = {
+            edits: [],
+            sourceFile
+        };
 
-    function visit(node: ts.Node): void {
-        if (
-            ts.isFunctionDeclaration(node) ||
-            ts.isFunctionExpression(node) ||
-            ts.isArrowFunction(node)
-        ) {
-            processFunction(node, sourceFile, edits);
-        }
+    visitMain(ctx, sourceFile);
 
-        ts.forEachChild(node, visit);
-    }
-
-    visit(sourceFile);
-
-    if (edits.length === 0) {
+    if (ctx.edits.length === 0) {
         return code;
     }
 
     let replacements: Replacement[] = [];
 
-    for (let i = 0, n = edits.length; i < n; i++) {
-        let edit = edits[i],
+    for (let i = 0, n = ctx.edits.length; i < n; i++) {
+        let edit = ctx.edits[i],
             effects = edit.effectsToCapture;
 
         for (let j = 0, m = effects.length; j < m; j++) {

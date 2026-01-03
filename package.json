@@ -4,7 +4,7 @@
         "@esportsplus/utilities": "^0.27.2"
     },
     "devDependencies": {
-        "@esportsplus/typescript": "^0.11.0",
+        "@esportsplus/typescript": "^0.12.2",
         "@types/node": "^25.0.3",
         "esbuild": "^0.27.2",
         "typescript": "^5.9.3",
@@ -20,20 +20,16 @@
             "types": "./build/constants.d.ts"
         },
         "./plugins/esbuild": {
-            "import": "./build/plugins/esbuild.js",
-            "types": "./build/plugins/esbuild.d.ts"
+            "import": "./build/transformer/plugins/esbuild.js",
+            "types": "./build/transformer/plugins/esbuild.d.ts"
         },
         "./plugins/tsc": {
-            "import": "./build/plugins/tsc.js",
-            "types": "./build/plugins/tsc.d.ts"
+            "import": "./build/transformer/plugins/tsc.js",
+            "types": "./build/transformer/plugins/tsc.d.ts"
         },
         "./plugins/vite": {
-            "import": "./build/plugins/vite.js",
-            "types": "./build/plugins/vite.d.ts"
-        },
-        "./reactive/array": {
-            "import": "./build/reactive/array.js",
-            "types": "./build/reactive/array.d.ts"
+            "import": "./build/transformer/plugins/vite.js",
+            "types": "./build/transformer/plugins/vite.d.ts"
         }
     },
     "main": "build/index.js",

@@ -3,6 +3,25 @@ import { applyReplacements, Replacement } from './utilities';
 import ts from 'typescript';
 
 
+interface TransformContext {
+    bindings: Bindings;
+    replacements: Replacement[];
+    sourceFile: ts.SourceFile;
+}
+
+
+function getExpressionName(node: ts.Expression): string | null {
+    if (ts.isIdentifier(node)) {
+        return node.text;
+    }
+
+    if (ts.isPropertyAccessExpression(node)) {
+        return getPropertyPath(node);
+    }
+
+    return null;
+}
+
 function getPropertyPath(node: ts.PropertyAccessExpression): string | null {
     let current: ts.Node = node,
         parts: string[] = [];
@@ -15,18 +34,6 @@ function getPropertyPath(node: ts.PropertyAccessExpression): string | null {
     if (ts.isIdentifier(current)) {
         parts.unshift(current.text);
         return parts.join('.');
-    }
-
-    return null;
-}
-
-function getExpressionName(node: ts.Expression): string | null {
-    if (ts.isIdentifier(node)) {
-        return node.text;
-    }
-
-    if (ts.isPropertyAccessExpression(node)) {
-        return getPropertyPath(node);
     }
 
     return null;
@@ -46,94 +53,90 @@ function isAssignmentTarget(node: ts.Node): boolean {
     return false;
 }
 
-
-const transformReactiveArrays = (
-    sourceFile: ts.SourceFile,
-    bindings: Bindings
-): string => {
-    let code = sourceFile.getFullText(),
-        replacements: Replacement[] = [];
-
-    // Single-pass visitor: collect bindings and find replacements together
-    function visit(node: ts.Node): void {
-        // Collect array bindings from variable declarations
-        if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-            if (ts.isIdentifier(node.initializer) && bindings.get(node.initializer.text) === 'array') {
-                bindings.set(node.name.text, 'array');
-            }
-
-            if (ts.isPropertyAccessExpression(node.initializer)) {
-                let path = getPropertyPath(node.initializer);
-
-                if (path && bindings.get(path) === 'array') {
-                    bindings.set(node.name.text, 'array');
-                }
-            }
+function visit(ctx: TransformContext, node: ts.Node): void {
+    if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
+        if (ts.isIdentifier(node.initializer) && ctx.bindings.get(node.initializer.text) === 'array') {
+            ctx.bindings.set(node.name.text, 'array');
         }
 
-        // Collect array bindings from function parameters
-        if ((ts.isFunctionDeclaration(node) || ts.isArrowFunction(node)) && node.parameters) {
-            for (let i = 0, n = node.parameters.length; i < n; i++) {
-                let param = node.parameters[i];
+        if (ts.isPropertyAccessExpression(node.initializer)) {
+            let path = getPropertyPath(node.initializer);
 
-                if (
-                    (ts.isIdentifier(param.name) && param.type) &&
-                    ts.isTypeReferenceNode(param.type) &&
-                    ts.isIdentifier(param.type.typeName) &&
-                    param.type.typeName.text === 'ReactiveArray'
-                ) {
-                    bindings.set(param.name.text, 'array');
-                }
+            if (path && ctx.bindings.get(path) === 'array') {
+                ctx.bindings.set(node.name.text, 'array');
             }
         }
-
-        // Find .length access replacements
-        if (
-            ts.isPropertyAccessExpression(node) &&
-            node.name.text === 'length' &&
-            !isAssignmentTarget(node)
-        ) {
-            let objName = getExpressionName(node.expression);
-
-            if (objName && bindings.get(objName) === 'array') {
-                let objText = node.expression.getText(sourceFile);
-
-                replacements.push({
-                    end: node.end,
-                    newText: `${objText}.$length()`,
-                    start: node.pos
-                });
-            }
-        }
-
-        // Find array[i] = value replacements
-        if (
-            ts.isBinaryExpression(node) &&
-            node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-            ts.isElementAccessExpression(node.left)
-        ) {
-            let elemAccess = node.left,
-                objName = getExpressionName(elemAccess.expression);
-
-            if (objName && bindings.get(objName) === 'array') {
-                let indexText = elemAccess.argumentExpression.getText(sourceFile),
-                    objText = elemAccess.expression.getText(sourceFile),
-                    valueText = node.right.getText(sourceFile);
-
-                replacements.push({
-                    end: node.end,
-                    newText: `${objText}.$set(${indexText}, ${valueText})`,
-                    start: node.pos
-                });
-            }
-        }
-
-        ts.forEachChild(node, visit);
     }
 
-    visit(sourceFile);
+    if ((ts.isFunctionDeclaration(node) || ts.isArrowFunction(node)) && node.parameters) {
+        for (let i = 0, n = node.parameters.length; i < n; i++) {
+            let param = node.parameters[i];
 
-    return applyReplacements(code, replacements);
+            if (
+                (ts.isIdentifier(param.name) && param.type) &&
+                ts.isTypeReferenceNode(param.type) &&
+                ts.isIdentifier(param.type.typeName) &&
+                param.type.typeName.text === 'ReactiveArray'
+            ) {
+                ctx.bindings.set(param.name.text, 'array');
+            }
+        }
+    }
+
+    if (
+        ts.isPropertyAccessExpression(node) &&
+        node.name.text === 'length' &&
+        !isAssignmentTarget(node)
+    ) {
+        let name = getExpressionName(node.expression);
+
+        if (name && ctx.bindings.get(name) === 'array') {
+            let objText = node.expression.getText(ctx.sourceFile);
+
+            ctx.replacements.push({
+                end: node.end,
+                newText: `${objText}.$length()`,
+                start: node.pos
+            });
+        }
+    }
+
+    if (
+        ts.isBinaryExpression(node) &&
+        node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+        ts.isElementAccessExpression(node.left)
+    ) {
+        let elemAccess = node.left,
+            objName = getExpressionName(elemAccess.expression);
+
+        if (objName && ctx.bindings.get(objName) === 'array') {
+            let indexText = elemAccess.argumentExpression.getText(ctx.sourceFile),
+                objText = elemAccess.expression.getText(ctx.sourceFile),
+                valueText = node.right.getText(ctx.sourceFile);
+
+            ctx.replacements.push({
+                end: node.end,
+                newText: `${objText}.$set(${indexText}, ${valueText})`,
+                start: node.pos
+            });
+        }
+    }
+
+    ts.forEachChild(node, n => visit(ctx, n));
+}
+
+
+const transformReactiveArrays = (sourceFile: ts.SourceFile, bindings: Bindings): string => {
+    let code = sourceFile.getFullText(),
+        ctx: TransformContext = {
+            bindings,
+            replacements: [],
+            sourceFile
+        };
+
+    visit(ctx, sourceFile);
+
+    return applyReplacements(code, ctx.replacements);
 };
 
 
