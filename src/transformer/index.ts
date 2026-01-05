@@ -78,23 +78,38 @@ function addImportsTransformer(
                 );
             }
 
-            // Insert new imports after existing imports
-            let insertIndex = 0,
+            // Filter out original @esportsplus/reactivity imports (they lose symbol bindings)
+            let filteredStatements: ts.Statement[] = [],
+                insertIndex = 0,
                 statements = sourceFile.statements;
 
             for (let i = 0, n = statements.length; i < n; i++) {
-                if (ts.isImportDeclaration(statements[i])) {
-                    insertIndex = i + 1;
+                let stmt = statements[i];
+
+                if (ts.isImportDeclaration(stmt)) {
+                    insertIndex = filteredStatements.length + 1;
+
+                    // Skip imports from @esportsplus/reactivity packages
+                    if (ts.isStringLiteral(stmt.moduleSpecifier)) {
+                        let module = stmt.moduleSpecifier.text;
+
+                        if (
+                            module === '@esportsplus/reactivity' ||
+                            module === '@esportsplus/reactivity/reactive/array' ||
+                            module === '@esportsplus/reactivity/constants'
+                        ) {
+                            continue;
+                        }
+                    }
                 }
-                else {
-                    break;
-                }
+
+                filteredStatements.push(stmt);
             }
 
             let updatedStatements = [
-                ...statements.slice(0, insertIndex),
+                ...filteredStatements.slice(0, insertIndex),
                 ...newStatements,
-                ...statements.slice(insertIndex)
+                ...filteredStatements.slice(insertIndex)
             ];
 
             return factory.updateSourceFile(sourceFile, updatedStatements);
