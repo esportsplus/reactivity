@@ -1,5 +1,5 @@
 import { uid } from '@esportsplus/typescript/transformer';
-import type { BindingType, Bindings } from '~/types';
+import type { BindingType, Bindings, Namespaces } from '~/types';
 import {
     createCommaExpr,
     createComputedCall,
@@ -23,6 +23,7 @@ interface TransformContext {
     factory: ts.NodeFactory;
     hasReactiveImport: boolean;
     neededImports: Set<string>;
+    ns: Namespaces;
     scopedBindings: ScopeBinding[];
 }
 
@@ -245,12 +246,12 @@ function visit(ctx: TransformContext, node: ts.Node): ts.Node {
                 // Transform the function body to wrap reactive reads
                 let transformedArg = ts.visitEachChild(arg, n => visitComputedArg(ctx, n), ctx.context);
 
-                return createComputedCall(ctx.factory, transformedArg as ts.Expression);
+                return createComputedCall(ctx.factory, ctx.ns.reactivity, transformedArg as ts.Expression);
             }
             else {
                 ctx.neededImports.add('signal');
 
-                return createSignalCall(ctx.factory, arg);
+                return createSignalCall(ctx.factory, ctx.ns.reactivity, arg);
             }
         }
     }
@@ -271,16 +272,17 @@ function visit(ctx: TransformContext, node: ts.Node): ts.Node {
                     transformedRight = ts.visitEachChild(node.right, n => visit(ctx, n), ctx.context) as ts.Expression;
 
                 if (assignType === 'simple') {
-                    // x = value → set(x, value)
-                    return createSetCall(factory, signalIdent, transformedRight);
+                    // x = value → ns.set(x, value)
+                    return createSetCall(factory, ctx.ns.reactivity, signalIdent, transformedRight);
                 }
                 else {
-                    // x += value → set(x, x.value + value)
+                    // x += value → ns.set(x, x.value + value)
                     let op = getCompoundOperator(node.operatorToken.kind),
                         valueAccess = factory.createPropertyAccessExpression(signalIdent, 'value');
 
                     return createSetCall(
                         factory,
+                        ctx.ns.reactivity,
                         signalIdent,
                         factory.createBinaryExpression(valueAccess, op, transformedRight)
                     );
@@ -306,19 +308,21 @@ function visit(ctx: TransformContext, node: ts.Node): ts.Node {
                     valueAccess = factory.createPropertyAccessExpression(signalIdent, 'value');
 
                 if (node.parent && ts.isExpressionStatement(node.parent)) {
-                    // ++x as statement → set(x, x.value + 1)
+                    // ++x as statement → ns.set(x, x.value + 1)
                     return createSetCall(
                         factory,
+                        ctx.ns.reactivity,
                         signalIdent,
                         factory.createBinaryExpression(valueAccess, delta, factory.createNumericLiteral(1))
                     );
                 }
                 else {
-                    // ++x in expression → (set(x, x.value + 1), x.value)
+                    // ++x in expression → (ns.set(x, x.value + 1), x.value)
                     return createCommaExpr(
                         factory,
                         createSetCall(
                             factory,
+                            ctx.ns.reactivity,
                             signalIdent,
                             factory.createBinaryExpression(valueAccess, delta, factory.createNumericLiteral(1))
                         ),
@@ -346,16 +350,17 @@ function visit(ctx: TransformContext, node: ts.Node): ts.Node {
                     valueAccess = factory.createPropertyAccessExpression(signalIdent, 'value');
 
                 if (node.parent && ts.isExpressionStatement(node.parent)) {
-                    // x++ as statement → set(x, x.value + 1)
+                    // x++ as statement → ns.set(x, x.value + 1)
                     return createSetCall(
                         factory,
+                        ctx.ns.reactivity,
                         signalIdent,
                         factory.createBinaryExpression(valueAccess, delta, factory.createNumericLiteral(1))
                     );
                 }
                 else {
-                    // x++ in expression → ((tmp) => (set(x, tmp + 1), tmp))(x.value)
-                    return createPostfixIncrementExpr(factory, uid('tmp'), name, delta);
+                    // x++ in expression → ((tmp) => (ns.set(x, tmp + 1), tmp))(x.value)
+                    return createPostfixIncrementExpr(factory, ctx.ns.reactivity, uid('tmp'), name, delta);
                 }
             }
         }
@@ -389,10 +394,10 @@ function visit(ctx: TransformContext, node: ts.Node): ts.Node {
         let binding = findBinding(ctx.scopedBindings, node.text, node);
 
         if (binding) {
-            // Read access → read(x)
+            // Read access → ns.read(x)
             ctx.neededImports.add('read');
 
-            return createReadCall(ctx.factory, ctx.factory.createIdentifier(node.text));
+            return createReadCall(ctx.factory, ctx.ns.reactivity, ctx.factory.createIdentifier(node.text));
         }
     }
 
@@ -416,7 +421,7 @@ function visitComputedArg(ctx: TransformContext, node: ts.Node): ts.Node {
         if (binding) {
             ctx.neededImports.add('read');
 
-            return createReadCall(ctx.factory, ctx.factory.createIdentifier(node.text));
+            return createReadCall(ctx.factory, ctx.ns.reactivity, ctx.factory.createIdentifier(node.text));
         }
     }
 
@@ -426,7 +431,8 @@ function visitComputedArg(ctx: TransformContext, node: ts.Node): ts.Node {
 
 const createPrimitivesTransformer = (
     bindings: Bindings,
-    neededImports: Set<string>
+    neededImports: Set<string>,
+    ns: Namespaces
 ): (context: ts.TransformationContext) => (sourceFile: ts.SourceFile) => ts.SourceFile => {
     return (context: ts.TransformationContext) => {
         return (sourceFile: ts.SourceFile): ts.SourceFile => {
@@ -436,6 +442,7 @@ const createPrimitivesTransformer = (
                 factory: context.factory,
                 hasReactiveImport: false,
                 neededImports,
+                ns,
                 scopedBindings: []
             };
 

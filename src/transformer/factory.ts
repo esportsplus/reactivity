@@ -1,37 +1,37 @@
 import { ts } from '@esportsplus/typescript';
 
 
-// Create: read(expr)
-function createReadCall(factory: ts.NodeFactory, expr: ts.Expression): ts.CallExpression {
+// Create: ns.read(expr)
+function createReadCall(factory: ts.NodeFactory, ns: string, expr: ts.Expression): ts.CallExpression {
     return factory.createCallExpression(
-        factory.createIdentifier('read'),
+        factory.createPropertyAccessExpression(factory.createIdentifier(ns), 'read'),
         undefined,
         [expr]
     );
 }
 
-// Create: set(target, value)
-function createSetCall(factory: ts.NodeFactory, target: ts.Expression, value: ts.Expression): ts.CallExpression {
+// Create: ns.set(target, value)
+function createSetCall(factory: ts.NodeFactory, ns: string, target: ts.Expression, value: ts.Expression): ts.CallExpression {
     return factory.createCallExpression(
-        factory.createIdentifier('set'),
+        factory.createPropertyAccessExpression(factory.createIdentifier(ns), 'set'),
         undefined,
         [target, value]
     );
 }
 
-// Create: signal(initialValue)
-function createSignalCall(factory: ts.NodeFactory, initialValue: ts.Expression): ts.CallExpression {
+// Create: ns.signal(initialValue)
+function createSignalCall(factory: ts.NodeFactory, ns: string, initialValue: ts.Expression): ts.CallExpression {
     return factory.createCallExpression(
-        factory.createIdentifier('signal'),
+        factory.createPropertyAccessExpression(factory.createIdentifier(ns), 'signal'),
         undefined,
         [initialValue]
     );
 }
 
-// Create: computed(fn)
-function createComputedCall(factory: ts.NodeFactory, fn: ts.Expression): ts.CallExpression {
+// Create: ns.computed(fn)
+function createComputedCall(factory: ts.NodeFactory, ns: string, fn: ts.Expression): ts.CallExpression {
     return factory.createCallExpression(
-        factory.createIdentifier('computed'),
+        factory.createPropertyAccessExpression(factory.createIdentifier(ns), 'computed'),
         undefined,
         [fn]
     );
@@ -55,19 +55,19 @@ function createArraySetCall(factory: ts.NodeFactory, arrayExpr: ts.Expression, i
     );
 }
 
-// Create: new ReactiveArray(elements...)
-function createReactiveArrayNew(factory: ts.NodeFactory, elements: ts.Expression[]): ts.NewExpression {
+// Create: new ns.ReactiveArray(elements...)
+function createReactiveArrayNew(factory: ts.NodeFactory, ns: string, elements: ts.Expression[]): ts.NewExpression {
     return factory.createNewExpression(
-        factory.createIdentifier('ReactiveArray'),
+        factory.createPropertyAccessExpression(factory.createIdentifier(ns), 'ReactiveArray'),
         undefined,
         elements
     );
 }
 
-// Create: dispose(expr)
-function createDisposeCall(factory: ts.NodeFactory, expr: ts.Expression): ts.CallExpression {
+// Create: ns.dispose(expr)
+function createDisposeCall(factory: ts.NodeFactory, ns: string, expr: ts.Expression): ts.CallExpression {
     return factory.createCallExpression(
-        factory.createIdentifier('dispose'),
+        factory.createPropertyAccessExpression(factory.createIdentifier(ns), 'dispose'),
         undefined,
         [expr]
     );
@@ -85,9 +85,10 @@ function createCommaExpr(factory: ts.NodeFactory, first: ts.Expression, second: 
     );
 }
 
-// Create: ((tmp) => (set(name, tmp op delta), tmp))(name.value)
+// Create: ((tmp) => (ns.set(name, tmp op delta), tmp))(name.value)
 function createPostfixIncrementExpr(
     factory: ts.NodeFactory,
+    ns: string,
     tmpName: string,
     signalName: string,
     op: ts.SyntaxKind.PlusToken | ts.SyntaxKind.MinusToken
@@ -107,6 +108,7 @@ function createPostfixIncrementExpr(
                     factory,
                     createSetCall(
                         factory,
+                        ns,
                         signalIdent,
                         factory.createBinaryExpression(
                             tmpIdent,

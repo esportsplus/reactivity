@@ -1,4 +1,5 @@
-import type { Bindings } from '~/types';
+import { uid } from '@esportsplus/typescript/transformer';
+import type { Bindings, Namespaces } from '~/types';
 import { createArrayTransformer } from './transforms/array';
 import { createObjectTransformer, type GeneratedClass } from './transforms/object';
 import { createPrimitivesTransformer } from './transforms/primitives';
@@ -6,20 +7,9 @@ import { mightNeedTransform } from './detector';
 import { ts } from '@esportsplus/typescript';
 
 
-interface ExtraImport {
-    module: string;
-    specifier: string;
-}
-
-const EXTRA_IMPORTS: ExtraImport[] = [
-    { module: '@esportsplus/reactivity/constants', specifier: 'REACTIVE_OBJECT' },
-    { module: '@esportsplus/reactivity/reactive/array', specifier: 'ReactiveArray' }
-];
-
-
 function addImportsTransformer(
     neededImports: Set<string>,
-    extraImports: ExtraImport[]
+    ns: Namespaces
 ): (context: ts.TransformationContext) => (sourceFile: ts.SourceFile) => ts.SourceFile {
     return (context: ts.TransformationContext) => {
         return (sourceFile: ts.SourceFile): ts.SourceFile => {
@@ -27,59 +17,65 @@ function addImportsTransformer(
                 return sourceFile;
             }
 
-            let extraSpecifiers = new Set<string>(),
-                factory = context.factory,
-                newStatements: ts.Statement[] = [],
-                reactivitySpecifiers: string[] = [];
-
-            for (let i = 0, n = extraImports.length; i < n; i++) {
-                extraSpecifiers.add(extraImports[i].specifier);
-            }
+            let factory = context.factory,
+                needsArray = false,
+                needsConstants = false,
+                needsReactivity = false,
+                newStatements: ts.Statement[] = [];
 
             for (let imp of neededImports) {
-                if (!extraSpecifiers.has(imp)) {
-                    reactivitySpecifiers.push(imp);
+                if (imp === 'ReactiveArray') {
+                    needsArray = true;
+                }
+                else if (imp === 'REACTIVE_OBJECT') {
+                    needsConstants = true;
+                }
+                else {
+                    needsReactivity = true;
                 }
             }
 
-            // Add @esportsplus/reactivity imports
-            if (reactivitySpecifiers.length > 0) {
+            // Add namespace imports
+            if (needsReactivity) {
                 newStatements.push(
                     factory.createImportDeclaration(
                         undefined,
                         factory.createImportClause(
                             false,
                             undefined,
-                            factory.createNamedImports(
-                                reactivitySpecifiers.map(s =>
-                                    factory.createImportSpecifier(false, undefined, factory.createIdentifier(s))
-                                )
-                            )
+                            factory.createNamespaceImport(factory.createIdentifier(ns.reactivity))
                         ),
                         factory.createStringLiteral('@esportsplus/reactivity')
                     )
                 );
             }
 
-            // Add extra imports (REACTIVE_OBJECT, ReactiveArray)
-            for (let i = 0, n = extraImports.length; i < n; i++) {
-                let extra = extraImports[i];
-
-                if (neededImports.has(extra.specifier)) {
-                    newStatements.push(
-                        factory.createImportDeclaration(
+            if (needsArray) {
+                newStatements.push(
+                    factory.createImportDeclaration(
+                        undefined,
+                        factory.createImportClause(
+                            false,
                             undefined,
-                            factory.createImportClause(
-                                false,
-                                undefined,
-                                factory.createNamedImports([
-                                    factory.createImportSpecifier(false, undefined, factory.createIdentifier(extra.specifier))
-                                ])
-                            ),
-                            factory.createStringLiteral(extra.module)
-                        )
-                    );
-                }
+                            factory.createNamespaceImport(factory.createIdentifier(ns.array))
+                        ),
+                        factory.createStringLiteral('@esportsplus/reactivity/reactive/array')
+                    )
+                );
+            }
+
+            if (needsConstants) {
+                newStatements.push(
+                    factory.createImportDeclaration(
+                        undefined,
+                        factory.createImportClause(
+                            false,
+                            undefined,
+                            factory.createNamespaceImport(factory.createIdentifier(ns.constants))
+                        ),
+                        factory.createStringLiteral('@esportsplus/reactivity/constants')
+                    )
+                );
             }
 
             // Insert new imports after existing imports
@@ -154,10 +150,15 @@ const createTransformer = (): ts.TransformerFactory<ts.SourceFile> => {
 
             let bindings: Bindings = new Map(),
                 generatedClasses: GeneratedClass[] = [],
-                neededImports = new Set<string>();
+                neededImports = new Set<string>(),
+                ns: Namespaces = {
+                    array: uid('ra'),
+                    constants: uid('rc'),
+                    reactivity: uid('r')
+                };
 
             // Run object transformer first (generates classes, tracks array bindings)
-            let objectTransformer = createObjectTransformer(bindings, neededImports, generatedClasses)(context);
+            let objectTransformer = createObjectTransformer(bindings, neededImports, generatedClasses, ns)(context);
 
             sourceFile = objectTransformer(sourceFile);
 
@@ -167,7 +168,7 @@ const createTransformer = (): ts.TransformerFactory<ts.SourceFile> => {
             sourceFile = arrayTransformer(sourceFile);
 
             // Run primitives transformer (handles signal/computed, reads/writes)
-            let primitivesTransformer = createPrimitivesTransformer(bindings, neededImports)(context);
+            let primitivesTransformer = createPrimitivesTransformer(bindings, neededImports, ns)(context);
 
             sourceFile = primitivesTransformer(sourceFile);
 
@@ -176,8 +177,8 @@ const createTransformer = (): ts.TransformerFactory<ts.SourceFile> => {
 
             sourceFile = classInserter(sourceFile);
 
-            // Add missing imports
-            let importAdder = addImportsTransformer(neededImports, EXTRA_IMPORTS)(context);
+            // Add namespace imports
+            let importAdder = addImportsTransformer(neededImports, ns)(context);
 
             sourceFile = importAdder(sourceFile);
 

@@ -6,6 +6,12 @@ type BindingType = 'array' | 'computed' | 'object' | 'signal';
 
 type Bindings = Map<string, BindingType>;
 
+interface Namespaces {
+    array: string;
+    constants: string;
+    reactivity: string;
+}
+
 interface Computed<T> {
     cleanup: VoidFunction | VoidFunction[] | null;
     deps: Link | null;
@@ -48,6 +54,7 @@ export type {
     Bindings,
     Computed,
     Link,
+    Namespaces,
     ReactiveArray,
     ReactiveObject,
     Signal

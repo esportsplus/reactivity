@@ -1,5 +1,5 @@
 import { uid } from '@esportsplus/typescript/transformer';
-import type { Bindings } from '~/types';
+import type { Bindings, Namespaces } from '~/types';
 import { ts } from '@esportsplus/typescript';
 
 
@@ -23,6 +23,7 @@ interface TransformContext {
     generatedClasses: GeneratedClass[];
     hasReactiveImport: boolean;
     neededImports: Set<string>;
+    ns: Namespaces;
 }
 
 
@@ -65,11 +66,13 @@ function buildReactiveClass(
 
     needsImports.add('REACTIVE_OBJECT');
 
-    // [REACTIVE_OBJECT] = true
+    // [ns.constants.REACTIVE_OBJECT] = true
     members.push(
         factory.createPropertyDeclaration(
             undefined,
-            factory.createComputedPropertyName(factory.createIdentifier('REACTIVE_OBJECT')),
+            factory.createComputedPropertyName(
+                factory.createPropertyAccessExpression(factory.createIdentifier(ctx.ns.constants), 'REACTIVE_OBJECT')
+            ),
             undefined,
             undefined,
             factory.createTrue()
@@ -89,7 +92,7 @@ function buildReactiveClass(
             let privateName = factory.createPrivateIdentifier(`#${prop.key}`),
                 paramName = uid('v');
 
-            // Private field: #key = signal(value)
+            // Private field: #key = ns.signal(value)
             members.push(
                 factory.createPropertyDeclaration(
                     undefined,
@@ -97,14 +100,14 @@ function buildReactiveClass(
                     undefined,
                     undefined,
                     factory.createCallExpression(
-                        factory.createIdentifier('signal'),
+                        factory.createPropertyAccessExpression(factory.createIdentifier(ctx.ns.reactivity), 'signal'),
                         undefined,
                         [prop.value]
                     )
                 )
             );
 
-            // Getter: get key() { return read(this.#key); }
+            // Getter: get key() { return ns.read(this.#key); }
             members.push(
                 factory.createGetAccessorDeclaration(
                     undefined,
@@ -114,7 +117,7 @@ function buildReactiveClass(
                     factory.createBlock([
                         factory.createReturnStatement(
                             factory.createCallExpression(
-                                factory.createIdentifier('read'),
+                                factory.createPropertyAccessExpression(factory.createIdentifier(ctx.ns.reactivity), 'read'),
                                 undefined,
                                 [factory.createPropertyAccessExpression(factory.createThis(), privateName)]
                             )
@@ -123,7 +126,7 @@ function buildReactiveClass(
                 )
             );
 
-            // Setter: set key(v) { set(this.#key, v); }
+            // Setter: set key(v) { ns.set(this.#key, v); }
             members.push(
                 factory.createSetAccessorDeclaration(
                     undefined,
@@ -132,7 +135,7 @@ function buildReactiveClass(
                     factory.createBlock([
                         factory.createExpressionStatement(
                             factory.createCallExpression(
-                                factory.createIdentifier('set'),
+                                factory.createPropertyAccessExpression(factory.createIdentifier(ctx.ns.reactivity), 'set'),
                                 undefined,
                                 [
                                     factory.createPropertyAccessExpression(factory.createThis(), privateName),
@@ -147,7 +150,7 @@ function buildReactiveClass(
         else if (prop.type === 'array') {
             needsImports.add('ReactiveArray');
 
-            // Public field: key = new ReactiveArray(elements...)
+            // Public field: key = new ns.array.ReactiveArray(elements...)
             members.push(
                 factory.createPropertyDeclaration(
                     undefined,
@@ -155,7 +158,7 @@ function buildReactiveClass(
                     undefined,
                     undefined,
                     factory.createNewExpression(
-                        factory.createIdentifier('ReactiveArray'),
+                        factory.createPropertyAccessExpression(factory.createIdentifier(ctx.ns.array), 'ReactiveArray'),
                         undefined,
                         prop.elements || []
                     )
@@ -204,7 +207,7 @@ function buildReactiveClass(
                 )
             );
 
-            // Getter: get key() { return read(this.#key ??= computed(fn)); }
+            // Getter: get key() { return ns.read(this.#key ??= ns.computed(fn)); }
             members.push(
                 factory.createGetAccessorDeclaration(
                     undefined,
@@ -214,14 +217,14 @@ function buildReactiveClass(
                     factory.createBlock([
                         factory.createReturnStatement(
                             factory.createCallExpression(
-                                factory.createIdentifier('read'),
+                                factory.createPropertyAccessExpression(factory.createIdentifier(ctx.ns.reactivity), 'read'),
                                 undefined,
                                 [
                                     factory.createBinaryExpression(
                                         factory.createPropertyAccessExpression(factory.createThis(), privateName),
                                         ts.SyntaxKind.QuestionQuestionEqualsToken,
                                         factory.createCallExpression(
-                                            factory.createIdentifier('computed'),
+                                            factory.createPropertyAccessExpression(factory.createIdentifier(ctx.ns.reactivity), 'computed'),
                                             undefined,
                                             [prop.value]
                                         )
@@ -233,13 +236,13 @@ function buildReactiveClass(
                 )
             );
 
-            // dispose: if (this.#key) dispose(this.#key)
+            // dispose: if (this.#key) ns.dispose(this.#key)
             disposeStatements.push(
                 factory.createIfStatement(
                     factory.createPropertyAccessExpression(factory.createThis(), privateName),
                     factory.createExpressionStatement(
                         factory.createCallExpression(
-                            factory.createIdentifier('dispose'),
+                            factory.createPropertyAccessExpression(factory.createIdentifier(ctx.ns.reactivity), 'dispose'),
                             undefined,
                             [factory.createPropertyAccessExpression(factory.createThis(), privateName)]
                         )
@@ -306,7 +309,7 @@ function visit(ctx: TransformContext, node: ts.Node): ts.Node | ts.Node[] {
     ) {
         let arg = node.arguments[0];
 
-        // Handle reactive([...]) → new ReactiveArray(...)
+        // Handle reactive([...]) → new ns.array.ReactiveArray(...)
         if (arg && ts.isArrayLiteralExpression(arg)) {
             let varName: string | null = null;
 
@@ -318,7 +321,7 @@ function visit(ctx: TransformContext, node: ts.Node): ts.Node | ts.Node[] {
             ctx.neededImports.add('ReactiveArray');
 
             return ctx.factory.createNewExpression(
-                ctx.factory.createIdentifier('ReactiveArray'),
+                ctx.factory.createPropertyAccessExpression(ctx.factory.createIdentifier(ctx.ns.array), 'ReactiveArray'),
                 undefined,
                 [...arg.elements]
             );
@@ -378,7 +381,8 @@ function visit(ctx: TransformContext, node: ts.Node): ts.Node | ts.Node[] {
 const createObjectTransformer = (
     bindings: Bindings,
     neededImports: Set<string>,
-    generatedClasses: GeneratedClass[]
+    generatedClasses: GeneratedClass[],
+    ns: Namespaces
 ): (context: ts.TransformationContext) => (sourceFile: ts.SourceFile) => ts.SourceFile => {
     return (context: ts.TransformationContext) => {
         return (sourceFile: ts.SourceFile): ts.SourceFile => {
@@ -388,7 +392,8 @@ const createObjectTransformer = (
                 factory: context.factory,
                 generatedClasses,
                 hasReactiveImport: false,
-                neededImports
+                neededImports,
+                ns
             };
 
             return ts.visitNode(sourceFile, n => visit(ctx, n)) as ts.SourceFile;
