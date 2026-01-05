@@ -44,8 +44,10 @@ type Listener<V> = {
 type Listeners = Record<string, (Listener<any> | null)[]>;
 
 
-function isReactiveObject(value: unknown): value is { dispose(): void } {
-    return value !== null && typeof value === 'object' && (value as any)[REACTIVE_OBJECT] === true;
+function dispose(value: unknown) {
+    if (value !== null && typeof value === 'object' && (value as any)[REACTIVE_OBJECT] === true) {
+        (value as { dispose(): void }).dispose();
+    }
 }
 
 
@@ -147,14 +149,8 @@ class ReactiveArray<T> extends Array<T> {
     }
 
     dispose() {
-        let item;
-
         while (this.length) {
-            item = super.pop();
-
-            if (isReactiveObject(item)) {
-                item.dispose();
-            }
+            dispose(super.pop());
         }
 
         set(this._length, 0);
@@ -197,11 +193,8 @@ class ReactiveArray<T> extends Array<T> {
         let item = super.pop();
 
         if (item !== undefined) {
+            dispose(item);
             set(this._length, super.length);
-
-            if (isReactiveObject(item)) {
-                item.dispose();
-            }
 
             this.dispatch('pop', { item });
         }
@@ -233,11 +226,8 @@ class ReactiveArray<T> extends Array<T> {
         let item = super.shift();
 
         if (item !== undefined) {
+            dispose(item);
             set(this._length, super.length);
-
-            if (isReactiveObject(item)) {
-                item.dispose();
-            }
 
             this.dispatch('shift', { item });
         }
@@ -297,11 +287,7 @@ class ReactiveArray<T> extends Array<T> {
             set(this._length, super.length);
 
             for (let i = 0, n = removed.length; i < n; i++) {
-                let item = removed[i];
-
-                if (isReactiveObject(item)) {
-                    item.dispose();
-                }
+                dispose(removed[i]);
             }
 
             this.dispatch('splice', { deleteCount, items, start });

@@ -24,10 +24,9 @@ function visit(ctx: DetectContext, node: ts.Node): void {
         let elements = node.importClause.namedBindings.elements;
 
         for (let i = 0, n = elements.length; i < n; i++) {
-            let el = elements[i],
-                name = el.propertyName?.text ?? el.name.text;
+            let el = elements[i];
 
-            if (name === 'reactive') {
+            if ((el.propertyName?.text ?? el.name.text) === 'reactive') {
                 ctx.hasImport = true;
                 break;
             }

@@ -1,5 +1,5 @@
+import { applyReplacements, type Replacement } from '@esportsplus/typescript/transformer';
 import type { Bindings } from '~/types';
-import { applyReplacements, Replacement } from './utilities';
 import { ts } from '@esportsplus/typescript';
 
 
@@ -130,7 +130,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 }
 
 
-const transformReactiveArrays = (sourceFile: ts.SourceFile, bindings: Bindings): string => {
+const transformReactiveArrays = (sourceFile: ts.SourceFile, bindings: Bindings, _ns: string): string => {
     let code = sourceFile.getFullText(),
         ctx: TransformContext = {
             bindings,

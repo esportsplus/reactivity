@@ -1,3 +1,4 @@
+import { uid } from '@esportsplus/typescript/transformer';
 import type { Bindings, TransformResult } from '~/types';
 import { mightNeedTransform } from './detector';
 import { transformReactiveArrays } from './transforms/array';
@@ -20,6 +21,7 @@ const transform = (sourceFile: ts.SourceFile): TransformResult => {
     let bindings: Bindings = new Map(),
         code = sourceFile.getFullText(),
         current = sourceFile,
+        ns = uid('r'),
         original = code,
         result: string;
 
@@ -27,22 +29,21 @@ const transform = (sourceFile: ts.SourceFile): TransformResult => {
         return { code, sourceFile, transformed: false };
     }
 
-    // Run all transforms, only re-parse between transforms if code changed
-    result = transformReactiveObjects(current, bindings);
+    result = transformReactiveObjects(current, bindings, ns);
 
     if (result !== code) {
         current = ts.createSourceFile(sourceFile.fileName, result, sourceFile.languageVersion, true);
         code = result;
     }
 
-    result = transformReactiveArrays(current, bindings);
+    result = transformReactiveArrays(current, bindings, ns);
 
     if (result !== code) {
         current = ts.createSourceFile(sourceFile.fileName, result, sourceFile.languageVersion, true);
         code = result;
     }
 
-    result = transformReactivePrimitives(current, bindings);
+    result = transformReactivePrimitives(current, bindings, ns);
 
     if (result !== code) {
         current = ts.createSourceFile(sourceFile.fileName, result, sourceFile.languageVersion, true);
@@ -53,9 +54,11 @@ const transform = (sourceFile: ts.SourceFile): TransformResult => {
         return { code, sourceFile, transformed: false };
     }
 
+    code = `import * as ${ns} from '@esportsplus/reactivity';\n` + code;
+
     return {
         code,
-        sourceFile: current,
+        sourceFile: ts.createSourceFile(sourceFile.fileName, code, sourceFile.languageVersion, true),
         transformed: true
     };
 };

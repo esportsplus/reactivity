@@ -1,13 +1,12 @@
-import { uid, type Range } from '@esportsplus/typescript/transformer';
+import { applyReplacements, type Range, type Replacement } from '@esportsplus/typescript/transformer';
 import type { BindingType, Bindings } from '~/types';
-import { addMissingImports, applyReplacements, Replacement } from './utilities';
 import { ts } from '@esportsplus/typescript';
 
 
 interface ArgContext {
     argStart: number;
     innerReplacements: Replacement[];
-    neededImports: Set<string>;
+    ns: string;
     scopedBindings: ScopeBinding[];
     sourceFile: ts.SourceFile;
 }
@@ -22,10 +21,11 @@ interface TransformContext {
     bindings: Bindings;
     computedArgRanges: Range[];
     hasReactiveImport: boolean;
-    neededImports: Set<string>;
+    ns: string;
     replacements: Replacement[];
     scopedBindings: ScopeBinding[];
     sourceFile: ts.SourceFile;
+    tmpCounter: number;
 }
 
 
@@ -76,55 +76,26 @@ function findEnclosingScope(node: ts.Node): ts.Node {
     return node.getSourceFile();
 }
 
+let COMPOUND_OPERATORS = new Map<ts.SyntaxKind, string>([
+    [ts.SyntaxKind.AmpersandAmpersandEqualsToken, '&&'],
+    [ts.SyntaxKind.AmpersandEqualsToken, '&'],
+    [ts.SyntaxKind.AsteriskAsteriskEqualsToken, '**'],
+    [ts.SyntaxKind.AsteriskEqualsToken, '*'],
+    [ts.SyntaxKind.BarBarEqualsToken, '||'],
+    [ts.SyntaxKind.BarEqualsToken, '|'],
+    [ts.SyntaxKind.CaretEqualsToken, '^'],
+    [ts.SyntaxKind.GreaterThanGreaterThanEqualsToken, '>>'],
+    [ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken, '>>>'],
+    [ts.SyntaxKind.LessThanLessThanEqualsToken, '<<'],
+    [ts.SyntaxKind.MinusEqualsToken, '-'],
+    [ts.SyntaxKind.PercentEqualsToken, '%'],
+    [ts.SyntaxKind.PlusEqualsToken, '+'],
+    [ts.SyntaxKind.QuestionQuestionEqualsToken, '??'],
+    [ts.SyntaxKind.SlashEqualsToken, '/']
+]);
+
 function getCompoundOperator(kind: ts.SyntaxKind): string {
-    if (kind === ts.SyntaxKind.PlusEqualsToken) {
-        return '+';
-    }
-    else if (kind === ts.SyntaxKind.MinusEqualsToken) {
-        return '-';
-    }
-    else if (kind === ts.SyntaxKind.AsteriskEqualsToken) {
-        return '*';
-    }
-    else if (kind === ts.SyntaxKind.SlashEqualsToken) {
-        return '/';
-    }
-    else if (kind === ts.SyntaxKind.PercentEqualsToken) {
-        return '%';
-    }
-    else if (kind === ts.SyntaxKind.AsteriskAsteriskEqualsToken) {
-        return '**';
-    }
-    else if (kind === ts.SyntaxKind.AmpersandEqualsToken) {
-        return '&';
-    }
-    else if (kind === ts.SyntaxKind.BarEqualsToken) {
-        return '|';
-    }
-    else if (kind === ts.SyntaxKind.CaretEqualsToken) {
-        return '^';
-    }
-    else if (kind === ts.SyntaxKind.LessThanLessThanEqualsToken) {
-        return '<<';
-    }
-    else if (kind === ts.SyntaxKind.GreaterThanGreaterThanEqualsToken) {
-        return '>>';
-    }
-    else if (kind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken) {
-        return '>>>';
-    }
-    else if (kind === ts.SyntaxKind.AmpersandAmpersandEqualsToken) {
-        return '&&';
-    }
-    else if (kind === ts.SyntaxKind.BarBarEqualsToken) {
-        return '||';
-    }
-    else if (kind === ts.SyntaxKind.QuestionQuestionEqualsToken) {
-        return '??';
-    }
-    else {
-        return '+';
-    }
+    return COMPOUND_OPERATORS.get(kind) ?? '+';
 }
 
 function isInComputedRange(ranges: Range[], start: number, end: number): boolean {
@@ -190,15 +161,7 @@ function isWriteContext(node: ts.Identifier): 'simple' | 'compound' | 'increment
             return 'simple';
         }
 
-        if (op >= ts.SyntaxKind.PlusEqualsToken && op <= ts.SyntaxKind.CaretEqualsToken) {
-            return 'compound';
-        }
-
-        if (
-            op === ts.SyntaxKind.AmpersandAmpersandEqualsToken ||
-            op === ts.SyntaxKind.BarBarEqualsToken ||
-            op === ts.SyntaxKind.QuestionQuestionEqualsToken
-        ) {
+        if (COMPOUND_OPERATORS.has(op)) {
             return 'compound';
         }
     }
@@ -265,15 +228,14 @@ function visit(ctx: TransformContext, node: ts.Node): void {
             }
 
             if (classification === 'computed') {
-                ctx.computedArgRanges.push({
-                    end: arg.end,
-                    start: arg.getStart(ctx.sourceFile)
-                });
+                let argStart = arg.getStart(ctx.sourceFile);
+
+                ctx.computedArgRanges.push({ end: arg.end, start: argStart });
 
                 let argCtx: ArgContext = {
-                    argStart: arg.getStart(ctx.sourceFile),
+                    argStart,
                     innerReplacements: [],
-                    neededImports: ctx.neededImports,
+                    ns: ctx.ns,
                     scopedBindings: ctx.scopedBindings,
                     sourceFile: ctx.sourceFile
                 };
@@ -284,22 +246,16 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
                 ctx.replacements.push({
                     end: node.end,
-                    newText: `computed(${argText})`,
+                    newText: `${ctx.ns}.computed(${argText})`,
                     start: node.pos
                 });
-
-                ctx.neededImports.add('computed');
             }
             else {
-                let argText = arg.getText(ctx.sourceFile);
-
                 ctx.replacements.push({
                     end: node.end,
-                    newText: `signal(${argText})`,
+                    newText: `${ctx.ns}.signal(${arg.getText(ctx.sourceFile)})`,
                     start: node.pos
                 });
-
-                ctx.neededImports.add('signal');
             }
         }
     }
@@ -329,54 +285,48 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
                 if (writeCtx) {
                     if (binding.type !== 'computed') {
-                        ctx.neededImports.add('set');
-
                         let parent = node.parent;
 
                         if (writeCtx === 'simple' && ts.isBinaryExpression(parent)) {
-                            let valueText = parent.right.getText(ctx.sourceFile);
-
                             ctx.replacements.push({
                                 end: parent.end,
-                                newText: `set(${name}, ${valueText})`,
+                                newText: `${ctx.ns}.set(${name}, ${parent.right.getText(ctx.sourceFile)})`,
                                 start: parent.pos
                             });
                         }
                         else if (writeCtx === 'compound' && ts.isBinaryExpression(parent)) {
-                            let op = getCompoundOperator(parent.operatorToken.kind),
-                                valueText = parent.right.getText(ctx.sourceFile);
+                            let op = getCompoundOperator(parent.operatorToken.kind);
 
                             ctx.replacements.push({
                                 end: parent.end,
-                                newText: `set(${name}, ${name}.value ${op} ${valueText})`,
+                                newText: `${ctx.ns}.set(${name}, ${name}.value ${op} ${parent.right.getText(ctx.sourceFile)})`,
                                 start: parent.pos
                             });
                         }
                         else if (writeCtx === 'increment') {
-                            let isPrefix = ts.isPrefixUnaryExpression(parent),
-                                op = (parent as ts.PrefixUnaryExpression | ts.PostfixUnaryExpression).operator,
-                                delta = op === ts.SyntaxKind.PlusPlusToken ? '+ 1' : '- 1';
+                            let delta = (parent as ts.PrefixUnaryExpression | ts.PostfixUnaryExpression).operator === ts.SyntaxKind.PlusPlusToken ? '+ 1' : '- 1',
+                                isPrefix = ts.isPrefixUnaryExpression(parent);
 
                             if (ts.isExpressionStatement(parent.parent)) {
                                 ctx.replacements.push({
                                     end: parent.end,
-                                    newText: `set(${name}, ${name}.value ${delta})`,
+                                    newText: `${ctx.ns}.set(${name}, ${name}.value ${delta})`,
                                     start: parent.pos
                                 });
                             }
                             else if (isPrefix) {
                                 ctx.replacements.push({
                                     end: parent.end,
-                                    newText: `(set(${name}, ${name}.value ${delta}), ${name}.value)`,
+                                    newText: `(${ctx.ns}.set(${name}, ${name}.value ${delta}), ${name}.value)`,
                                     start: parent.pos
                                 });
                             }
                             else {
-                                let tmp = uid('tmp');
+                                let tmp = `_t${ctx.tmpCounter++}`;
 
                                 ctx.replacements.push({
                                     end: parent.end,
-                                    newText: `((${tmp}) => (set(${name}, ${tmp} ${delta}), ${tmp}))(${name}.value)`,
+                                    newText: `((${tmp}) => (${ctx.ns}.set(${name}, ${tmp} ${delta}), ${tmp}))(${name}.value)`,
                                     start: parent.pos
                                 });
                             }
@@ -384,11 +334,9 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                     }
                 }
                 else {
-                    ctx.neededImports.add('read');
-
                     ctx.replacements.push({
                         end: node.end,
-                        newText: `read(${name})`,
+                        newText: `${ctx.ns}.read(${name})`,
                         start: node.pos
                     });
                 }
@@ -411,14 +359,10 @@ function visitArg(ctx: ArgContext, node: ts.Node): void {
             return;
         }
 
-        let binding = findBinding(ctx.scopedBindings, node.text, node);
-
-        if (binding) {
-            ctx.neededImports.add('read');
-
+        if (findBinding(ctx.scopedBindings, node.text, node)) {
             ctx.innerReplacements.push({
                 end: node.end - ctx.argStart,
-                newText: `read(${node.text})`,
+                newText: `${ctx.ns}.read(${node.text})`,
                 start: node.getStart(ctx.sourceFile) - ctx.argStart
             });
         }
@@ -430,17 +374,19 @@ function visitArg(ctx: ArgContext, node: ts.Node): void {
 
 const transformReactivePrimitives = (
     sourceFile: ts.SourceFile,
-    bindings: Bindings
+    bindings: Bindings,
+    ns: string
 ): string => {
     let code = sourceFile.getFullText(),
         ctx: TransformContext = {
             bindings,
             computedArgRanges: [],
             hasReactiveImport: false,
-            neededImports: new Set<string>(),
+            ns,
             replacements: [],
             scopedBindings: [],
-            sourceFile
+            sourceFile,
+            tmpCounter: 0
         };
 
     visit(ctx, sourceFile);
@@ -449,13 +395,7 @@ const transformReactivePrimitives = (
         return code;
     }
 
-    let result = applyReplacements(code, ctx.replacements);
-
-    if (ctx.neededImports.size > 0) {
-        result = addMissingImports(result, ctx.neededImports);
-    }
-
-    return result;
+    return applyReplacements(code, ctx.replacements);
 };
 
 

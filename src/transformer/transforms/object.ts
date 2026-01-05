@@ -1,15 +1,6 @@
-import { uid } from '@esportsplus/typescript/transformer';
+import { applyReplacements, type Replacement } from '@esportsplus/typescript/transformer';
 import type { Bindings } from '~/types';
-import { addMissingImports, applyReplacements, ExtraImport, Replacement } from './utilities';
 import { ts } from '@esportsplus/typescript';
-
-
-const CLASS_NAME_REGEX = /class (\w+)/;
-
-const EXTRA_IMPORTS: ExtraImport[] = [
-    { module: '@esportsplus/reactivity/constants', specifier: 'REACTIVE_OBJECT' },
-    { module: '@esportsplus/reactivity/reactive/array', specifier: 'ReactiveArray' }
-];
 
 
 interface AnalyzedProperty {
@@ -19,19 +10,20 @@ interface AnalyzedProperty {
 }
 
 interface ReactiveObjectCall {
+    className: string;
     end: number;
-    generatedClass: string;
-    needsImports: Set<string>;
+    properties: AnalyzedProperty[];
     start: number;
     varName: string | null;
 }
 
 interface TransformContext {
-    allNeededImports: Set<string>;
     bindings: Bindings;
     calls: ReactiveObjectCall[];
+    classCounter: number;
     hasReactiveImport: boolean;
     lastImportEnd: number;
+    ns: string;
     sourceFile: ts.SourceFile;
 }
 
@@ -58,39 +50,49 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.Sourc
     }
 
     if (ts.isArrayLiteralExpression(value)) {
-        return { key, type: 'array', valueText };
+        let elements = value.elements,
+            elementsText = '';
+
+        for (let i = 0, n = elements.length; i < n; i++) {
+            if (i > 0) {
+                elementsText += ', ';
+            }
+
+            elementsText += elements[i].getText(sourceFile);
+        }
+
+        return { key, type: 'array', valueText: elementsText };
     }
 
     return { key, type: 'signal', valueText };
 }
 
-function buildClassCode(className: string, properties: AnalyzedProperty[]): string {
+function buildClassCode(className: string, properties: AnalyzedProperty[], ns: string): string {
     let accessors: string[] = [],
         disposeStatements: string[] = [],
-        fields: string[] = [];
+        fields: string[] = [],
+        paramCounter = 0;
 
-    fields.push(`[REACTIVE_OBJECT] = true;`);
+    fields.push(`[${ns}.REACTIVE_OBJECT] = true;`);
 
     for (let i = 0, n = properties.length; i < n; i++) {
         let { key, type, valueText } = properties[i];
 
         if (type === 'signal') {
-            let param = uid('v');
+            let param = `_v${paramCounter++}`;
 
-            fields.push(`#${key} = signal(${valueText});`);
-            accessors.push(`get ${key}() { return read(this.#${key}); }`);
-            accessors.push(`set ${key}(${param}) { set(this.#${key}, ${param}); }`);
+            fields.push(`#${key} = ${ns}.signal(${valueText});`);
+            accessors.push(`get ${key}() { return ${ns}.read(this.#${key}); }`);
+            accessors.push(`set ${key}(${param}) { ${ns}.set(this.#${key}, ${param}); }`);
         }
         else if (type === 'array') {
-            let elements = valueText.slice(1, -1);
-
-            fields.push(`${key} = new ReactiveArray(${elements});`);
+            fields.push(`${key} = new ${ns}.ReactiveArray(${valueText});`);
             disposeStatements.push(`this.${key}.dispose();`);
         }
         else if (type === 'computed') {
-            fields.push(`#${key}: Computed<unknown> | null = null;`);
-            accessors.push(`get ${key}() { return read(this.#${key} ??= computed(${valueText})); }`);
-            disposeStatements.push(`if (this.#${key}) dispose(this.#${key});`);
+            fields.push(`#${key} = null;`);
+            accessors.push(`get ${key}() { return ${ns}.read(this.#${key} ??= ${ns}.computed(${valueText})); }`);
+            disposeStatements.push(`if (this.#${key}) ${ns}.dispose(this.#${key});`);
         }
     }
 
@@ -138,19 +140,14 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         let arg = node.arguments[0];
 
         if (arg && ts.isObjectLiteralExpression(arg)) {
-            let varName: string | null = null;
+            let properties: AnalyzedProperty[] = [],
+                props = arg.properties,
+                varName: string | null = null;
 
             if (node.parent && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
                 varName = node.parent.name.text;
                 ctx.bindings.set(varName, 'object');
             }
-
-            let needsImports = new Set<string>(),
-                properties: AnalyzedProperty[] = [];
-
-            needsImports.add('REACTIVE_OBJECT');
-
-            let props = arg.properties;
 
             for (let i = 0, n = props.length; i < n; i++) {
                 let prop = props[i];
@@ -169,31 +166,15 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
                 properties.push(analyzed);
 
-                if (analyzed.type === 'signal') {
-                    needsImports.add('read');
-                    needsImports.add('set');
-                    needsImports.add('signal');
-                }
-                else if (analyzed.type === 'array') {
-                    needsImports.add('ReactiveArray');
-
-                    if (varName) {
-                        ctx.bindings.set(`${varName}.${analyzed.key}`, 'array');
-                    }
-                }
-                else if (analyzed.type === 'computed') {
-                    needsImports.add('computed');
-                    needsImports.add('dispose');
-                    needsImports.add('read');
+                if (analyzed.type === 'array' && varName) {
+                    ctx.bindings.set(`${varName}.${analyzed.key}`, 'array');
                 }
             }
 
-            needsImports.forEach(imp => ctx.allNeededImports.add(imp));
-
             ctx.calls.push({
+                className: `_RO${ctx.classCounter++}`,
                 end: node.end,
-                generatedClass: buildClassCode(uid('ReactiveObject'), properties),
-                needsImports,
+                properties,
                 start: node.pos,
                 varName
             });
@@ -204,14 +185,15 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 }
 
 
-const transformReactiveObjects = (sourceFile: ts.SourceFile, bindings: Bindings): string => {
+const transformReactiveObjects = (sourceFile: ts.SourceFile, bindings: Bindings, ns: string): string => {
     let code = sourceFile.getFullText(),
         ctx: TransformContext = {
-            allNeededImports: new Set<string>(),
             bindings,
             calls: [],
+            classCounter: 0,
             hasReactiveImport: false,
             lastImportEnd: 0,
+            ns,
             sourceFile
         };
 
@@ -221,30 +203,26 @@ const transformReactiveObjects = (sourceFile: ts.SourceFile, bindings: Bindings)
         return code;
     }
 
-    let replacements: Replacement[] = [];
+    let classes = ctx.calls.map(c => buildClassCode(c.className, c.properties, ns)).join('\n'),
+        replacements: Replacement[] = [];
 
     replacements.push({
         end: ctx.lastImportEnd,
-        newText: code.substring(0, ctx.lastImportEnd) + '\n' + ctx.calls.map(c => c.generatedClass).join('\n') + '\n',
+        newText: code.substring(0, ctx.lastImportEnd) + '\n' + classes + '\n',
         start: 0
     });
 
     for (let i = 0, n = ctx.calls.length; i < n; i++) {
-        let call = ctx.calls[i],
-            classMatch = call.generatedClass.match(CLASS_NAME_REGEX);
+        let call = ctx.calls[i];
 
         replacements.push({
             end: call.end,
-            newText: ` new ${classMatch ? classMatch[1] : 'ReactiveObject'}()`,
+            newText: ` new ${call.className}()`,
             start: call.start
         });
     }
 
-    return addMissingImports(
-        applyReplacements(code, replacements),
-        ctx.allNeededImports,
-        EXTRA_IMPORTS
-    );
+    return applyReplacements(code, replacements);
 };
 
 
