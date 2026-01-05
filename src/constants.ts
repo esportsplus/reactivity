@@ -1,4 +1,5 @@
-import uid from 'node_modules/@esportsplus/typescript/build/transformer/uid';
+import { uid } from '@esportsplus/typescript/transformer';
+
 
 const COMPILATION_ENTRYPOINT = 'reactive';
 
