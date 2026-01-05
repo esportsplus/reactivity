@@ -1,5 +1,5 @@
 import { TRANSFORM_PATTERN } from '@esportsplus/typescript/transformer';
-import { mightNeedTransform, transform } from '~/transformer';
+import { createTransformer, mightNeedTransform } from '~/transformer';
 import type { Plugin } from 'vite';
 import { ts } from '@esportsplus/typescript';
 
@@ -19,14 +19,22 @@ export default (): Plugin => {
             }
 
             try {
-                let sourceFile = ts.createSourceFile(id, code, ts.ScriptTarget.Latest, true),
-                    result = transform(sourceFile);
+                let printer = ts.createPrinter(),
+                    sourceFile = ts.createSourceFile(id, code, ts.ScriptTarget.Latest, true),
+                    transformer = createTransformer(),
+                    result = ts.transform(sourceFile, [transformer]),
+                    transformed = result.transformed[0];
 
-                if (!result.transformed) {
+                if (transformed === sourceFile) {
+                    result.dispose();
                     return null;
                 }
 
-                return { code: result.code, map: null };
+                let output = printer.printFile(transformed);
+
+                result.dispose();
+
+                return { code: output, map: null };
             }
             catch (error) {
                 console.error(`@esportsplus/reactivity: Error transforming ${id}:`, error);

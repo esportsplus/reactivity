@@ -1,12 +1,12 @@
 import type { Bindings } from '~/types';
-import { applyReplacements, Replacement } from './utilities';
+import { createArrayLengthCall, createArraySetCall } from '../factory';
 import { ts } from '@esportsplus/typescript';
 
 
 interface TransformContext {
     bindings: Bindings;
-    replacements: Replacement[];
-    sourceFile: ts.SourceFile;
+    context: ts.TransformationContext;
+    factory: ts.NodeFactory;
 }
 
 
@@ -42,6 +42,10 @@ function getPropertyPath(node: ts.PropertyAccessExpression): string | null {
 function isAssignmentTarget(node: ts.Node): boolean {
     let parent = node.parent;
 
+    if (!parent) {
+        return false;
+    }
+
     if (
         (ts.isBinaryExpression(parent) && parent.left === node) ||
         ts.isPostfixUnaryExpression(parent) ||
@@ -53,7 +57,8 @@ function isAssignmentTarget(node: ts.Node): boolean {
     return false;
 }
 
-function visit(ctx: TransformContext, node: ts.Node): void {
+function visit(ctx: TransformContext, node: ts.Node): ts.Node {
+    // Track array bindings from variable declarations
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
         if (ts.isIdentifier(node.initializer) && ctx.bindings.get(node.initializer.text) === 'array') {
             ctx.bindings.set(node.name.text, 'array');
@@ -68,6 +73,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         }
     }
 
+    // Track array bindings from function parameters with ReactiveArray type
     if ((ts.isFunctionDeclaration(node) || ts.isArrowFunction(node)) && node.parameters) {
         for (let i = 0, n = node.parameters.length; i < n; i++) {
             let param = node.parameters[i];
@@ -83,6 +89,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         }
     }
 
+    // Transform array.length → array.$length()
     if (
         ts.isPropertyAccessExpression(node) &&
         node.name.text === 'length' &&
@@ -91,16 +98,14 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         let name = getExpressionName(node.expression);
 
         if (name && ctx.bindings.get(name) === 'array') {
-            let objText = node.expression.getText(ctx.sourceFile);
+            // First visit children to transform the expression if needed
+            let transformedExpr = ts.visitEachChild(node.expression, n => visit(ctx, n), ctx.context) as ts.Expression;
 
-            ctx.replacements.push({
-                end: node.end,
-                newText: `${objText}.$length()`,
-                start: node.pos
-            });
+            return createArrayLengthCall(ctx.factory, transformedExpr);
         }
     }
 
+    // Transform array[index] = value → array.$set(index, value)
     if (
         ts.isBinaryExpression(node) &&
         node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
@@ -110,34 +115,33 @@ function visit(ctx: TransformContext, node: ts.Node): void {
             objName = getExpressionName(elemAccess.expression);
 
         if (objName && ctx.bindings.get(objName) === 'array') {
-            let indexText = elemAccess.argumentExpression.getText(ctx.sourceFile),
-                objText = elemAccess.expression.getText(ctx.sourceFile),
-                valueText = node.right.getText(ctx.sourceFile);
+            let transformedArray = ts.visitEachChild(elemAccess.expression, n => visit(ctx, n), ctx.context) as ts.Expression,
+                transformedIndex = ts.visitEachChild(elemAccess.argumentExpression, n => visit(ctx, n), ctx.context) as ts.Expression,
+                transformedValue = ts.visitEachChild(node.right, n => visit(ctx, n), ctx.context) as ts.Expression;
 
-            ctx.replacements.push({
-                end: node.end,
-                newText: `${objText}.$set(${indexText}, ${valueText})`,
-                start: node.pos
-            });
+            return createArraySetCall(ctx.factory, transformedArray, transformedIndex, transformedValue);
         }
     }
 
-    ts.forEachChild(node, n => visit(ctx, n));
+    return ts.visitEachChild(node, n => visit(ctx, n), ctx.context);
 }
 
 
-const transformReactiveArrays = (sourceFile: ts.SourceFile, bindings: Bindings): string => {
-    let code = sourceFile.getFullText(),
-        ctx: TransformContext = {
-            bindings,
-            replacements: [],
-            sourceFile
+const createArrayTransformer = (
+    bindings: Bindings
+): (context: ts.TransformationContext) => (sourceFile: ts.SourceFile) => ts.SourceFile => {
+    return (context: ts.TransformationContext) => {
+        return (sourceFile: ts.SourceFile): ts.SourceFile => {
+            let ctx: TransformContext = {
+                bindings,
+                context,
+                factory: context.factory
+            };
+
+            return ts.visitNode(sourceFile, n => visit(ctx, n)) as ts.SourceFile;
         };
-
-    visit(ctx, sourceFile);
-
-    return applyReplacements(code, ctx.replacements);
+    };
 };
 
 
-export { transformReactiveArrays };
+export { createArrayTransformer };

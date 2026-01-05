@@ -1,6 +1,5 @@
 import { COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
 import { ReactiveArray, ReactiveObject } from './reactive';
-import { ts } from '@esportsplus/typescript';
 
 
 type BindingType = 'array' | 'computed' | 'object' | 'signal';
@@ -43,12 +42,6 @@ type Signal<T> = {
     value: T;
 };
 
-interface TransformResult {
-    code: string;
-    sourceFile: ts.SourceFile;
-    transformed: boolean;
-}
-
 
 export type {
     BindingType,
@@ -57,6 +50,5 @@ export type {
     Link,
     ReactiveArray,
     ReactiveObject,
-    Signal,
-    TransformResult
+    Signal
 };

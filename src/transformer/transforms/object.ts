@@ -1,42 +1,32 @@
 import { uid } from '@esportsplus/typescript/transformer';
 import type { Bindings } from '~/types';
-import { addMissingImports, applyReplacements, ExtraImport, Replacement } from './utilities';
 import { ts } from '@esportsplus/typescript';
 
 
-const CLASS_NAME_REGEX = /class (\w+)/;
-
-const EXTRA_IMPORTS: ExtraImport[] = [
-    { module: '@esportsplus/reactivity/constants', specifier: 'REACTIVE_OBJECT' },
-    { module: '@esportsplus/reactivity/reactive/array', specifier: 'ReactiveArray' }
-];
-
-
 interface AnalyzedProperty {
+    elements?: ts.Expression[];
     key: string;
     type: 'array' | 'computed' | 'signal';
-    valueText: string;
+    value: ts.Expression;
 }
 
-interface ReactiveObjectCall {
-    end: number;
-    generatedClass: string;
+interface GeneratedClass {
+    classDecl: ts.ClassDeclaration;
+    className: string;
     needsImports: Set<string>;
-    start: number;
-    varName: string | null;
 }
 
 interface TransformContext {
-    allNeededImports: Set<string>;
     bindings: Bindings;
-    calls: ReactiveObjectCall[];
+    context: ts.TransformationContext;
+    factory: ts.NodeFactory;
+    generatedClasses: GeneratedClass[];
     hasReactiveImport: boolean;
-    lastImportEnd: number;
-    sourceFile: ts.SourceFile;
+    neededImports: Set<string>;
 }
 
 
-function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.SourceFile): AnalyzedProperty | null {
+function analyzeProperty(prop: ts.ObjectLiteralElementLike): AnalyzedProperty | null {
     if (!ts.isPropertyAssignment(prop)) {
         return null;
     }
@@ -50,66 +40,244 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.Sourc
         return null;
     }
 
-    let value = prop.initializer,
-        valueText = value.getText(sourceFile);
+    let value = prop.initializer;
 
     if (ts.isArrowFunction(value) || ts.isFunctionExpression(value)) {
-        return { key, type: 'computed', valueText };
+        return { key, type: 'computed', value };
     }
 
     if (ts.isArrayLiteralExpression(value)) {
-        return { key, type: 'array', valueText };
+        return { elements: [...value.elements], key, type: 'array', value };
     }
 
-    return { key, type: 'signal', valueText };
+    return { key, type: 'signal', value };
 }
 
-function buildClassCode(className: string, properties: AnalyzedProperty[]): string {
-    let accessors: string[] = [],
-        disposeStatements: string[] = [],
-        fields: string[] = [];
+function buildReactiveClass(
+    ctx: TransformContext,
+    className: string,
+    properties: AnalyzedProperty[],
+    varName: string | null
+): ts.ClassDeclaration {
+    let factory = ctx.factory,
+        members: ts.ClassElement[] = [],
+        needsImports = new Set<string>();
 
-    fields.push(`[REACTIVE_OBJECT] = true;`);
+    needsImports.add('REACTIVE_OBJECT');
+
+    // [REACTIVE_OBJECT] = true
+    members.push(
+        factory.createPropertyDeclaration(
+            undefined,
+            factory.createComputedPropertyName(factory.createIdentifier('REACTIVE_OBJECT')),
+            undefined,
+            undefined,
+            factory.createTrue()
+        )
+    );
+
+    let disposeStatements: ts.Statement[] = [];
 
     for (let i = 0, n = properties.length; i < n; i++) {
-        let { key, type, valueText } = properties[i];
+        let prop = properties[i];
 
-        if (type === 'signal') {
-            let param = uid('v');
+        if (prop.type === 'signal') {
+            needsImports.add('read');
+            needsImports.add('set');
+            needsImports.add('signal');
 
-            fields.push(`#${key} = signal(${valueText});`);
-            accessors.push(`get ${key}() { return read(this.#${key}); }`);
-            accessors.push(`set ${key}(${param}) { set(this.#${key}, ${param}); }`);
+            let privateName = factory.createPrivateIdentifier(`#${prop.key}`),
+                paramName = uid('v');
+
+            // Private field: #key = signal(value)
+            members.push(
+                factory.createPropertyDeclaration(
+                    undefined,
+                    privateName,
+                    undefined,
+                    undefined,
+                    factory.createCallExpression(
+                        factory.createIdentifier('signal'),
+                        undefined,
+                        [prop.value]
+                    )
+                )
+            );
+
+            // Getter: get key() { return read(this.#key); }
+            members.push(
+                factory.createGetAccessorDeclaration(
+                    undefined,
+                    factory.createIdentifier(prop.key),
+                    [],
+                    undefined,
+                    factory.createBlock([
+                        factory.createReturnStatement(
+                            factory.createCallExpression(
+                                factory.createIdentifier('read'),
+                                undefined,
+                                [factory.createPropertyAccessExpression(factory.createThis(), privateName)]
+                            )
+                        )
+                    ], true)
+                )
+            );
+
+            // Setter: set key(v) { set(this.#key, v); }
+            members.push(
+                factory.createSetAccessorDeclaration(
+                    undefined,
+                    factory.createIdentifier(prop.key),
+                    [factory.createParameterDeclaration(undefined, undefined, paramName)],
+                    factory.createBlock([
+                        factory.createExpressionStatement(
+                            factory.createCallExpression(
+                                factory.createIdentifier('set'),
+                                undefined,
+                                [
+                                    factory.createPropertyAccessExpression(factory.createThis(), privateName),
+                                    factory.createIdentifier(paramName)
+                                ]
+                            )
+                        )
+                    ], true)
+                )
+            );
         }
-        else if (type === 'array') {
-            let elements = valueText.slice(1, -1);
+        else if (prop.type === 'array') {
+            needsImports.add('ReactiveArray');
 
-            fields.push(`${key} = new ReactiveArray(${elements});`);
-            disposeStatements.push(`this.${key}.dispose();`);
+            // Public field: key = new ReactiveArray(elements...)
+            members.push(
+                factory.createPropertyDeclaration(
+                    undefined,
+                    factory.createIdentifier(prop.key),
+                    undefined,
+                    undefined,
+                    factory.createNewExpression(
+                        factory.createIdentifier('ReactiveArray'),
+                        undefined,
+                        prop.elements || []
+                    )
+                )
+            );
+
+            // Track as array binding
+            if (varName) {
+                ctx.bindings.set(`${varName}.${prop.key}`, 'array');
+            }
+
+            // dispose: this.key.dispose()
+            disposeStatements.push(
+                factory.createExpressionStatement(
+                    factory.createCallExpression(
+                        factory.createPropertyAccessExpression(
+                            factory.createPropertyAccessExpression(factory.createThis(), prop.key),
+                            'dispose'
+                        ),
+                        undefined,
+                        []
+                    )
+                )
+            );
         }
-        else if (type === 'computed') {
-            fields.push(`#${key}: Computed<unknown> | null = null;`);
-            accessors.push(`get ${key}() { return read(this.#${key} ??= computed(${valueText})); }`);
-            disposeStatements.push(`if (this.#${key}) dispose(this.#${key});`);
+        else if (prop.type === 'computed') {
+            needsImports.add('computed');
+            needsImports.add('dispose');
+            needsImports.add('read');
+
+            let privateName = factory.createPrivateIdentifier(`#${prop.key}`);
+
+            // Private field: #key: Computed<unknown> | null = null
+            members.push(
+                factory.createPropertyDeclaration(
+                    undefined,
+                    privateName,
+                    undefined,
+                    factory.createUnionTypeNode([
+                        factory.createTypeReferenceNode('Computed', [
+                            factory.createKeywordTypeNode(ts.SyntaxKind.UnknownKeyword)
+                        ]),
+                        factory.createLiteralTypeNode(factory.createNull())
+                    ]),
+                    factory.createNull()
+                )
+            );
+
+            // Getter: get key() { return read(this.#key ??= computed(fn)); }
+            members.push(
+                factory.createGetAccessorDeclaration(
+                    undefined,
+                    factory.createIdentifier(prop.key),
+                    [],
+                    undefined,
+                    factory.createBlock([
+                        factory.createReturnStatement(
+                            factory.createCallExpression(
+                                factory.createIdentifier('read'),
+                                undefined,
+                                [
+                                    factory.createBinaryExpression(
+                                        factory.createPropertyAccessExpression(factory.createThis(), privateName),
+                                        ts.SyntaxKind.QuestionQuestionEqualsToken,
+                                        factory.createCallExpression(
+                                            factory.createIdentifier('computed'),
+                                            undefined,
+                                            [prop.value]
+                                        )
+                                    )
+                                ]
+                            )
+                        )
+                    ], true)
+                )
+            );
+
+            // dispose: if (this.#key) dispose(this.#key)
+            disposeStatements.push(
+                factory.createIfStatement(
+                    factory.createPropertyAccessExpression(factory.createThis(), privateName),
+                    factory.createExpressionStatement(
+                        factory.createCallExpression(
+                            factory.createIdentifier('dispose'),
+                            undefined,
+                            [factory.createPropertyAccessExpression(factory.createThis(), privateName)]
+                        )
+                    )
+                )
+            );
         }
     }
 
-    return `
-        class ${className} {
-            ${fields.join('\n')}
-            ${accessors.join('\n')}
+    // dispose() method
+    members.push(
+        factory.createMethodDeclaration(
+            undefined,
+            undefined,
+            'dispose',
+            undefined,
+            undefined,
+            [],
+            undefined,
+            factory.createBlock(disposeStatements, true)
+        )
+    );
 
-            dispose() {
-                ${disposeStatements.length > 0 ? disposeStatements.join('\n') : ''}
-            }
-        }
-    `;
+    // Store needed imports
+    needsImports.forEach(imp => ctx.neededImports.add(imp));
+
+    return factory.createClassDeclaration(
+        undefined,
+        className,
+        undefined,
+        undefined,
+        members
+    );
 }
 
-function visit(ctx: TransformContext, node: ts.Node): void {
+function visit(ctx: TransformContext, node: ts.Node): ts.Node | ts.Node[] {
+    // Check for reactive import
     if (ts.isImportDeclaration(node)) {
-        ctx.lastImportEnd = node.end;
-
         if (
             ts.isStringLiteral(node.moduleSpecifier) &&
             node.moduleSpecifier.text.includes('@esportsplus/reactivity')
@@ -129,6 +297,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         }
     }
 
+    // Transform reactive({ ... }) or reactive([...]) calls
     if (
         ctx.hasReactiveImport &&
         ts.isCallExpression(node) &&
@@ -137,6 +306,25 @@ function visit(ctx: TransformContext, node: ts.Node): void {
     ) {
         let arg = node.arguments[0];
 
+        // Handle reactive([...]) → new ReactiveArray(...)
+        if (arg && ts.isArrayLiteralExpression(arg)) {
+            let varName: string | null = null;
+
+            if (node.parent && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
+                varName = node.parent.name.text;
+                ctx.bindings.set(varName, 'array');
+            }
+
+            ctx.neededImports.add('ReactiveArray');
+
+            return ctx.factory.createNewExpression(
+                ctx.factory.createIdentifier('ReactiveArray'),
+                undefined,
+                [...arg.elements]
+            );
+        }
+
+        // Handle reactive({ ... }) → new ReactiveObject class
         if (arg && ts.isObjectLiteralExpression(arg)) {
             let varName: string | null = null;
 
@@ -145,107 +333,69 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                 ctx.bindings.set(varName, 'object');
             }
 
-            let needsImports = new Set<string>(),
-                properties: AnalyzedProperty[] = [];
-
-            needsImports.add('REACTIVE_OBJECT');
-
-            let props = arg.properties;
+            let properties: AnalyzedProperty[] = [],
+                props = arg.properties;
 
             for (let i = 0, n = props.length; i < n; i++) {
                 let prop = props[i];
 
+                // Bail out on spread assignments
                 if (ts.isSpreadAssignment(prop)) {
-                    ts.forEachChild(node, n => visit(ctx, n));
-                    return;
+                    return ts.visitEachChild(node, n => visit(ctx, n), ctx.context);
                 }
 
-                let analyzed = analyzeProperty(prop, ctx.sourceFile);
+                let analyzed = analyzeProperty(prop);
 
                 if (!analyzed) {
-                    ts.forEachChild(node, n => visit(ctx, n));
-                    return;
+                    return ts.visitEachChild(node, n => visit(ctx, n), ctx.context);
                 }
 
                 properties.push(analyzed);
-
-                if (analyzed.type === 'signal') {
-                    needsImports.add('read');
-                    needsImports.add('set');
-                    needsImports.add('signal');
-                }
-                else if (analyzed.type === 'array') {
-                    needsImports.add('ReactiveArray');
-
-                    if (varName) {
-                        ctx.bindings.set(`${varName}.${analyzed.key}`, 'array');
-                    }
-                }
-                else if (analyzed.type === 'computed') {
-                    needsImports.add('computed');
-                    needsImports.add('dispose');
-                    needsImports.add('read');
-                }
             }
 
-            needsImports.forEach(imp => ctx.allNeededImports.add(imp));
+            let className = uid('ReactiveObject'),
+                classDecl = buildReactiveClass(ctx, className, properties, varName);
 
-            ctx.calls.push({
-                end: node.end,
-                generatedClass: buildClassCode(uid('ReactiveObject'), properties),
-                needsImports,
-                start: node.pos,
-                varName
+            ctx.generatedClasses.push({
+                classDecl,
+                className,
+                needsImports: new Set(ctx.neededImports)
             });
+
+            // Replace reactive({...}) with new ClassName()
+            return ctx.factory.createNewExpression(
+                ctx.factory.createIdentifier(className),
+                undefined,
+                []
+            );
         }
     }
 
-    ts.forEachChild(node, n => visit(ctx, n));
+    return ts.visitEachChild(node, n => visit(ctx, n), ctx.context);
 }
 
 
-const transformReactiveObjects = (sourceFile: ts.SourceFile, bindings: Bindings): string => {
-    let code = sourceFile.getFullText(),
-        ctx: TransformContext = {
-            allNeededImports: new Set<string>(),
-            bindings,
-            calls: [],
-            hasReactiveImport: false,
-            lastImportEnd: 0,
-            sourceFile
+const createObjectTransformer = (
+    bindings: Bindings,
+    neededImports: Set<string>,
+    generatedClasses: GeneratedClass[]
+): (context: ts.TransformationContext) => (sourceFile: ts.SourceFile) => ts.SourceFile => {
+    return (context: ts.TransformationContext) => {
+        return (sourceFile: ts.SourceFile): ts.SourceFile => {
+            let ctx: TransformContext = {
+                bindings,
+                context,
+                factory: context.factory,
+                generatedClasses,
+                hasReactiveImport: false,
+                neededImports
+            };
+
+            return ts.visitNode(sourceFile, n => visit(ctx, n)) as ts.SourceFile;
         };
-
-    visit(ctx, sourceFile);
-
-    if (ctx.calls.length === 0) {
-        return code;
-    }
-
-    let replacements: Replacement[] = [];
-
-    replacements.push({
-        end: ctx.lastImportEnd,
-        newText: code.substring(0, ctx.lastImportEnd) + '\n' + ctx.calls.map(c => c.generatedClass).join('\n') + '\n',
-        start: 0
-    });
-
-    for (let i = 0, n = ctx.calls.length; i < n; i++) {
-        let call = ctx.calls[i],
-            classMatch = call.generatedClass.match(CLASS_NAME_REGEX);
-
-        replacements.push({
-            end: call.end,
-            newText: ` new ${classMatch ? classMatch[1] : 'ReactiveObject'}()`,
-            start: call.start
-        });
-    }
-
-    return addMissingImports(
-        applyReplacements(code, replacements),
-        ctx.allNeededImports,
-        EXTRA_IMPORTS
-    );
+    };
 };
 
 
-export { transformReactiveObjects };
+export { createObjectTransformer };
+export type { GeneratedClass };
