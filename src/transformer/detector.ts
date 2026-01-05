@@ -1,6 +1,6 @@
 import { code as c } from '@esportsplus/typescript/transformer';
 import { ts } from '@esportsplus/typescript';
-import { COMPILATION_ENTRYPOINT, COMPILATION_ENTRYPOINT_REGEX } from '~/constants';
+import { COMPILER_ENTRYPOINT, COMPILER_ENTRYPOINT_REGEX } from '~/constants';
 
 
 function visit(ctx: { imported: boolean; used: boolean; }, node: ts.Node): void {
@@ -18,7 +18,7 @@ function visit(ctx: { imported: boolean; used: boolean; }, node: ts.Node): void 
         for (let i = 0, n = elements.length; i < n; i++) {
             let element = elements[i];
 
-            if ((element.propertyName?.text ?? element.name.text) === COMPILATION_ENTRYPOINT) {
+            if ((element.propertyName?.text ?? element.name.text) === COMPILER_ENTRYPOINT) {
                 ctx.imported = true;
                 break;
             }
@@ -28,7 +28,7 @@ function visit(ctx: { imported: boolean; used: boolean; }, node: ts.Node): void 
     if (
         ts.isCallExpression(node) &&
         ts.isIdentifier(node.expression) &&
-        node.expression.text === COMPILATION_ENTRYPOINT
+        node.expression.text === COMPILER_ENTRYPOINT
     ) {
         ctx.used = true;
     }
@@ -38,7 +38,7 @@ function visit(ctx: { imported: boolean; used: boolean; }, node: ts.Node): void 
 
 
 const contains = (code: string): boolean => {
-    if (!c.contains(code, { regex: COMPILATION_ENTRYPOINT_REGEX })) {
+    if (!c.contains(code, { regex: COMPILER_ENTRYPOINT_REGEX })) {
         return false;
     }
 

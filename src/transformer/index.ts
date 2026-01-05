@@ -1,5 +1,5 @@
 import { ts } from '@esportsplus/typescript';
-import { COMPILATION_NAMESPACE } from '~/constants.js';
+import { COMPILER_NAMESPACE } from '~/constants.js';
 import type { Bindings, TransformResult } from '~/types';
 import { contains } from './detector';
 import array from './transforms/array';
@@ -22,7 +22,7 @@ const transform = (sourceFile: ts.SourceFile): TransformResult => {
     }
 
     for (let i = 0, n = transforms.length; i < n; i++) {
-        result = transforms[i](current, bindings, COMPILATION_NAMESPACE);
+        result = transforms[i](current, bindings, COMPILER_NAMESPACE);
 
         if (result !== code) {
             current = ts.createSourceFile(sourceFile.fileName, result, sourceFile.languageVersion, true);
@@ -32,7 +32,7 @@ const transform = (sourceFile: ts.SourceFile): TransformResult => {
     }
 
     if (transformed) {
-        code = `import * as ${COMPILATION_NAMESPACE} from '@esportsplus/reactivity';\n` + code;
+        code = `import * as ${COMPILER_NAMESPACE} from '@esportsplus/reactivity';\n` + code;
         sourceFile = ts.createSourceFile(sourceFile.fileName, code, sourceFile.languageVersion, true);
     }
 

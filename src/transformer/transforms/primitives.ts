@@ -1,7 +1,7 @@
 import { ts } from '@esportsplus/typescript';
 import { code as c, type Range, type Replacement } from '@esportsplus/typescript/transformer';
 import type { BindingType, Bindings } from '~/types';
-import { COMPILATION_TYPE_COMPUTED, COMPILATION_ENTRYPOINT, COMPILATION_TYPE_SIGNAL, PACKAGE } from '~/constants';
+import { COMPILER_TYPE_COMPUTED, COMPILER_ENTRYPOINT, COMPILER_TYPE_SIGNAL, PACKAGE } from '~/constants';
 
 
 interface ArgContext {
@@ -51,14 +51,14 @@ let COMPOUND_OPERATORS = new Map<ts.SyntaxKind, string>([
 
 function classifyReactiveArg(arg: ts.Expression): BindingType | null {
     if (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) {
-        return COMPILATION_TYPE_COMPUTED;
+        return COMPILER_TYPE_COMPUTED;
     }
 
     if (ts.isObjectLiteralExpression(arg) || ts.isArrayLiteralExpression(arg)) {
         return null;
     }
 
-    return COMPILATION_TYPE_SIGNAL;
+    return COMPILER_TYPE_SIGNAL;
 }
 
 function findBinding(bindings: ScopeBinding[], name: string, node: ts.Node): ScopeBinding | undefined {
@@ -137,7 +137,7 @@ function isReactiveReassignment(node: ts.Node): boolean {
         parent.right === node &&
         ts.isCallExpression(node) &&
         ts.isIdentifier((node as ts.CallExpression).expression) &&
-        ((node as ts.CallExpression).expression as ts.Identifier).text === COMPILATION_ENTRYPOINT
+        ((node as ts.CallExpression).expression as ts.Identifier).text === COMPILER_ENTRYPOINT
     ) {
         return true;
     }
@@ -181,7 +181,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
         if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
             for (let i = 0, n = clause.namedBindings.elements.length; i < n; i++) {
-                if (clause.namedBindings.elements[i].name.text === COMPILATION_ENTRYPOINT) {
+                if (clause.namedBindings.elements[i].name.text === COMPILER_ENTRYPOINT) {
                     ctx.hasReactiveImport = true;
                     break;
                 }
@@ -193,7 +193,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         ctx.hasReactiveImport &&
         ts.isCallExpression(node) &&
         ts.isIdentifier(node.expression) &&
-        node.expression.text === COMPILATION_ENTRYPOINT &&
+        node.expression.text === COMPILER_ENTRYPOINT &&
         node.arguments.length > 0
     ) {
         let arg = node.arguments[0],
@@ -221,7 +221,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                 ctx.bindings.set(varName, classification);
             }
 
-            if (classification === COMPILATION_TYPE_COMPUTED) {
+            if (classification === COMPILER_TYPE_COMPUTED) {
                 let argStart = arg.getStart(ctx.sourceFile);
 
                 ctx.computedArgRanges.push({ end: arg.end, start: argStart });
@@ -278,7 +278,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                 let writeCtx = isWriteContext(node);
 
                 if (writeCtx) {
-                    if (binding.type !== COMPILATION_TYPE_COMPUTED) {
+                    if (binding.type !== COMPILER_TYPE_COMPUTED) {
                         let parent = node.parent;
 
                         if (writeCtx === 'simple' && ts.isBinaryExpression(parent)) {

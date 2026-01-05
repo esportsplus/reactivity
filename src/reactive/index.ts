@@ -1,5 +1,5 @@
 import { ReactiveArray } from './array';
-import { COMPILATION_ENTRYPOINT, PACKAGE } from '~/constants';
+import { COMPILER_ENTRYPOINT, PACKAGE } from '~/constants';
 import { Reactive } from '~/types';
 
 
@@ -14,7 +14,7 @@ type Guard<T> =
 function reactive<T extends Record<PropertyKey, any>>(_input: Guard<T>): Reactive<T>;
 function reactive<T>(_input: T): Reactive<T> {
     throw new Error(
-        `${PACKAGE}: ${COMPILATION_ENTRYPOINT}() called at runtime. ` +
+        `${PACKAGE}: ${COMPILER_ENTRYPOINT}() called at runtime. ` +
         'Ensure vite plugin is configured.'
     );
 }
