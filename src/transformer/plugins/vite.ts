@@ -1,7 +1,7 @@
 import type { Plugin } from 'vite';
 import { ts } from '@esportsplus/typescript';
 import { TRANSFORM_PATTERN } from '@esportsplus/typescript/transformer';
-import { contains, transform } from '~/transformer';
+import { transform } from '~/transformer';
 import { PACKAGE } from '~/constants';
 
 
@@ -10,7 +10,7 @@ export default (): Plugin => {
         enforce: 'pre',
         name: `${PACKAGE}/plugin-vite`,
         transform(code: string, id: string) {
-            if (!TRANSFORM_PATTERN.test(id) || id.includes('node_modules') || !contains(code)) {
+            if (!TRANSFORM_PATTERN.test(id) || id.includes('node_modules')) {
                 return null;
             }
 
