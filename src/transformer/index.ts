@@ -89,4 +89,4 @@ const transform = (sourceFile: ts.SourceFile): TransformResult => {
 };
 
 
-export { contains, transform };
+export { transform };
