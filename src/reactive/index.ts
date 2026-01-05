@@ -1,5 +1,6 @@
 import { Prettify } from '@esportsplus/utilities';
 import { ReactiveArray } from './array';
+import { PACKAGE } from '~/constants';
 import { Reactive } from '~/types';
 
 
@@ -39,7 +40,7 @@ function reactive<T extends Record<PropertyKey, any>>(_input: Guard<T>): Reactiv
 function reactive<T>(_input: T[]): Reactive< T[] & Pick<ReactiveArray<T>, 'clear' | 'on' | 'once'> >;
 function reactive<T>(_input: T): Reactive<T> {
     throw new Error(
-        '@esportsplus/reactivity: reactive() called at runtime. ' +
+        `${PACKAGE}: reactive() called at runtime. ` +
         'Ensure vite-plugin-reactivity-compile is configured.'
     );
 }

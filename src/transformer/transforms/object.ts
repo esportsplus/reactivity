@@ -1,6 +1,7 @@
-import { applyReplacements, type Replacement } from '@esportsplus/typescript/transformer';
-import type { Bindings } from '~/types';
 import { ts } from '@esportsplus/typescript';
+import { applyReplacements, type Replacement } from '@esportsplus/typescript/transformer';
+import { PACKAGE } from '~/constants';
+import type { Bindings } from '~/types';
 
 
 interface AnalyzedProperty {
@@ -114,7 +115,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
         if (
             ts.isStringLiteral(node.moduleSpecifier) &&
-            node.moduleSpecifier.text.includes('@esportsplus/reactivity')
+            node.moduleSpecifier.text.includes(PACKAGE)
         ) {
             let clause = node.importClause;
 

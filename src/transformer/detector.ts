@@ -1,17 +1,9 @@
 import { mightNeedTransform as checkTransform } from '@esportsplus/typescript/transformer';
 import { ts } from '@esportsplus/typescript';
+import { COMPILATION_ENTRYPOINT, COMPILATION_ENTRYPOINT_REGEX } from '~/constants';
 
 
-interface DetectContext {
-    hasImport: boolean;
-    hasUsage: boolean;
-}
-
-
-const REACTIVE_REGEX = /\breactive\b/;
-
-
-function visit(ctx: DetectContext, node: ts.Node): void {
+function visit(ctx: { hasImport: boolean; hasUsage: boolean; }, node: ts.Node): void {
     if (ctx.hasImport && ctx.hasUsage) {
         return;
     }
@@ -24,9 +16,9 @@ function visit(ctx: DetectContext, node: ts.Node): void {
         let elements = node.importClause.namedBindings.elements;
 
         for (let i = 0, n = elements.length; i < n; i++) {
-            let el = elements[i];
+            let element = elements[i];
 
-            if ((el.propertyName?.text ?? el.name.text) === 'reactive') {
+            if ((element.propertyName?.text ?? element.name.text) === COMPILATION_ENTRYPOINT) {
                 ctx.hasImport = true;
                 break;
             }
@@ -36,7 +28,7 @@ function visit(ctx: DetectContext, node: ts.Node): void {
     if (
         ts.isCallExpression(node) &&
         ts.isIdentifier(node.expression) &&
-        node.expression.text === 'reactive'
+        node.expression.text === COMPILATION_ENTRYPOINT
     ) {
         ctx.hasUsage = true;
     }
@@ -46,11 +38,11 @@ function visit(ctx: DetectContext, node: ts.Node): void {
 
 
 const mightNeedTransform = (code: string): boolean => {
-    if (!checkTransform(code, { regex: REACTIVE_REGEX })) {
+    if (!checkTransform(code, { regex: COMPILATION_ENTRYPOINT_REGEX })) {
         return false;
     }
 
-    let ctx: DetectContext = {
+    let ctx = {
             hasImport: false,
             hasUsage: false
         };

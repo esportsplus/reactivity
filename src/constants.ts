@@ -1,4 +1,13 @@
+const COMPILATION_ENTRYPOINT = 'reactive';
+
+const COMPILATION_ENTRYPOINT_REGEX = /\breactive\b/;
+
+const COMPILATION_NAMESPACE = 'reactive';
+
+
 const COMPUTED = Symbol('reactivity.computed');
+
+const PACKAGE = '@esportsplus/reactivity';
 
 const REACTIVE_ARRAY = Symbol('reactivity.reactive.array');
 
@@ -30,7 +39,8 @@ const STATE_NOTIFY_MASK = (STATE_CHECK | STATE_DIRTY);
 
 
 export {
-    COMPUTED,
+    COMPILATION_ENTRYPOINT, COMPILATION_ENTRYPOINT_REGEX, COMPILATION_NAMESPACE, COMPUTED,
+    PACKAGE,
     REACTIVE_ARRAY, REACTIVE_OBJECT,
     SIGNAL,
     STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,

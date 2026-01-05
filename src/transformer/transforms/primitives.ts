@@ -1,6 +1,7 @@
+import { ts } from '@esportsplus/typescript';
 import { applyReplacements, type Range, type Replacement } from '@esportsplus/typescript/transformer';
 import type { BindingType, Bindings } from '~/types';
-import { ts } from '@esportsplus/typescript';
+import { PACKAGE } from '~/constants';
 
 
 interface ArgContext {
@@ -181,7 +182,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
     if (
         ts.isImportDeclaration(node) &&
         ts.isStringLiteral(node.moduleSpecifier) &&
-        node.moduleSpecifier.text.includes('@esportsplus/reactivity')
+        node.moduleSpecifier.text.includes(PACKAGE)
     ) {
         let clause = node.importClause;
 
