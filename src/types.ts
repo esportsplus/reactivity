@@ -1,5 +1,6 @@
-import { COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
 import { ts } from '@esportsplus/typescript';
+import { COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
+import { ReactiveArray } from './reactive';
 
 
 type BindingType = 'array' | 'computed' | 'object' | 'signal';
@@ -37,7 +38,17 @@ interface Link {
 
 // If we expose internals optimizing compiler may break api.
 // Instead we will use this as a shim.
-type Reactive<T> = T;
+declare const READONLY: unique symbol;
+
+type Reactive<T> = T extends (...args: unknown[]) => Promise<infer R>
+    ? (R | undefined) & { readonly [READONLY]: true }
+    : T extends (...args: any[]) => infer R
+        ? R & { readonly [READONLY]: true }
+        : T extends (infer U)[]
+            ? U[] & Pick<ReactiveArray<U>, 'clear' | 'on' | 'once'>
+            : T extends Record<PropertyKey, unknown>
+                ? { [K in keyof T]: T[K] } & { dispose: VoidFunction }
+                : T;
 
 type Signal<T> = {
     subs: Link | null;
@@ -54,8 +65,7 @@ interface TransformResult {
 
 
 export type {
-    BindingType,
-    Bindings,
+    BindingType, Bindings,
     Computed,
     Link,
     Reactive,
