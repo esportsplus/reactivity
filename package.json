@@ -25,6 +25,7 @@
         },
         "./plugins/tsc": {
             "import": "./build/transformer/plugins/tsc.js",
+            "require": "./build/transformer/plugins/tsc.js",
             "types": "./build/transformer/plugins/tsc.d.ts"
         },
         "./plugins/vite": {
