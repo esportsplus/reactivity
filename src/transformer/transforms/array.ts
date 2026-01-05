@@ -1,13 +1,7 @@
-import { applyReplacements, type Replacement } from '@esportsplus/typescript/transformer';
-import type { Bindings } from '~/types';
+import { code as c, type Replacement } from '@esportsplus/typescript/transformer';
 import { ts } from '@esportsplus/typescript';
-
-
-interface TransformContext {
-    bindings: Bindings;
-    replacements: Replacement[];
-    sourceFile: ts.SourceFile;
-}
+import { COMPILATION_TYPE_ARRAY } from '~/constants';
+import type { Bindings } from '~/types';
 
 
 function getExpressionName(node: ts.Expression): string | null {
@@ -27,13 +21,13 @@ function getPropertyPath(node: ts.PropertyAccessExpression): string | null {
         parts: string[] = [];
 
     while (ts.isPropertyAccessExpression(current)) {
-        parts.unshift(current.name.text);
+        parts.push(current.name.text);
         current = current.expression;
     }
 
     if (ts.isIdentifier(current)) {
-        parts.unshift(current.text);
-        return parts.join('.');
+        parts.push(current.text);
+        return parts.reverse().join('.');
     }
 
     return null;
@@ -42,32 +36,24 @@ function getPropertyPath(node: ts.PropertyAccessExpression): string | null {
 function isAssignmentTarget(node: ts.Node): boolean {
     let parent = node.parent;
 
-    if (!parent) {
-        return false;
-    }
-
-    if (
+    return !!parent && (
         (ts.isBinaryExpression(parent) && parent.left === node) ||
         ts.isPostfixUnaryExpression(parent) ||
         ts.isPrefixUnaryExpression(parent)
-    ) {
-        return true;
-    }
-
-    return false;
+    );
 }
 
-function visit(ctx: TransformContext, node: ts.Node): void {
+function visit(ctx: { bindings: Bindings, replacements: Replacement[], sourceFile: ts.SourceFile }, node: ts.Node): void {
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-        if (ts.isIdentifier(node.initializer) && ctx.bindings.get(node.initializer.text) === 'array') {
-            ctx.bindings.set(node.name.text, 'array');
+        if (ts.isIdentifier(node.initializer) && ctx.bindings.get(node.initializer.text) === COMPILATION_TYPE_ARRAY) {
+            ctx.bindings.set(node.name.text, COMPILATION_TYPE_ARRAY);
         }
 
         if (ts.isPropertyAccessExpression(node.initializer)) {
             let path = getPropertyPath(node.initializer);
 
-            if (path && ctx.bindings.get(path) === 'array') {
-                ctx.bindings.set(node.name.text, 'array');
+            if (path && ctx.bindings.get(path) === COMPILATION_TYPE_ARRAY) {
+                ctx.bindings.set(node.name.text, COMPILATION_TYPE_ARRAY);
             }
         }
     }
@@ -82,7 +68,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                 ts.isIdentifier(param.type.typeName) &&
                 param.type.typeName.text === 'ReactiveArray'
             ) {
-                ctx.bindings.set(param.name.text, 'array');
+                ctx.bindings.set(param.name.text, COMPILATION_TYPE_ARRAY);
             }
         }
     }
@@ -94,7 +80,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
     ) {
         let name = getExpressionName(node.expression);
 
-        if (name && ctx.bindings.get(name) === 'array') {
+        if (name && ctx.bindings.get(name) === COMPILATION_TYPE_ARRAY) {
             let objText = node.expression.getText(ctx.sourceFile);
 
             ctx.replacements.push({
@@ -113,7 +99,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         let elemAccess = node.left,
             objName = getExpressionName(elemAccess.expression);
 
-        if (objName && ctx.bindings.get(objName) === 'array') {
+        if (objName && ctx.bindings.get(objName) === COMPILATION_TYPE_ARRAY) {
             let indexText = elemAccess.argumentExpression.getText(ctx.sourceFile),
                 objText = elemAccess.expression.getText(ctx.sourceFile),
                 valueText = node.right.getText(ctx.sourceFile);
@@ -130,9 +116,9 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 }
 
 
-const transformReactiveArrays = (sourceFile: ts.SourceFile, bindings: Bindings, _ns: string): string => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, _ns: string): string => {
     let code = sourceFile.getFullText(),
-        ctx: TransformContext = {
+        ctx = {
             bindings,
             replacements: [],
             sourceFile
@@ -140,8 +126,5 @@ const transformReactiveArrays = (sourceFile: ts.SourceFile, bindings: Bindings, 
 
     visit(ctx, sourceFile);
 
-    return applyReplacements(code, ctx.replacements);
+    return c.replace(code, ctx.replacements);
 };
-
-
-export { transformReactiveArrays };

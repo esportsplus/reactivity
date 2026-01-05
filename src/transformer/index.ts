@@ -1,14 +1,15 @@
-import { uid } from '@esportsplus/typescript/transformer';
-import type { Bindings, TransformResult } from '~/types';
-import { mightNeedTransform } from './detector';
-import { transformReactiveArrays } from './transforms/array';
-import { transformReactiveObjects } from './transforms/object';
-import { transformReactivePrimitives } from './transforms/primitives';
 import { ts } from '@esportsplus/typescript';
+import { uid } from '@esportsplus/typescript/transformer';
+import { COMPILATION_NAMESPACE } from '~/constants.js';
+import type { Bindings, TransformResult } from '~/types';
+import { contains } from './detector';
+import array from './transforms/array';
+import object from './transforms/object';
+import primitives from './transforms/primitives';
 
 
-let ns = uid('reactivity'),
-    transforms = [transformReactiveObjects, transformReactiveArrays, transformReactivePrimitives];
+let ns = uid(COMPILATION_NAMESPACE),
+    transforms = [object, array, primitives];
 
 
 const transform = (sourceFile: ts.SourceFile): TransformResult => {
@@ -18,7 +19,7 @@ const transform = (sourceFile: ts.SourceFile): TransformResult => {
         result: string,
         transformed = false;
 
-    if (!mightNeedTransform(code)) {
+    if (!contains(code)) {
         return { code, sourceFile, transformed: false };
     }
 
@@ -41,4 +42,4 @@ const transform = (sourceFile: ts.SourceFile): TransformResult => {
 };
 
 
-export { mightNeedTransform, transform };
+export { contains, transform };

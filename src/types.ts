@@ -35,9 +35,8 @@ interface Link {
     version: number;
 }
 
-// Internal compiler will change over time, if we expose internals
-// we may have anytime we want to optimize compilation. To prevent
-// that we will use this as a shim.
+// If we expose internals optimizing compiler may break api.
+// Instead we will use this as a shim.
 type Reactive<T> = T;
 
 type Signal<T> = {

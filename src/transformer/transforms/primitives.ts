@@ -1,7 +1,7 @@
 import { ts } from '@esportsplus/typescript';
-import { applyReplacements, type Range, type Replacement } from '@esportsplus/typescript/transformer';
+import { code as c, type Range, type Replacement } from '@esportsplus/typescript/transformer';
 import type { BindingType, Bindings } from '~/types';
-import { PACKAGE } from '~/constants';
+import { COMPILATION_TYPE_COMPUTED, COMPILATION_ENTRYPOINT, COMPILATION_TYPE_SIGNAL, PACKAGE } from '~/constants';
 
 
 interface ArgContext {
@@ -30,16 +30,35 @@ interface TransformContext {
 }
 
 
-function classifyReactiveArg(arg: ts.Expression): 'computed' | 'signal' | null {
+let COMPOUND_OPERATORS = new Map<ts.SyntaxKind, string>([
+        [ts.SyntaxKind.AmpersandAmpersandEqualsToken, '&&'],
+        [ts.SyntaxKind.AmpersandEqualsToken, '&'],
+        [ts.SyntaxKind.AsteriskAsteriskEqualsToken, '**'],
+        [ts.SyntaxKind.AsteriskEqualsToken, '*'],
+        [ts.SyntaxKind.BarBarEqualsToken, '||'],
+        [ts.SyntaxKind.BarEqualsToken, '|'],
+        [ts.SyntaxKind.CaretEqualsToken, '^'],
+        [ts.SyntaxKind.GreaterThanGreaterThanEqualsToken, '>>'],
+        [ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken, '>>>'],
+        [ts.SyntaxKind.LessThanLessThanEqualsToken, '<<'],
+        [ts.SyntaxKind.MinusEqualsToken, '-'],
+        [ts.SyntaxKind.PercentEqualsToken, '%'],
+        [ts.SyntaxKind.PlusEqualsToken, '+'],
+        [ts.SyntaxKind.QuestionQuestionEqualsToken, '??'],
+        [ts.SyntaxKind.SlashEqualsToken, '/']
+    ]);
+
+
+function classifyReactiveArg(arg: ts.Expression): BindingType | null {
     if (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) {
-        return 'computed';
+        return COMPILATION_TYPE_COMPUTED;
     }
 
     if (ts.isObjectLiteralExpression(arg) || ts.isArrayLiteralExpression(arg)) {
         return null;
     }
 
-    return 'signal';
+    return COMPILATION_TYPE_SIGNAL;
 }
 
 function findBinding(bindings: ScopeBinding[], name: string, node: ts.Node): ScopeBinding | undefined {
@@ -77,28 +96,6 @@ function findEnclosingScope(node: ts.Node): ts.Node {
     return node.getSourceFile();
 }
 
-let COMPOUND_OPERATORS = new Map<ts.SyntaxKind, string>([
-    [ts.SyntaxKind.AmpersandAmpersandEqualsToken, '&&'],
-    [ts.SyntaxKind.AmpersandEqualsToken, '&'],
-    [ts.SyntaxKind.AsteriskAsteriskEqualsToken, '**'],
-    [ts.SyntaxKind.AsteriskEqualsToken, '*'],
-    [ts.SyntaxKind.BarBarEqualsToken, '||'],
-    [ts.SyntaxKind.BarEqualsToken, '|'],
-    [ts.SyntaxKind.CaretEqualsToken, '^'],
-    [ts.SyntaxKind.GreaterThanGreaterThanEqualsToken, '>>'],
-    [ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken, '>>>'],
-    [ts.SyntaxKind.LessThanLessThanEqualsToken, '<<'],
-    [ts.SyntaxKind.MinusEqualsToken, '-'],
-    [ts.SyntaxKind.PercentEqualsToken, '%'],
-    [ts.SyntaxKind.PlusEqualsToken, '+'],
-    [ts.SyntaxKind.QuestionQuestionEqualsToken, '??'],
-    [ts.SyntaxKind.SlashEqualsToken, '/']
-]);
-
-function getCompoundOperator(kind: ts.SyntaxKind): string {
-    return COMPOUND_OPERATORS.get(kind) ?? '+';
-}
-
 function isInComputedRange(ranges: Range[], start: number, end: number): boolean {
     for (let i = 0, n = ranges.length; i < n; i++) {
         let r = ranges[i];
@@ -114,11 +111,7 @@ function isInComputedRange(ranges: Range[], start: number, end: number): boolean
 function isInDeclarationInit(node: ts.Node): boolean {
     let parent = node.parent;
 
-    if (ts.isVariableDeclaration(parent) && parent.initializer === node) {
-        return true;
-    }
-
-    return false;
+    return ts.isVariableDeclaration(parent) && parent.initializer === node;
 }
 
 function isInScope(reference: ts.Node, binding: ScopeBinding): boolean {
@@ -144,7 +137,7 @@ function isReactiveReassignment(node: ts.Node): boolean {
         parent.right === node &&
         ts.isCallExpression(node) &&
         ts.isIdentifier((node as ts.CallExpression).expression) &&
-        ((node as ts.CallExpression).expression as ts.Identifier).text === 'reactive'
+        ((node as ts.CallExpression).expression as ts.Identifier).text === COMPILATION_ENTRYPOINT
     ) {
         return true;
     }
@@ -188,7 +181,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
         if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
             for (let i = 0, n = clause.namedBindings.elements.length; i < n; i++) {
-                if (clause.namedBindings.elements[i].name.text === 'reactive') {
+                if (clause.namedBindings.elements[i].name.text === COMPILATION_ENTRYPOINT) {
                     ctx.hasReactiveImport = true;
                     break;
                 }
@@ -200,7 +193,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         ctx.hasReactiveImport &&
         ts.isCallExpression(node) &&
         ts.isIdentifier(node.expression) &&
-        node.expression.text === 'reactive' &&
+        node.expression.text === COMPILATION_ENTRYPOINT &&
         node.arguments.length > 0
     ) {
         let arg = node.arguments[0],
@@ -228,7 +221,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                 ctx.bindings.set(varName, classification);
             }
 
-            if (classification === 'computed') {
+            if (classification === COMPILATION_TYPE_COMPUTED) {
                 let argStart = arg.getStart(ctx.sourceFile);
 
                 ctx.computedArgRanges.push({ end: arg.end, start: argStart });
@@ -243,7 +236,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
                 visitArg(argCtx, arg);
 
-                let argText = applyReplacements(arg.getText(ctx.sourceFile), argCtx.innerReplacements);
+                let argText = c.replace(arg.getText(ctx.sourceFile), argCtx.innerReplacements);
 
                 ctx.replacements.push({
                     end: node.end,
@@ -285,22 +278,22 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                 let writeCtx = isWriteContext(node);
 
                 if (writeCtx) {
-                    if (binding.type !== 'computed') {
+                    if (binding.type !== COMPILATION_TYPE_COMPUTED) {
                         let parent = node.parent;
 
                         if (writeCtx === 'simple' && ts.isBinaryExpression(parent)) {
                             ctx.replacements.push({
                                 end: parent.end,
-                                newText: `${ctx.ns}.set(${name}, ${parent.right.getText(ctx.sourceFile)})`,
+                                newText: `${ctx.ns}.write(${name}, ${parent.right.getText(ctx.sourceFile)})`,
                                 start: parent.pos
                             });
                         }
                         else if (writeCtx === 'compound' && ts.isBinaryExpression(parent)) {
-                            let op = getCompoundOperator(parent.operatorToken.kind);
+                            let op = COMPOUND_OPERATORS.get(parent.operatorToken.kind) ?? '+';
 
                             ctx.replacements.push({
                                 end: parent.end,
-                                newText: `${ctx.ns}.set(${name}, ${name}.value ${op} ${parent.right.getText(ctx.sourceFile)})`,
+                                newText: `${ctx.ns}.write(${name}, ${name}.value ${op} ${parent.right.getText(ctx.sourceFile)})`,
                                 start: parent.pos
                             });
                         }
@@ -311,14 +304,14 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                             if (ts.isExpressionStatement(parent.parent)) {
                                 ctx.replacements.push({
                                     end: parent.end,
-                                    newText: `${ctx.ns}.set(${name}, ${name}.value ${delta})`,
+                                    newText: `${ctx.ns}.write(${name}, ${name}.value ${delta})`,
                                     start: parent.pos
                                 });
                             }
                             else if (isPrefix) {
                                 ctx.replacements.push({
                                     end: parent.end,
-                                    newText: `(${ctx.ns}.set(${name}, ${name}.value ${delta}), ${name}.value)`,
+                                    newText: `(${ctx.ns}.write(${name}, ${name}.value ${delta}), ${name}.value)`,
                                     start: parent.pos
                                 });
                             }
@@ -327,7 +320,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
                                 ctx.replacements.push({
                                     end: parent.end,
-                                    newText: `((${tmp}) => (${ctx.ns}.set(${name}, ${tmp} ${delta}), ${tmp}))(${name}.value)`,
+                                    newText: `((${tmp}) => (${ctx.ns}.write(${name}, ${tmp} ${delta}), ${tmp}))(${name}.value)`,
                                     start: parent.pos
                                 });
                             }
@@ -350,12 +343,10 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
 function visitArg(ctx: ArgContext, node: ts.Node): void {
     if (ts.isIdentifier(node) && node.parent) {
-        if (ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) {
-            ts.forEachChild(node, n => visitArg(ctx, n));
-            return;
-        }
-
-        if (ts.isCallExpression(node.parent) && node.parent.expression === node) {
+        if (
+            (ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) ||
+            (ts.isCallExpression(node.parent) && node.parent.expression === node)
+        ) {
             ts.forEachChild(node, n => visitArg(ctx, n));
             return;
         }
@@ -373,11 +364,7 @@ function visitArg(ctx: ArgContext, node: ts.Node): void {
 }
 
 
-const transformReactivePrimitives = (
-    sourceFile: ts.SourceFile,
-    bindings: Bindings,
-    ns: string
-): string => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, ns: string): string => {
     let code = sourceFile.getFullText(),
         ctx: TransformContext = {
             bindings,
@@ -396,8 +383,5 @@ const transformReactivePrimitives = (
         return code;
     }
 
-    return applyReplacements(code, ctx.replacements);
+    return c.replace(code, ctx.replacements);
 };
-
-
-export { transformReactivePrimitives };

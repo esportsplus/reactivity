@@ -107,7 +107,7 @@ The library requires a build-time transformer to convert `reactive()` calls into
 ```typescript
 // vite.config.ts
 import { defineConfig } from 'vite';
-import { plugin as reactivity } from '@esportsplus/reactivity/plugins/vite';
+import reactivity from '@esportsplus/reactivity/plugins/vite';
 
 export default defineConfig({
     plugins: [
@@ -146,12 +146,12 @@ console.log(doubled);
 
 **Output:**
 ```typescript
-import { computed, read, set, signal } from '@esportsplus/reactivity';
+import { computed, read, signal, write } from '@esportsplus/reactivity';
 
 let count = signal(0);
 let doubled = computed(() => read(count) * 2);
 
-set(count, 5);
+write(count, 5);
 console.log(read(doubled));
 ```
 
@@ -172,7 +172,7 @@ class ReactiveObject_1 {
     #greeting = null;
 
     get name() { return read(this.#name); }
-    set name(v) { set(this.#name, v); }
+    set name(v) { write(this.#name, v); }
     get greeting() { return read(this.#greeting ??= computed(() => `Hello, ${this.name}`)); }
 
     dispose() {
@@ -206,7 +206,7 @@ These are typically only used by the transformer output:
 | `signal(value)` | Creates a raw signal |
 | `computed(fn)` | Creates a raw computed |
 | `read(node)` | Reads a signal or computed value |
-| `set(signal, value)` | Sets a signal value |
+| `write(signal, value)` | Sets a signal value |
 | `dispose(computed)` | Disposes a computed and its dependencies |
 
 ### Type Guards

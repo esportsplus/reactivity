@@ -1,6 +1,6 @@
 import { ts } from '@esportsplus/typescript';
-import { applyReplacements, type Replacement } from '@esportsplus/typescript/transformer';
-import { PACKAGE } from '~/constants';
+import { code as c, type Replacement } from '@esportsplus/typescript/transformer';
+import { COMPILATION_TYPE_ARRAY, COMPILATION_TYPE_COMPUTED, COMPILATION_TYPE_SIGNAL, PACKAGE } from '~/constants';
 import type { Bindings } from '~/types';
 
 
@@ -47,7 +47,7 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.Sourc
         valueText = value.getText(sourceFile);
 
     if (ts.isArrowFunction(value) || ts.isFunctionExpression(value)) {
-        return { key, type: 'computed', valueText };
+        return { key, type: COMPILATION_TYPE_COMPUTED, valueText };
     }
 
     if (ts.isArrayLiteralExpression(value)) {
@@ -62,10 +62,10 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.Sourc
             elementsText += elements[i].getText(sourceFile);
         }
 
-        return { key, type: 'array', valueText: elementsText };
+        return { key, type: COMPILATION_TYPE_ARRAY, valueText: elementsText };
     }
 
-    return { key, type: 'signal', valueText };
+    return { key, type: COMPILATION_TYPE_SIGNAL, valueText };
 }
 
 function buildClassCode(className: string, properties: AnalyzedProperty[], ns: string): string {
@@ -79,18 +79,18 @@ function buildClassCode(className: string, properties: AnalyzedProperty[], ns: s
     for (let i = 0, n = properties.length; i < n; i++) {
         let { key, type, valueText } = properties[i];
 
-        if (type === 'signal') {
+        if (type === COMPILATION_TYPE_SIGNAL) {
             let param = `_v${paramCounter++}`;
 
             fields.push(`#${key} = ${ns}.signal(${valueText});`);
             accessors.push(`get ${key}() { return ${ns}.read(this.#${key}); }`);
-            accessors.push(`set ${key}(${param}) { ${ns}.set(this.#${key}, ${param}); }`);
+            accessors.push(`set ${key}(${param}) { ${ns}.write(this.#${key}, ${param}); }`);
         }
-        else if (type === 'array') {
+        else if (type === COMPILATION_TYPE_ARRAY) {
             fields.push(`${key} = new ${ns}.ReactiveArray(${valueText});`);
             disposeStatements.push(`this.${key}.dispose();`);
         }
-        else if (type === 'computed') {
+        else if (type === COMPILATION_TYPE_COMPUTED) {
             fields.push(`#${key} = null;`);
             accessors.push(`get ${key}() { return ${ns}.read(this.#${key} ??= ${ns}.computed(${valueText})); }`);
             disposeStatements.push(`if (this.#${key}) ${ns}.dispose(this.#${key});`);
@@ -167,8 +167,8 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
                 properties.push(analyzed);
 
-                if (analyzed.type === 'array' && varName) {
-                    ctx.bindings.set(`${varName}.${analyzed.key}`, 'array');
+                if (analyzed.type === COMPILATION_TYPE_ARRAY && varName) {
+                    ctx.bindings.set(`${varName}.${analyzed.key}`, COMPILATION_TYPE_ARRAY);
                 }
             }
 
@@ -186,7 +186,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 }
 
 
-const transformReactiveObjects = (sourceFile: ts.SourceFile, bindings: Bindings, ns: string): string => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, ns: string): string => {
     let code = sourceFile.getFullText(),
         ctx: TransformContext = {
             bindings,
@@ -223,8 +223,5 @@ const transformReactiveObjects = (sourceFile: ts.SourceFile, bindings: Bindings,
         });
     }
 
-    return applyReplacements(code, replacements);
+    return c.replace(code, replacements);
 };
-
-
-export { transformReactiveObjects };

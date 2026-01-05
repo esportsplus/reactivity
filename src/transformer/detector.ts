@@ -1,10 +1,10 @@
-import { mightNeedTransform as checkTransform } from '@esportsplus/typescript/transformer';
+import { code as c } from '@esportsplus/typescript/transformer';
 import { ts } from '@esportsplus/typescript';
 import { COMPILATION_ENTRYPOINT, COMPILATION_ENTRYPOINT_REGEX } from '~/constants';
 
 
-function visit(ctx: { hasImport: boolean; hasUsage: boolean; }, node: ts.Node): void {
-    if (ctx.hasImport && ctx.hasUsage) {
+function visit(ctx: { imported: boolean; used: boolean; }, node: ts.Node): void {
+    if (ctx.imported && ctx.used) {
         return;
     }
 
@@ -19,7 +19,7 @@ function visit(ctx: { hasImport: boolean; hasUsage: boolean; }, node: ts.Node): 
             let element = elements[i];
 
             if ((element.propertyName?.text ?? element.name.text) === COMPILATION_ENTRYPOINT) {
-                ctx.hasImport = true;
+                ctx.imported = true;
                 break;
             }
         }
@@ -30,27 +30,27 @@ function visit(ctx: { hasImport: boolean; hasUsage: boolean; }, node: ts.Node): 
         ts.isIdentifier(node.expression) &&
         node.expression.text === COMPILATION_ENTRYPOINT
     ) {
-        ctx.hasUsage = true;
+        ctx.used = true;
     }
 
     ts.forEachChild(node, n => visit(ctx, n));
 }
 
 
-const mightNeedTransform = (code: string): boolean => {
-    if (!checkTransform(code, { regex: COMPILATION_ENTRYPOINT_REGEX })) {
+const contains = (code: string): boolean => {
+    if (!c.contains(code, { regex: COMPILATION_ENTRYPOINT_REGEX })) {
         return false;
     }
 
     let ctx = {
-            hasImport: false,
-            hasUsage: false
+            imported: false,
+            used: false
         };
 
     visit(ctx, ts.createSourceFile('detect.ts', code, ts.ScriptTarget.Latest, false));
 
-    return ctx.hasImport && ctx.hasUsage;
+    return ctx.imported && ctx.used;
 };
 
 
-export { mightNeedTransform };
+export { contains };
