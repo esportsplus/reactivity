@@ -1,16 +1,8 @@
 import {
     COMPUTED,
     SIGNAL,
-    STABILIZER_IDLE,
-    STABILIZER_RESCHEDULE,
-    STABILIZER_RUNNING,
-    STABILIZER_SCHEDULED,
-    STATE_CHECK,
-    STATE_DIRTY,
-    STATE_IN_HEAP,
-    STATE_NONE,
-    STATE_NOTIFY_MASK,
-    STATE_RECOMPUTING
+    STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
+    STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_NOTIFY_MASK, STATE_RECOMPUTING
 } from './constants';
 import { Computed, Link, Signal } from './types';
 import { isObject } from '@esportsplus/utilities';
@@ -529,7 +521,16 @@ const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
 
 root.disposables = 0;
 
-const set = <T>(signal: Signal<T>, value: T) => {
+const signal = <T>(value: T): Signal<T> => {
+    return {
+        subs: null,
+        subsTail: null,
+        type: SIGNAL,
+        value,
+    };
+};
+
+const write = <T>(signal: Signal<T>, value: T) => {
     if (signal.value === value) {
         return;
     }
@@ -548,15 +549,6 @@ const set = <T>(signal: Signal<T>, value: T) => {
     schedule();
 };
 
-const signal = <T>(value: T): Signal<T> => {
-    return {
-        subs: null,
-        subsTail: null,
-        type: SIGNAL,
-        value,
-    };
-};
-
 
 export {
     computed,
@@ -565,6 +557,7 @@ export {
     isComputed, isSignal,
     onCleanup,
     read, root,
-    set, signal
+    signal,
+    write
 };
 export type { Computed, Signal };

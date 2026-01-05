@@ -1,5 +1,4 @@
 import { COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
-import { ReactiveArray, ReactiveObject } from './reactive';
 import { ts } from '@esportsplus/typescript';
 
 
@@ -36,6 +35,11 @@ interface Link {
     version: number;
 }
 
+// Internal compiler will change over time, if we expose internals
+// we may have anytime we want to optimize compilation. To prevent
+// that we will use this as a shim.
+type Reactive<T> = T;
+
 type Signal<T> = {
     subs: Link | null;
     subsTail: Link | null;
@@ -55,8 +59,7 @@ export type {
     Bindings,
     Computed,
     Link,
-    ReactiveArray,
-    ReactiveObject,
+    Reactive,
     Signal,
     TransformResult
 };

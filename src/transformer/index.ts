@@ -7,64 +7,38 @@ import { transformReactivePrimitives } from './transforms/primitives';
 import { ts } from '@esportsplus/typescript';
 
 
-const createTransformer = (): ts.TransformerFactory<ts.SourceFile> => {
-    return () => {
-        return (sourceFile: ts.SourceFile): ts.SourceFile => {
-            let result = transform(sourceFile);
+let ns = uid('reactivity'),
+    transforms = [transformReactiveObjects, transformReactiveArrays, transformReactivePrimitives];
 
-            return result.transformed ? result.sourceFile : sourceFile;
-        };
-    };
-};
 
 const transform = (sourceFile: ts.SourceFile): TransformResult => {
     let bindings: Bindings = new Map(),
         code = sourceFile.getFullText(),
         current = sourceFile,
-        ns = uid('r'),
-        original = code,
-        result: string;
+        result: string,
+        transformed = false;
 
     if (!mightNeedTransform(code)) {
         return { code, sourceFile, transformed: false };
     }
 
-    result = transformReactiveObjects(current, bindings, ns);
+    for (let i = 0, n = transforms.length; i < n; i++) {
+        result = transforms[i](current, bindings, ns);
 
-    if (result !== code) {
-        current = ts.createSourceFile(sourceFile.fileName, result, sourceFile.languageVersion, true);
-        code = result;
+        if (result !== code) {
+            current = ts.createSourceFile(sourceFile.fileName, result, sourceFile.languageVersion, true);
+            code = result;
+            transformed = true;
+        }
     }
 
-    result = transformReactiveArrays(current, bindings, ns);
-
-    if (result !== code) {
-        current = ts.createSourceFile(sourceFile.fileName, result, sourceFile.languageVersion, true);
-        code = result;
+    if (transformed) {
+        code = `import * as ${ns} from '@esportsplus/reactivity';\n` + code;
+        sourceFile = ts.createSourceFile(sourceFile.fileName, code, sourceFile.languageVersion, true);
     }
 
-    result = transformReactivePrimitives(current, bindings, ns);
-
-    if (result !== code) {
-        current = ts.createSourceFile(sourceFile.fileName, result, sourceFile.languageVersion, true);
-        code = result;
-    }
-
-    if (code === original) {
-        return { code, sourceFile, transformed: false };
-    }
-
-    code = `import * as ${ns} from '@esportsplus/reactivity';\n` + code;
-
-    return {
-        code,
-        sourceFile: ts.createSourceFile(sourceFile.fileName, code, sourceFile.languageVersion, true),
-        transformed: true
-    };
+    return { code, sourceFile, transformed };
 };
 
 
-export { createTransformer, mightNeedTransform, transform };
-export { transformReactiveArrays } from './transforms/array';
-export { transformReactiveObjects } from './transforms/object';
-export { transformReactivePrimitives } from './transforms/primitives';
+export { mightNeedTransform, transform };

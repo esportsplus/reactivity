@@ -1,5 +1,5 @@
 import { isArray } from '@esportsplus/utilities';
-import { read, set, signal } from '~/system';
+import { read, signal, write } from '~/system';
 import { REACTIVE_ARRAY, REACTIVE_OBJECT } from '~/constants';
 import type { Signal } from '~/types';
 
@@ -77,7 +77,7 @@ class ReactiveArray<T> extends Array<T> {
         this[i] = value;
 
         if (i >= super.length) {
-            set(this._length, i + 1);
+            write(this._length, i + 1);
         }
 
         this.dispatch('set', { index: i, item: value });
@@ -85,7 +85,7 @@ class ReactiveArray<T> extends Array<T> {
 
     clear() {
         this.dispose();
-        set(this._length, 0);
+        write(this._length, 0);
         this.dispatch('clear');
     }
 
@@ -110,7 +110,7 @@ class ReactiveArray<T> extends Array<T> {
         }
 
         if (added.length) {
-            set(this._length, super.length);
+            write(this._length, super.length);
             this.dispatch('concat', { items: added });
         }
 
@@ -153,7 +153,7 @@ class ReactiveArray<T> extends Array<T> {
             dispose(super.pop());
         }
 
-        set(this._length, 0);
+        write(this._length, 0);
     }
 
     on<K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) {
@@ -194,7 +194,7 @@ class ReactiveArray<T> extends Array<T> {
 
         if (item !== undefined) {
             dispose(item);
-            set(this._length, super.length);
+            write(this._length, super.length);
 
             this.dispatch('pop', { item });
         }
@@ -209,7 +209,7 @@ class ReactiveArray<T> extends Array<T> {
 
         let length = super.push(...items);
 
-        set(this._length, length);
+        write(this._length, length);
         this.dispatch('push', { items });
 
         return length;
@@ -227,7 +227,7 @@ class ReactiveArray<T> extends Array<T> {
 
         if (item !== undefined) {
             dispose(item);
-            set(this._length, super.length);
+            write(this._length, super.length);
 
             this.dispatch('shift', { item });
         }
@@ -284,7 +284,7 @@ class ReactiveArray<T> extends Array<T> {
         let removed = super.splice(start, deleteCount, ...items);
 
         if (items.length > 0 || removed.length > 0) {
-            set(this._length, super.length);
+            write(this._length, super.length);
 
             for (let i = 0, n = removed.length; i < n; i++) {
                 dispose(removed[i]);
@@ -299,7 +299,7 @@ class ReactiveArray<T> extends Array<T> {
     unshift(...items: T[]) {
         let length = super.unshift(...items);
 
-        set(this._length, length);
+        write(this._length, length);
         this.dispatch('unshift', { items });
 
         return length;
