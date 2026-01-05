@@ -1,12 +1,12 @@
 import { ts } from '@esportsplus/typescript';
 import { code as c, type Replacement } from '@esportsplus/typescript/transformer';
-import { COMPILER_TYPE_ARRAY, COMPILER_TYPE_COMPUTED, COMPILER_TYPE_SIGNAL, PACKAGE } from '~/constants';
+import { COMPILER_TYPES, PACKAGE } from '~/constants';
 import type { Bindings } from '~/types';
 
 
 interface AnalyzedProperty {
     key: string;
-    type: 'array' | 'computed' | 'signal';
+    type: COMPILER_TYPES;
     valueText: string;
 }
 
@@ -47,7 +47,7 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.Sourc
         valueText = value.getText(sourceFile);
 
     if (ts.isArrowFunction(value) || ts.isFunctionExpression(value)) {
-        return { key, type: COMPILER_TYPE_COMPUTED, valueText };
+        return { key, type: COMPILER_TYPES.Computed, valueText };
     }
 
     if (ts.isArrayLiteralExpression(value)) {
@@ -62,10 +62,10 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.Sourc
             elementsText += elements[i].getText(sourceFile);
         }
 
-        return { key, type: COMPILER_TYPE_ARRAY, valueText: elementsText };
+        return { key, type: COMPILER_TYPES.Array, valueText: elementsText };
     }
 
-    return { key, type: COMPILER_TYPE_SIGNAL, valueText };
+    return { key, type: COMPILER_TYPES.Signal, valueText };
 }
 
 function buildClassCode(className: string, properties: AnalyzedProperty[], ns: string): string {
@@ -79,18 +79,18 @@ function buildClassCode(className: string, properties: AnalyzedProperty[], ns: s
     for (let i = 0, n = properties.length; i < n; i++) {
         let { key, type, valueText } = properties[i];
 
-        if (type === COMPILER_TYPE_SIGNAL) {
+        if (type === COMPILER_TYPES.Signal) {
             let param = `_v${paramCounter++}`;
 
             fields.push(`#${key} = ${ns}.signal(${valueText});`);
             accessors.push(`get ${key}() { return ${ns}.read(this.#${key}); }`);
             accessors.push(`set ${key}(${param}) { ${ns}.write(this.#${key}, ${param}); }`);
         }
-        else if (type === COMPILER_TYPE_ARRAY) {
+        else if (type === COMPILER_TYPES.Array) {
             fields.push(`${key} = new ${ns}.ReactiveArray(${valueText});`);
             disposeStatements.push(`this.${key}.dispose();`);
         }
-        else if (type === COMPILER_TYPE_COMPUTED) {
+        else if (type === COMPILER_TYPES.Computed) {
             fields.push(`#${key} = null;`);
             accessors.push(`get ${key}() { return ${ns}.read(this.#${key} ??= ${ns}.computed(${valueText})); }`);
             disposeStatements.push(`if (this.#${key}) ${ns}.dispose(this.#${key});`);
@@ -147,7 +147,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
             if (node.parent && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
                 varName = node.parent.name.text;
-                ctx.bindings.set(varName, 'object');
+                ctx.bindings.set(varName, COMPILER_TYPES.Object);
             }
 
             for (let i = 0, n = props.length; i < n; i++) {
@@ -167,8 +167,8 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
                 properties.push(analyzed);
 
-                if (analyzed.type === COMPILER_TYPE_ARRAY && varName) {
-                    ctx.bindings.set(`${varName}.${analyzed.key}`, COMPILER_TYPE_ARRAY);
+                if (analyzed.type === COMPILER_TYPES.Array && varName) {
+                    ctx.bindings.set(`${varName}.${analyzed.key}`, COMPILER_TYPES.Array);
                 }
             }
 

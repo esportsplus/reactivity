@@ -1,11 +1,9 @@
 import { ts } from '@esportsplus/typescript';
-import { COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
+import { COMPILER_TYPES, COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
 import { ReactiveArray } from './reactive';
 
 
-type BindingType = 'array' | 'computed' | 'object' | 'signal';
-
-type Bindings = Map<string, BindingType>;
+type Bindings = Map<string, COMPILER_TYPES>;
 
 interface Computed<T> {
     cleanup: VoidFunction | VoidFunction[] | null;
@@ -65,7 +63,7 @@ interface TransformResult {
 
 
 export type {
-    BindingType, Bindings,
+    Bindings,
     Computed,
     Link,
     Reactive,

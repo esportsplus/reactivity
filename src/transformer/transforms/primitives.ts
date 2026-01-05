@@ -1,7 +1,7 @@
 import { ts } from '@esportsplus/typescript';
 import { code as c, type Range, type Replacement } from '@esportsplus/typescript/transformer';
-import type { BindingType, Bindings } from '~/types';
-import { COMPILER_TYPE_COMPUTED, COMPILER_ENTRYPOINT, COMPILER_TYPE_SIGNAL, PACKAGE } from '~/constants';
+import type { Bindings } from '~/types';
+import { COMPILER_ENTRYPOINT, COMPILER_TYPES, PACKAGE } from '~/constants';
 
 
 interface ArgContext {
@@ -15,7 +15,7 @@ interface ArgContext {
 interface ScopeBinding {
     name: string;
     scope: ts.Node;
-    type: BindingType;
+    type: COMPILER_TYPES;
 }
 
 interface TransformContext {
@@ -49,16 +49,16 @@ let COMPOUND_OPERATORS = new Map<ts.SyntaxKind, string>([
     ]);
 
 
-function classifyReactiveArg(arg: ts.Expression): BindingType | null {
+function classifyReactiveArg(arg: ts.Expression): COMPILER_TYPES | null {
     if (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) {
-        return COMPILER_TYPE_COMPUTED;
+        return COMPILER_TYPES.Computed;
     }
 
     if (ts.isObjectLiteralExpression(arg) || ts.isArrayLiteralExpression(arg)) {
         return null;
     }
 
-    return COMPILER_TYPE_SIGNAL;
+    return COMPILER_TYPES.Signal;
 }
 
 function findBinding(bindings: ScopeBinding[], name: string, node: ts.Node): ScopeBinding | undefined {
@@ -221,7 +221,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                 ctx.bindings.set(varName, classification);
             }
 
-            if (classification === COMPILER_TYPE_COMPUTED) {
+            if (classification === COMPILER_TYPES.Computed) {
                 let argStart = arg.getStart(ctx.sourceFile);
 
                 ctx.computedArgRanges.push({ end: arg.end, start: argStart });
@@ -278,7 +278,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                 let writeCtx = isWriteContext(node);
 
                 if (writeCtx) {
-                    if (binding.type !== COMPILER_TYPE_COMPUTED) {
+                    if (binding.type !== COMPILER_TYPES.Computed) {
                         let parent = node.parent;
 
                         if (writeCtx === 'simple' && ts.isBinaryExpression(parent)) {
