@@ -100,7 +100,7 @@ cleanup();  // stops the effect
 
 ## Transformer Plugins
 
-The library requires a build-time transformer to convert `reactive()` calls into optimized code. Three plugins are available:
+The library requires a build-time transformer to convert `reactive()` calls into optimized code. Two plugins are available:
 
 ### Vite Plugin
 
@@ -110,22 +110,6 @@ import { defineConfig } from 'vite';
 import { plugin as reactivity } from '@esportsplus/reactivity/plugins/vite';
 
 export default defineConfig({
-    plugins: [
-        reactivity()
-    ]
-});
-```
-
-### esbuild Plugin
-
-```typescript
-import esbuild from 'esbuild';
-import reactivity from '@esportsplus/reactivity/plugins/esbuild';
-
-await esbuild.build({
-    entryPoints: ['src/index.ts'],
-    bundle: true,
-    outfile: 'dist/index.js',
     plugins: [
         reactivity()
     ]
