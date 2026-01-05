@@ -245,10 +245,11 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         if (classification) {
             let varName: string | null = null;
 
-            if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
+            if (node.parent && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
                 varName = node.parent.name.text;
             }
             else if (
+                node.parent &&
                 ts.isBinaryExpression(node.parent) &&
                 node.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
                 ts.isIdentifier(node.parent.left)
@@ -303,7 +304,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         }
     }
 
-    if (ts.isIdentifier(node) && !isInDeclarationInit(node.parent)) {
+    if (ts.isIdentifier(node) && node.parent && !isInDeclarationInit(node.parent)) {
         if (ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) {
             ts.forEachChild(node, n => visit(ctx, n));
             return;
@@ -319,7 +320,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         let binding = findBinding(ctx.scopedBindings, node.text, node),
             name = node.text;
 
-        if (binding) {
+        if (binding && node.parent) {
             if (
                 !isReactiveReassignment(node.parent) &&
                 !(ts.isTypeOfExpression(node.parent) && node.parent.expression === node)
@@ -399,7 +400,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 }
 
 function visitArg(ctx: ArgContext, node: ts.Node): void {
-    if (ts.isIdentifier(node)) {
+    if (ts.isIdentifier(node) && node.parent) {
         if (ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) {
             ts.forEachChild(node, n => visitArg(ctx, n));
             return;

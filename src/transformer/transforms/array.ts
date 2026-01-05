@@ -42,6 +42,10 @@ function getPropertyPath(node: ts.PropertyAccessExpression): string | null {
 function isAssignmentTarget(node: ts.Node): boolean {
     let parent = node.parent;
 
+    if (!parent) {
+        return false;
+    }
+
     if (
         (ts.isBinaryExpression(parent) && parent.left === node) ||
         ts.isPostfixUnaryExpression(parent) ||

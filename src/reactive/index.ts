@@ -1,5 +1,4 @@
 import { Prettify } from '@esportsplus/utilities';
-import { REACTIVE_OBJECT } from '~/constants';
 import { ReactiveArray } from './array';
 
 
@@ -21,10 +20,7 @@ type Infer<T> =
 
 type ReactiveObject<T> =
     T extends Record<PropertyKey, unknown>
-        ? Prettify<{ [K in keyof T]: Infer<T[K]> } & {
-            [REACTIVE_OBJECT]: true;
-            dispose: VoidFunction
-        }>
+        ? Prettify<{ [K in keyof T]: Infer<T[K]> } & { dispose: VoidFunction }>
         : T extends (infer U)[]
             ? ReactiveArray<U>
             : never;

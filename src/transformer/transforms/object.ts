@@ -140,7 +140,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         if (arg && ts.isObjectLiteralExpression(arg)) {
             let varName: string | null = null;
 
-            if (ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
+            if (node.parent && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
                 varName = node.parent.name.text;
                 ctx.bindings.set(varName, 'object');
             }
