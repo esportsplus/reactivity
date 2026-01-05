@@ -1,6 +1,6 @@
 import type { Bindings } from '~/types';
 import { applyReplacements, Replacement } from './utilities';
-import ts from 'typescript';
+import { ts } from '@esportsplus/typescript';
 
 
 interface TransformContext {

@@ -1,6 +1,6 @@
 import { COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
 import { ReactiveArray, ReactiveObject } from './reactive';
-import ts from 'typescript';
+import { ts } from '@esportsplus/typescript';
 
 
 type BindingType = 'array' | 'computed' | 'object' | 'signal';

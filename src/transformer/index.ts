@@ -3,7 +3,7 @@ import { mightNeedTransform } from './detector';
 import { transformReactiveArrays } from './transforms/array';
 import { transformReactiveObjects } from './transforms/object';
 import { transformReactivePrimitives } from './transforms/primitives';
-import ts from 'typescript';
+import { ts } from '@esportsplus/typescript';
 
 
 const createTransformer = (): ts.TransformerFactory<ts.SourceFile> => {

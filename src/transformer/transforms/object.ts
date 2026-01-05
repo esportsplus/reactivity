@@ -1,7 +1,7 @@
 import { uid } from '@esportsplus/typescript/transformer';
 import type { Bindings } from '~/types';
 import { addMissingImports, applyReplacements, ExtraImport, Replacement } from './utilities';
-import ts from 'typescript';
+import { ts } from '@esportsplus/typescript';
 
 
 const CLASS_NAME_REGEX = /class (\w+)/;

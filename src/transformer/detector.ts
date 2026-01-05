@@ -1,5 +1,5 @@
 import { mightNeedTransform as checkTransform } from '@esportsplus/typescript/transformer';
-import ts from 'typescript';
+import { ts } from '@esportsplus/typescript';
 
 
 interface DetectContext {

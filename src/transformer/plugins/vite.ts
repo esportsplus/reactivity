@@ -1,7 +1,7 @@
 import { TRANSFORM_PATTERN } from '@esportsplus/typescript/transformer';
 import { mightNeedTransform, transform } from '~/transformer';
 import type { Plugin } from 'vite';
-import ts from 'typescript';
+import { ts } from '@esportsplus/typescript';
 
 
 export default (): Plugin => {

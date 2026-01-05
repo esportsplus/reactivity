@@ -1,7 +1,7 @@
 import { uid, type Range } from '@esportsplus/typescript/transformer';
 import type { BindingType, Bindings } from '~/types';
 import { addMissingImports, applyReplacements, Replacement } from './utilities';
-import ts from 'typescript';
+import { ts } from '@esportsplus/typescript';
 
 
 interface ArgContext {
