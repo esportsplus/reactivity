@@ -58,6 +58,11 @@ function isAssignmentTarget(node: ts.Node): boolean {
 }
 
 function visit(ctx: TransformContext, node: ts.Node): ts.Node {
+    // Skip import declarations - don't visit their children
+    if (ts.isImportDeclaration(node)) {
+        return node;
+    }
+
     // Track array bindings from variable declarations
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
         if (ts.isIdentifier(node.initializer) && ctx.bindings.get(node.initializer.text) === 'array') {

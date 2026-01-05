@@ -189,22 +189,25 @@ function isReactiveReassignment(node: ts.BinaryExpression): boolean {
 }
 
 function visit(ctx: TransformContext, node: ts.Node): ts.Node {
-    // Check for reactive import
-    if (
-        ts.isImportDeclaration(node) &&
-        ts.isStringLiteral(node.moduleSpecifier) &&
-        node.moduleSpecifier.text.includes('@esportsplus/reactivity')
-    ) {
-        let clause = node.importClause;
+    // Check for reactive import - return early to avoid visiting import children
+    if (ts.isImportDeclaration(node)) {
+        if (
+            ts.isStringLiteral(node.moduleSpecifier) &&
+            node.moduleSpecifier.text.includes('@esportsplus/reactivity')
+        ) {
+            let clause = node.importClause;
 
-        if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
-            for (let i = 0, n = clause.namedBindings.elements.length; i < n; i++) {
-                if (clause.namedBindings.elements[i].name.text === 'reactive') {
-                    ctx.hasReactiveImport = true;
-                    break;
+            if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
+                for (let i = 0, n = clause.namedBindings.elements.length; i < n; i++) {
+                    if (clause.namedBindings.elements[i].name.text === 'reactive') {
+                        ctx.hasReactiveImport = true;
+                        break;
+                    }
                 }
             }
         }
+
+        return node;
     }
 
     // Transform reactive() calls to signal() or computed()

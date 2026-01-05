@@ -279,7 +279,7 @@ function buildReactiveClass(
 }
 
 function visit(ctx: TransformContext, node: ts.Node): ts.Node | ts.Node[] {
-    // Check for reactive import
+    // Check for reactive import - return early to avoid visiting import children
     if (ts.isImportDeclaration(node)) {
         if (
             ts.isStringLiteral(node.moduleSpecifier) &&
@@ -298,6 +298,8 @@ function visit(ctx: TransformContext, node: ts.Node): ts.Node | ts.Node[] {
                 }
             }
         }
+
+        return node;
     }
 
     // Transform reactive({ ... }) or reactive([...]) calls
