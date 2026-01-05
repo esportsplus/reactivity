@@ -1,8 +1,10 @@
+import uid from 'node_modules/@esportsplus/typescript/build/transformer/uid';
+
 const COMPILATION_ENTRYPOINT = 'reactive';
 
 const COMPILATION_ENTRYPOINT_REGEX = /\breactive\b/;
 
-const COMPILATION_NAMESPACE = 'reactive';
+const COMPILATION_NAMESPACE = uid(COMPILATION_ENTRYPOINT);
 
 const COMPILATION_TYPE_ARRAY = 'array';
 
