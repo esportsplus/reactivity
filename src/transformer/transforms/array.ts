@@ -1,47 +1,8 @@
-import { code as c, type Replacement } from '@esportsplus/typescript/transformer';
+import { ast, code as c, type Replacement } from '@esportsplus/typescript/transformer';
 import { ts } from '@esportsplus/typescript';
 import { COMPILER_TYPES } from '~/constants';
 import type { Bindings } from '~/types';
 
-
-function getExpressionName(node: ts.Expression): string | null {
-    if (ts.isIdentifier(node)) {
-        return node.text;
-    }
-
-    if (ts.isPropertyAccessExpression(node)) {
-        return getPropertyPath(node);
-    }
-
-    return null;
-}
-
-function getPropertyPath(node: ts.PropertyAccessExpression): string | null {
-    let current: ts.Node = node,
-        parts: string[] = [];
-
-    while (ts.isPropertyAccessExpression(current)) {
-        parts.push(current.name.text);
-        current = current.expression;
-    }
-
-    if (ts.isIdentifier(current)) {
-        parts.push(current.text);
-        return parts.reverse().join('.');
-    }
-
-    return null;
-}
-
-function isAssignmentTarget(node: ts.Node): boolean {
-    let parent = node.parent;
-
-    return !!parent && (
-        (ts.isBinaryExpression(parent) && parent.left === node) ||
-        ts.isPostfixUnaryExpression(parent) ||
-        ts.isPrefixUnaryExpression(parent)
-    );
-}
 
 function visit(ctx: { bindings: Bindings, replacements: Replacement[], sourceFile: ts.SourceFile }, node: ts.Node): void {
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
@@ -50,7 +11,7 @@ function visit(ctx: { bindings: Bindings, replacements: Replacement[], sourceFil
         }
 
         if (ts.isPropertyAccessExpression(node.initializer)) {
-            let path = getPropertyPath(node.initializer);
+            let path = ast.getPropertyPathString(node.initializer);
 
             if (path && ctx.bindings.get(path) === COMPILER_TYPES.Array) {
                 ctx.bindings.set(node.name.text, COMPILER_TYPES.Array);
@@ -73,19 +34,23 @@ function visit(ctx: { bindings: Bindings, replacements: Replacement[], sourceFil
         }
     }
 
+    let parent = node.parent;
+
     if (
         ts.isPropertyAccessExpression(node) &&
         node.name.text === 'length' &&
-        !isAssignmentTarget(node)
+        (!!parent && (
+            (ts.isBinaryExpression(parent) && parent.left === node) ||
+            ts.isPostfixUnaryExpression(parent) ||
+            ts.isPrefixUnaryExpression(parent)
+        )) === false
     ) {
-        let name = getExpressionName(node.expression);
+        let name = ast.getExpressionName(node.expression);
 
         if (name && ctx.bindings.get(name) === COMPILER_TYPES.Array) {
-            let objText = node.expression.getText(ctx.sourceFile);
-
             ctx.replacements.push({
                 end: node.end,
-                newText: `${objText}.$length()`,
+                newText: `${node.expression.getText(ctx.sourceFile)}.$length()`,
                 start: node.pos
             });
         }
@@ -97,16 +62,16 @@ function visit(ctx: { bindings: Bindings, replacements: Replacement[], sourceFil
         ts.isElementAccessExpression(node.left)
     ) {
         let elemAccess = node.left,
-            objName = getExpressionName(elemAccess.expression);
+            objName = ast.getExpressionName(elemAccess.expression);
 
         if (objName && ctx.bindings.get(objName) === COMPILER_TYPES.Array) {
-            let indexText = elemAccess.argumentExpression.getText(ctx.sourceFile),
-                objText = elemAccess.expression.getText(ctx.sourceFile),
-                valueText = node.right.getText(ctx.sourceFile);
+            let index = elemAccess.argumentExpression.getText(ctx.sourceFile),
+                obj = elemAccess.expression.getText(ctx.sourceFile),
+                value = node.right.getText(ctx.sourceFile);
 
             ctx.replacements.push({
                 end: node.end,
-                newText: `${objText}.$set(${indexText}, ${valueText})`,
+                newText: `${obj}.$set(${index}, ${value})`,
                 start: node.pos
             });
         }

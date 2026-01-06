@@ -1,5 +1,5 @@
 import { ts } from '@esportsplus/typescript';
-import { code as c, type Range, type Replacement } from '@esportsplus/typescript/transformer';
+import { ast, code as c, type Range, type Replacement } from '@esportsplus/typescript/transformer';
 import type { Bindings } from '~/types';
 import { COMPILER_ENTRYPOINT, COMPILER_TYPES, PACKAGE } from '~/constants';
 
@@ -30,36 +30,24 @@ interface TransformContext {
 }
 
 
-let COMPOUND_OPERATORS = new Map<ts.SyntaxKind, string>([
-        [ts.SyntaxKind.AmpersandAmpersandEqualsToken, '&&'],
-        [ts.SyntaxKind.AmpersandEqualsToken, '&'],
-        [ts.SyntaxKind.AsteriskAsteriskEqualsToken, '**'],
-        [ts.SyntaxKind.AsteriskEqualsToken, '*'],
-        [ts.SyntaxKind.BarBarEqualsToken, '||'],
-        [ts.SyntaxKind.BarEqualsToken, '|'],
-        [ts.SyntaxKind.CaretEqualsToken, '^'],
-        [ts.SyntaxKind.GreaterThanGreaterThanEqualsToken, '>>'],
-        [ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken, '>>>'],
-        [ts.SyntaxKind.LessThanLessThanEqualsToken, '<<'],
-        [ts.SyntaxKind.MinusEqualsToken, '-'],
-        [ts.SyntaxKind.PercentEqualsToken, '%'],
-        [ts.SyntaxKind.PlusEqualsToken, '+'],
-        [ts.SyntaxKind.QuestionQuestionEqualsToken, '??'],
-        [ts.SyntaxKind.SlashEqualsToken, '/']
-    ]);
+const COMPOUND_OPERATORS = new Map<ts.SyntaxKind, string>([
+    [ts.SyntaxKind.AmpersandAmpersandEqualsToken, '&&'],
+    [ts.SyntaxKind.AmpersandEqualsToken, '&'],
+    [ts.SyntaxKind.AsteriskAsteriskEqualsToken, '**'],
+    [ts.SyntaxKind.AsteriskEqualsToken, '*'],
+    [ts.SyntaxKind.BarBarEqualsToken, '||'],
+    [ts.SyntaxKind.BarEqualsToken, '|'],
+    [ts.SyntaxKind.CaretEqualsToken, '^'],
+    [ts.SyntaxKind.GreaterThanGreaterThanEqualsToken, '>>'],
+    [ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken, '>>>'],
+    [ts.SyntaxKind.LessThanLessThanEqualsToken, '<<'],
+    [ts.SyntaxKind.MinusEqualsToken, '-'],
+    [ts.SyntaxKind.PercentEqualsToken, '%'],
+    [ts.SyntaxKind.PlusEqualsToken, '+'],
+    [ts.SyntaxKind.QuestionQuestionEqualsToken, '??'],
+    [ts.SyntaxKind.SlashEqualsToken, '/']
+]);
 
-
-function classifyReactiveArg(arg: ts.Expression): COMPILER_TYPES | null {
-    if (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) {
-        return COMPILER_TYPES.Computed;
-    }
-
-    if (ts.isObjectLiteralExpression(arg) || ts.isArrayLiteralExpression(arg)) {
-        return null;
-    }
-
-    return COMPILER_TYPES.Signal;
-}
 
 function findBinding(bindings: ScopeBinding[], name: string, node: ts.Node): ScopeBinding | undefined {
     for (let i = 0, n = bindings.length; i < n; i++) {
@@ -94,18 +82,6 @@ function findEnclosingScope(node: ts.Node): ts.Node {
     }
 
     return node.getSourceFile();
-}
-
-function isInComputedRange(ranges: Range[], start: number, end: number): boolean {
-    for (let i = 0, n = ranges.length; i < n; i++) {
-        let r = ranges[i];
-
-        if (start >= r.start && end <= r.end) {
-            return true;
-        }
-    }
-
-    return false;
 }
 
 function isInDeclarationInit(node: ts.Node): boolean {
@@ -197,7 +173,14 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         node.arguments.length > 0
     ) {
         let arg = node.arguments[0],
-            classification = classifyReactiveArg(arg);
+            classification: COMPILER_TYPES | null = COMPILER_TYPES.Signal;
+
+        if (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) {
+            classification = COMPILER_TYPES.Computed;
+        }
+        else if (ts.isObjectLiteralExpression(arg) || ts.isArrayLiteralExpression(arg)) {
+            classification = null;
+        }
 
         if (classification) {
             let varName: string | null = null;
@@ -262,7 +245,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
         let nodeStart = node.getStart(ctx.sourceFile);
 
-        if (isInComputedRange(ctx.computedArgRanges, nodeStart, node.end)) {
+        if (ast.inRange(ctx.computedArgRanges, nodeStart, node.end)) {
             ts.forEachChild(node, n => visit(ctx, n));
             return;
         }

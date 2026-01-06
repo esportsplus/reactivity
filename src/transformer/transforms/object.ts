@@ -82,18 +82,18 @@ function buildClassCode(className: string, properties: AnalyzedProperty[], ns: s
         if (type === COMPILER_TYPES.Signal) {
             let param = `_v${paramCounter++}`;
 
-            fields.push(`#${key} = ${ns}.signal(${valueText});`);
             accessors.push(`get ${key}() { return ${ns}.read(this.#${key}); }`);
             accessors.push(`set ${key}(${param}) { ${ns}.write(this.#${key}, ${param}); }`);
+            fields.push(`#${key} = ${ns}.signal(${valueText});`);
         }
         else if (type === COMPILER_TYPES.Array) {
-            fields.push(`${key} = new ${ns}.ReactiveArray(${valueText});`);
             disposeStatements.push(`this.${key}.dispose();`);
+            fields.push(`${key} = new ${ns}.ReactiveArray(${valueText});`);
         }
         else if (type === COMPILER_TYPES.Computed) {
-            fields.push(`#${key} = null;`);
             accessors.push(`get ${key}() { return ${ns}.read(this.#${key} ??= ${ns}.computed(${valueText})); }`);
             disposeStatements.push(`if (this.#${key}) ${ns}.dispose(this.#${key});`);
+            fields.push(`#${key} = null;`);
         }
     }
 
