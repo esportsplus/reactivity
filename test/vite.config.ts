@@ -8,6 +8,7 @@ export default defineConfig({
         lib: {
             entry: {
                 arrays: resolve(__dirname, 'arrays.ts'),
+                debug: resolve(__dirname, 'debug.ts'),
                 effects: resolve(__dirname, 'effects.ts'),
                 index: resolve(__dirname, 'index.ts'),
                 nested: resolve(__dirname, 'nested.ts'),

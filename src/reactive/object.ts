@@ -9,7 +9,11 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
     private disposers: VoidFunction[] | null = null;
 
 
-    constructor(data: T) {
+    constructor(data: T | null) {
+        if (data == null) {
+            return;
+        }
+
         for (let key in data) {
             let value = data[key as keyof T],
                 type = typeof value;
@@ -21,33 +25,9 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
                     enumerable: true,
                     get: () => {
                         if (node === undefined) {
-                            root(() => {
-                                node = computed(value as Computed<T[keyof T]>['fn']);
-
-                                if (isPromise(node.value)) {
-                                    let factory = node,
-                                        version = 0;
-
-                                    node = signal<T[keyof T] | undefined>(undefined);
-
-                                    (this.disposers ??= []).push(
-                                        effect(() => {
-                                            let id = ++version;
-
-                                            (read(factory) as Promise<T[keyof T]>).then((v) => {
-                                                if (id !== version) {
-                                                    return;
-                                                }
-
-                                                write(node as Signal<typeof v>, v);
-                                            });
-                                        })
-                                    )
-                                }
-                                else {
-                                    (this.disposers ??= []).push(() => dispose(node as Computed<T[keyof T]>));
-                                }
-                            });
+                            node = this.setupComputed(
+                                value as () => T[keyof T]
+                            );
                         }
 
                         return read(node!);
@@ -85,6 +65,39 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
                 }
             });
         }
+    }
+
+
+    protected setupComputed<T extends Computed<ReturnType<T>>['fn']>(fn: T) {
+        return root(() => {
+            let node: Computed<ReturnType<T>> | Signal<ReturnType<T> | undefined> = computed(fn);
+
+            if (isPromise(node.value)) {
+                let factory = node,
+                    version = 0;
+
+                node = signal<ReturnType<T> | undefined>(undefined);
+
+                (this.disposers ??= []).push(
+                    effect(() => {
+                        let id = ++version;
+
+                        (read(factory) as Promise<ReturnType<T>>).then((v) => {
+                            if (id !== version) {
+                                return;
+                            }
+
+                            write(node as Signal<typeof v>, v);
+                        });
+                    })
+                )
+            }
+            else {
+                (this.disposers ??= []).push(() => dispose(node as Computed<ReturnType<T>>));
+            }
+
+            return node;
+        });
     }
 
 

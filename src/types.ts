@@ -3,7 +3,7 @@ import { COMPILER_TYPES, COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HE
 import { ReactiveArray } from './reactive';
 
 
-type AliasKey = 'computed' | 'dispose' | 'effect' | 'isPromise' | 'ReactiveArray' | 'REACTIVE_OBJECT' | 'ReactiveObject' | 'read' | 'root' | 'signal' | 'write';
+type AliasKey = 'computed' | 'dispose' | 'effect' | 'isPromise' | 'Reactive' | 'ReactiveArray' | 'REACTIVE_OBJECT' | 'ReactiveObject' | 'read' | 'root' | 'signal' | 'write';
 
 type Aliases = Record<AliasKey, string>;
 

@@ -11,6 +11,7 @@ let aliases: Aliases = {
         dispose: uid('dispose'),
         effect: uid('effect'),
         isPromise: uid('isPromise'),
+        Reactive: uid('Reactive'),
         ReactiveArray: uid('ReactiveArray'),
         REACTIVE_OBJECT: uid('REACTIVE_OBJECT'),
         ReactiveObject: uid('ReactiveObject'),
