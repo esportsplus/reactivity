@@ -1,5 +1,5 @@
-import { transform } from '~/transformer';
 import { ts } from '@esportsplus/typescript';
+import { transform } from '..';
 
 
 // TypeScript custom transformers API requires program parameter, but we don't use it

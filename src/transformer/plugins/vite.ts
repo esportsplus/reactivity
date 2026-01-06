@@ -1,8 +1,8 @@
 import type { Plugin } from 'vite';
 import { ts } from '@esportsplus/typescript';
 import { TRANSFORM_PATTERN } from '@esportsplus/typescript/transformer';
-import { transform } from '~/transformer';
-import { PACKAGE } from '~/constants';
+import { PACKAGE } from '../../constants';
+import { transform } from '..';
 
 
 export default (): Plugin => {
