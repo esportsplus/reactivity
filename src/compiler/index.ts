@@ -7,17 +7,20 @@ import object from './object';
 
 
 let aliases: Aliases = {
+        COMPUTED: uid('COMPUTED'),
         Computed: uid('Computed'),
         computed: uid('computed'),
         dispose: uid('dispose'),
         effect: uid('effect'),
         isPromise: uid('isPromise'),
         Reactive: uid('Reactive'),
+        REACTIVE_ARRAY: uid('REACTIVE_ARRAY'),
         ReactiveArray: uid('ReactiveArray'),
         REACTIVE_OBJECT: uid('REACTIVE_OBJECT'),
         ReactiveObject: uid('ReactiveObject'),
         read: uid('read'),
         root: uid('root'),
+        SIGNAL: uid('SIGNAL'),
         signal: uid('signal'),
         write: uid('write')
     },

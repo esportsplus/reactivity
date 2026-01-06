@@ -35,6 +35,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
             });
         }
     }
+
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
         if (ts.isIdentifier(node.initializer) && ctx.bindings.get(node.initializer.text) === COMPILER_TYPES.Array) {
             ctx.bindings.set(node.name.text, COMPILER_TYPES.Array);
@@ -91,17 +92,16 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         node.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
         ts.isElementAccessExpression(node.left)
     ) {
-        let elemAccess = node.left,
-            objName = ast.getExpressionName(elemAccess.expression);
+        let element = node.left,
+            name = ast.getExpressionName(element.expression);
 
-        if (objName && ctx.bindings.get(objName) === COMPILER_TYPES.Array) {
-            let index = elemAccess.argumentExpression.getText(ctx.sourceFile),
-                obj = elemAccess.expression.getText(ctx.sourceFile),
+        if (name && ctx.bindings.get(name) === COMPILER_TYPES.Array) {
+            let index = element.argumentExpression.getText(ctx.sourceFile),
                 value = node.right.getText(ctx.sourceFile);
 
             ctx.replacements.push({
                 end: node.end,
-                newText: `${obj}.$set(${index}, ${value})`,
+                newText: `${element.expression.getText(ctx.sourceFile)}.$set(${index}, ${value})`,
                 start: node.pos
             });
         }

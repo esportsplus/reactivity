@@ -112,7 +112,7 @@ function buildClassCode(aliases: Aliases, className: string, properties: Analyze
             let value = `_v${setters++}`;
 
             used.add('read');
-            used.add('signal');
+            used.add('SIGNAL');
             used.add('write');
 
             if (isStatic) {
@@ -124,7 +124,7 @@ function buildClassCode(aliases: Aliases, className: string, properties: Analyze
                         ${aliases.write}(this.#${key}, ${value});
                     }
                 `);
-                fields.push(`#${key} = this.setupSignal(${valueText});`);
+                fields.push(`#${key} = this[${aliases.SIGNAL}](${valueText});`);
             }
             else {
                 accessors.push(`
@@ -135,7 +135,7 @@ function buildClassCode(aliases: Aliases, className: string, properties: Analyze
                         ${aliases.write}(this.#${key}, ${value});
                     }
                 `);
-                body.push(`this.#${key} = this.setupSignal(${parameter});`);
+                body.push(`this.#${key} = this[${aliases.SIGNAL}](${parameter});`);
                 fields.push(`#${key};`);
                 generics.push(generic);
                 parameters.push(`${parameter}: ${generic}`);
@@ -147,10 +147,11 @@ function buildClassCode(aliases: Aliases, className: string, properties: Analyze
                     return this.#${key};
                 }
             `);
-            body.push(`this.#${key} = this.setupArray(${parameter});`);
+            body.push(`this.#${key} = this[${aliases.REACTIVE_ARRAY}](${parameter});`);
             fields.push(`#${key};`);
             generics.push(`${generic} extends unknown[]`);
             parameters.push(`${parameter}: ${generic}`);
+            used.add('REACTIVE_ARRAY');
             used.add('ReactiveArray');
         }
         else if (type === COMPILER_TYPES.Computed) {
@@ -159,10 +160,11 @@ function buildClassCode(aliases: Aliases, className: string, properties: Analyze
                     return ${aliases.read}(this.#${key});
                 }
             `);
-            body.push(`this.#${key} = this.setupComputed(${parameter});`);
+            body.push(`this.#${key} = this[${aliases.COMPUTED}](${parameter});`);
             fields.push(`#${key};`);
             generics.push(`${generic} extends ${aliases.Computed}<ReturnType<${generic}>>['fn']`);
             parameters.push(`${parameter}: ${generic}`);
+            used.add('COMPUTED');
             used.add('Computed');
             used.add('read');
         }
