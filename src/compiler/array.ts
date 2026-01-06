@@ -17,21 +17,19 @@ interface TransformContext {
 
 function visit(ctx: TransformContext, node: ts.Node): void {
     if (ts.isCallExpression(node) && isReactiveCall(node, ctx.checker) && node.arguments.length > 0) {
-        let arg = node.arguments[0];
+        let arg = node.arguments[0],
+            arrayLiteral = ts.isAsExpression(arg) ? arg.expression : arg;
 
-        if (ts.isArrayLiteralExpression(arg)) {
-            let varName: string | null = null;
-
+        if (ts.isArrayLiteralExpression(arrayLiteral)) {
             if (node.parent && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
-                varName = node.parent.name.text;
-                ctx.bindings.set(varName, COMPILER_TYPES.Array);
+                ctx.bindings.set(node.parent.name.text, COMPILER_TYPES.Array);
             }
 
             ctx.used.add('ReactiveArray');
             ctx.replacements.push({
                 end: node.end,
-                newText: arg.elements.length > 0
-                    ? ` new ${ctx.aliases.ReactiveArray}(...${arg.getText(ctx.sourceFile)})`
+                newText: arrayLiteral.elements.length > 0
+                    ? ` new ${ctx.aliases.ReactiveArray}(...${arrayLiteral.getText(ctx.sourceFile)})`
                     : ` new ${ctx.aliases.ReactiveArray}()`,
                 start: node.pos
             });

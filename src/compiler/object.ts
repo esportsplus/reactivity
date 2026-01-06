@@ -156,16 +156,59 @@ function buildClassCode(aliases: Aliases, className: string, properties: Analyze
 
             used.add('computed');
             used.add('dispose');
+            used.add('effect');
+            used.add('isPromise');
             used.add('read');
+            used.add('root');
+            used.add('signal');
+            used.add('write');
 
-            accessors.push(`get ${key}() { return ${aliases.read}(this.#${key} ??= ${aliases.computed}(this.#_fn_${key})) as ${generic}; }`);
+            accessors.push(`get ${key}() {
+                if (this.#${key} === undefined) {
+                    ${aliases.root}(() => {
+                        this.#${key} = ${aliases.computed}(this.#_fn_${key});
+
+                        if (${aliases.isPromise}(this.#${key}.value)) {
+                            let factory = this.#${key},
+                                version = 0;
+
+                            this.#${key} = ${aliases.signal}(undefined);
+
+                            (this.#disposers ??= []).push(
+                                ${aliases.effect}(() => {
+                                    let id = ++version;
+                                    ${aliases.read}(factory).then((v) => {
+                                        if (id !== version) return;
+                                        ${aliases.write}(this.#${key}, v);
+                                    });
+                                })
+                            );
+                        }
+                        else {
+                            (this.#disposers ??= []).push(() => ${aliases.dispose}(this.#${key}));
+                        }
+                    });
+                }
+
+                return ${aliases.read}(this.#${key}) as ${generic};
+            }`);
             body.push(`this.#_fn_${key} = ${param};`);
-            disposables.push(`if (this.#${key}) ${aliases.dispose}(this.#${key});`);
-            fields.push(`#${key} = null;`);
+            fields.push(`#${key};`);
             fields.push(`#_fn_${key};`);
             generics.push(generic);
             parameters.push(`${param}: () => ${generic}`);
         }
+    }
+
+    if (used.has('computed')) {
+        fields.push(`#disposers: VoidFunction[] | null = null;`);
+        disposables.push(`
+            if (this.#disposers) {
+                for (let i = 0, n = this.#disposers.length; i < n; i++) {
+                    this.#disposers[i]();
+                }
+            }
+        `);
     }
 
     return `

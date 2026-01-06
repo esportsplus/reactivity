@@ -9,9 +9,13 @@ import object from './object';
 let aliases: Aliases = {
         computed: uid('computed'),
         dispose: uid('dispose'),
+        effect: uid('effect'),
+        isPromise: uid('isPromise'),
         ReactiveArray: uid('ReactiveArray'),
         REACTIVE_OBJECT: uid('REACTIVE_OBJECT'),
+        ReactiveObject: uid('ReactiveObject'),
         read: uid('read'),
+        root: uid('root'),
         signal: uid('signal'),
         write: uid('write')
     },
@@ -30,16 +34,33 @@ function hasReactiveImport(sourceFile: ts.SourceFile): boolean {
     return false;
 }
 
-function isReactiveCall(node: ts.CallExpression, checker?: ts.TypeChecker): boolean {
+function hasRemainingReactiveCalls(sourceFile: ts.SourceFile): boolean {
+    let found = false;
+
+    function visit(node: ts.Node): void {
+        if (found) {
+            return;
+        }
+
+        if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === COMPILER_ENTRYPOINT) {
+            found = true;
+            return;
+        }
+
+        ts.forEachChild(node, visit);
+    }
+
+    visit(sourceFile);
+
+    return found;
+}
+
+function isReactiveCall(node: ts.CallExpression, _checker?: ts.TypeChecker): boolean {
     if (!ts.isIdentifier(node.expression)) {
         return false;
     }
 
-    if (node.expression.text !== COMPILER_ENTRYPOINT) {
-        return false;
-    }
-
-    return imports.isFromPackage(node.expression, PACKAGE, checker);
+    return node.expression.text === COMPILER_ENTRYPOINT;
 }
 
 const transform = (sourceFile: ts.SourceFile, program: ts.Program): TransformResult => {
@@ -66,13 +87,18 @@ const transform = (sourceFile: ts.SourceFile, program: ts.Program): TransformRes
     }
 
     if (changed) {
-        let add: string[] = [];
+        let add: string[] = [],
+            remove: string[] = [];
 
         for (let key of used) {
             add.push(`${key} as ${aliases[key]}`);
         }
 
-        code = imports.modify(code, current, PACKAGE, { add, remove: [COMPILER_ENTRYPOINT] });
+        if (!hasRemainingReactiveCalls(current)) {
+            remove.push(COMPILER_ENTRYPOINT);
+        }
+
+        code = imports.modify(code, current, PACKAGE, { add, remove });
         sourceFile = ts.createSourceFile(sourceFile.fileName, code, sourceFile.languageVersion, true);
     }
 

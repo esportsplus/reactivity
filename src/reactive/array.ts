@@ -1,7 +1,8 @@
 import { isArray } from '@esportsplus/utilities';
 import { read, signal, write } from '~/system';
-import { REACTIVE_ARRAY, REACTIVE_OBJECT } from '~/constants';
+import { REACTIVE_ARRAY } from '~/constants';
 import type { Signal } from '~/types';
+import { isReactiveObject } from './object';
 
 
 type Events<T> = {
@@ -45,7 +46,7 @@ type Listeners = Record<string, (Listener<any> | null)[]>;
 
 
 function dispose(value: unknown) {
-    if (value !== null && typeof value === 'object' && (value as any)[REACTIVE_OBJECT] === true) {
+    if (isReactiveObject(value)) {
         (value as { dispose(): void }).dispose();
     }
 }
