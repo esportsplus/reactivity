@@ -1,5 +1,5 @@
 import { ts } from '@esportsplus/typescript';
-import { ast, code as c, type Range, type Replacement } from '@esportsplus/typescript/transformer';
+import { ast, code as c, type Range, type Replacement } from '@esportsplus/typescript/compiler';
 import type { Bindings } from '~/types';
 import { COMPILER_ENTRYPOINT, COMPILER_TYPES, PACKAGE } from '~/constants';
 

@@ -1,10 +1,10 @@
 import { ts } from '@esportsplus/typescript';
-import { code as c } from '@esportsplus/typescript/transformer';
+import { code as c } from '@esportsplus/typescript/compiler';
 import { COMPILER_ENTRYPOINT, COMPILER_ENTRYPOINT_REGEX, COMPILER_NAMESPACE } from '~/constants';
 import type { Bindings, TransformResult } from '~/types';
-import array from './transforms/array';
-import object from './transforms/object';
-import primitives from './transforms/primitives';
+import array from './array';
+import object from './object';
+import primitives from './primitives';
 
 
 let transforms = [object, array, primitives];
