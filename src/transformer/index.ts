@@ -61,13 +61,13 @@ function visit(ctx: { imported: boolean; used: boolean; }, node: ts.Node): void 
 
 const transform = (sourceFile: ts.SourceFile): TransformResult => {
     let bindings: Bindings = new Map(),
+        changed = false,
         code = sourceFile.getFullText(),
         current = sourceFile,
-        result: string,
-        transformed = false;
+        result: string;
 
     if (!contains(code)) {
-        return { code, sourceFile, transformed: false };
+        return { changed: false, code, sourceFile };
     }
 
     for (let i = 0, n = transforms.length; i < n; i++) {
@@ -76,16 +76,16 @@ const transform = (sourceFile: ts.SourceFile): TransformResult => {
         if (result !== code) {
             current = ts.createSourceFile(sourceFile.fileName, result, sourceFile.languageVersion, true);
             code = result;
-            transformed = true;
+            changed = true;
         }
     }
 
-    if (transformed) {
+    if (changed) {
         code = `import * as ${COMPILER_NAMESPACE} from '@esportsplus/reactivity';\n` + code;
         sourceFile = ts.createSourceFile(sourceFile.fileName, code, sourceFile.languageVersion, true);
     }
 
-    return { code, sourceFile, transformed };
+    return { changed, code, sourceFile };
 };
 
 

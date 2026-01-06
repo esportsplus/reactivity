@@ -56,9 +56,9 @@ type Signal<T> = {
 };
 
 interface TransformResult {
+    changed: boolean;
     code: string;
     sourceFile: ts.SourceFile;
-    transformed: boolean;
 }
 
 
