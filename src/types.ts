@@ -3,6 +3,10 @@ import { COMPILER_TYPES, COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HE
 import { ReactiveArray } from './reactive';
 
 
+type AliasKey = 'computed' | 'dispose' | 'ReactiveArray' | 'REACTIVE_OBJECT' | 'read' | 'signal' | 'write';
+
+type Aliases = Record<AliasKey, string>;
+
 type Bindings = Map<string, COMPILER_TYPES>;
 
 interface Computed<T> {
@@ -45,7 +49,7 @@ type Reactive<T> = T extends (...args: unknown[]) => Promise<infer R>
         : T extends (infer U)[]
             ? U[] & Pick<ReactiveArray<U>, 'clear' | 'on' | 'once'>
             : T extends Record<PropertyKey, unknown>
-                ? { [K in keyof T]: T[K] } & { dispose: VoidFunction }
+                ? { [K in keyof T]: Reactive<T[K]>; } & { dispose: VoidFunction }
                 : T;
 
 type Signal<T> = {
@@ -63,6 +67,8 @@ interface TransformResult {
 
 
 export type {
+    AliasKey,
+    Aliases,
     Bindings,
     Computed,
     Link,

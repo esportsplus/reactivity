@@ -1,7 +1,7 @@
 import { ast, code as c, type Replacement } from '@esportsplus/typescript/compiler';
 import { ts } from '@esportsplus/typescript';
 import { COMPILER_TYPES } from '~/constants';
-import type { Bindings } from '~/types';
+import type { AliasKey, Aliases, Bindings } from '~/types';
 
 
 function visit(ctx: { bindings: Bindings, replacements: Replacement[], sourceFile: ts.SourceFile }, node: ts.Node): void {
@@ -81,7 +81,7 @@ function visit(ctx: { bindings: Bindings, replacements: Replacement[], sourceFil
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings, _ns: string, _checker?: ts.TypeChecker): string => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, _aliases: Aliases, _used: Set<AliasKey>, _checker?: ts.TypeChecker): string => {
     let code = sourceFile.getFullText(),
         ctx = {
             bindings,

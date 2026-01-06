@@ -1,15 +1,16 @@
 import { ts } from '@esportsplus/typescript';
 import { ast, code as c, imports, type Range, type Replacement } from '@esportsplus/typescript/compiler';
 import { COMPILER_ENTRYPOINT, COMPILER_TYPES, PACKAGE } from '~/constants';
-import type { Bindings } from '~/types';
+import type { AliasKey, Aliases, Bindings } from '~/types';
 
 
 interface ArgContext {
+    aliases: Aliases;
     argStart: number;
     innerReplacements: Replacement[];
-    ns: string;
     scopedBindings: ScopeBinding[];
     sourceFile: ts.SourceFile;
+    used: Set<AliasKey>;
 }
 
 interface ScopeBinding {
@@ -19,14 +20,15 @@ interface ScopeBinding {
 }
 
 interface TransformContext {
+    aliases: Aliases;
     bindings: Bindings;
     checker?: ts.TypeChecker;
     computedArgRanges: Range[];
-    ns: string;
     replacements: Replacement[];
     scopedBindings: ScopeBinding[];
     sourceFile: ts.SourceFile;
     tmpCounter: number;
+    used: Set<AliasKey>;
 }
 
 
@@ -201,27 +203,30 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                 ctx.computedArgRanges.push({ end: arg.end, start: argStart });
 
                 let argCtx: ArgContext = {
+                    aliases: ctx.aliases,
                     argStart,
                     innerReplacements: [],
-                    ns: ctx.ns,
                     scopedBindings: ctx.scopedBindings,
-                    sourceFile: ctx.sourceFile
+                    sourceFile: ctx.sourceFile,
+                    used: ctx.used
                 };
 
                 visitArg(argCtx, arg);
 
                 let argText = c.replace(arg.getText(ctx.sourceFile), argCtx.innerReplacements);
 
+                ctx.used.add('computed');
                 ctx.replacements.push({
                     end: node.end,
-                    newText: `${ctx.ns}.computed(${argText})`,
+                    newText: `${ctx.aliases.computed}(${argText})`,
                     start: node.pos
                 });
             }
             else {
+                ctx.used.add('signal');
                 ctx.replacements.push({
                     end: node.end,
-                    newText: `${ctx.ns}.signal(${arg.getText(ctx.sourceFile)})`,
+                    newText: `${ctx.aliases.signal}(${arg.getText(ctx.sourceFile)})`,
                     start: node.pos
                 });
             }
@@ -257,18 +262,20 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                         let parent = node.parent;
 
                         if (writeCtx === 'simple' && ts.isBinaryExpression(parent)) {
+                            ctx.used.add('write');
                             ctx.replacements.push({
                                 end: parent.end,
-                                newText: `${ctx.ns}.write(${name}, ${parent.right.getText(ctx.sourceFile)})`,
+                                newText: `${ctx.aliases.write}(${name}, ${parent.right.getText(ctx.sourceFile)})`,
                                 start: parent.pos
                             });
                         }
                         else if (writeCtx === 'compound' && ts.isBinaryExpression(parent)) {
                             let op = COMPOUND_OPERATORS.get(parent.operatorToken.kind) ?? '+'
 
+                            ctx.used.add('write');
                             ctx.replacements.push({
                                 end: parent.end,
-                                newText: `${ctx.ns}.write(${name}, ${name}.value ${op} ${parent.right.getText(ctx.sourceFile)})`,
+                                newText: `${ctx.aliases.write}(${name}, ${name}.value ${op} ${parent.right.getText(ctx.sourceFile)})`,
                                 start: parent.pos
                             });
                         }
@@ -276,17 +283,19 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                             let delta = (parent as ts.PrefixUnaryExpression | ts.PostfixUnaryExpression).operator === ts.SyntaxKind.PlusPlusToken ? '+ 1' : '- 1',
                                 isPrefix = ts.isPrefixUnaryExpression(parent);
 
+                            ctx.used.add('write');
+
                             if (ts.isExpressionStatement(parent.parent)) {
                                 ctx.replacements.push({
                                     end: parent.end,
-                                    newText: `${ctx.ns}.write(${name}, ${name}.value ${delta})`,
+                                    newText: `${ctx.aliases.write}(${name}, ${name}.value ${delta})`,
                                     start: parent.pos
                                 });
                             }
                             else if (isPrefix) {
                                 ctx.replacements.push({
                                     end: parent.end,
-                                    newText: `(${ctx.ns}.write(${name}, ${name}.value ${delta}), ${name}.value)`,
+                                    newText: `(${ctx.aliases.write}(${name}, ${name}.value ${delta}), ${name}.value)`,
                                     start: parent.pos
                                 });
                             }
@@ -295,7 +304,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
                                 ctx.replacements.push({
                                     end: parent.end,
-                                    newText: `((${tmp}) => (${ctx.ns}.write(${name}, ${tmp} ${delta}), ${tmp}))(${name}.value)`,
+                                    newText: `((${tmp}) => (${ctx.aliases.write}(${name}, ${tmp} ${delta}), ${tmp}))(${name}.value)`,
                                     start: parent.pos
                                 });
                             }
@@ -303,9 +312,10 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                     }
                 }
                 else {
+                    ctx.used.add('read');
                     ctx.replacements.push({
                         end: node.end,
-                        newText: `${ctx.ns}.read(${name})`,
+                        newText: `${ctx.aliases.read}(${name})`,
                         start: node.pos
                     });
                 }
@@ -328,9 +338,10 @@ function visitArg(ctx: ArgContext, node: ts.Node): void {
         }
 
         if (findBinding(ctx.scopedBindings, node.text, node)) {
+            ctx.used.add('read');
             ctx.innerReplacements.push({
                 end: node.end - ctx.argStart,
-                newText: `${ctx.ns}.read(${node.text})`,
+                newText: `${ctx.aliases.read}(${node.text})`,
                 start: node.getStart(ctx.sourceFile) - ctx.argStart
             });
         }
@@ -340,17 +351,18 @@ function visitArg(ctx: ArgContext, node: ts.Node): void {
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings, ns: string, checker?: ts.TypeChecker): string => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, aliases: Aliases, used: Set<AliasKey>, checker?: ts.TypeChecker): string => {
     let code = sourceFile.getFullText(),
         ctx: TransformContext = {
+            aliases,
             bindings,
             checker,
             computedArgRanges: [],
-            ns,
             replacements: [],
             scopedBindings: [],
             sourceFile,
-            tmpCounter: 0
+            tmpCounter: 0,
+            used
         };
 
     visit(ctx, sourceFile);

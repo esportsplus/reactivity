@@ -1,13 +1,22 @@
 import { ts } from '@esportsplus/typescript';
-import { code as c, imports } from '@esportsplus/typescript/compiler';
-import { COMPILER_ENTRYPOINT, COMPILER_ENTRYPOINT_REGEX, COMPILER_NAMESPACE, PACKAGE } from '~/constants';
-import type { Bindings, TransformResult } from '~/types';
+import { code as c, imports, uid } from '@esportsplus/typescript/compiler';
+import { COMPILER_ENTRYPOINT, COMPILER_ENTRYPOINT_REGEX, PACKAGE } from '~/constants';
+import type { AliasKey, Aliases, Bindings, TransformResult } from '~/types';
 import array from './array';
 import object from './object';
 import primitives from './primitives';
 
 
-let transforms = [object, array, primitives];
+let aliases: Aliases = {
+        computed: uid('computed'),
+        dispose: uid('dispose'),
+        ReactiveArray: uid('ReactiveArray'),
+        REACTIVE_OBJECT: uid('REACTIVE_OBJECT'),
+        read: uid('read'),
+        signal: uid('signal'),
+        write: uid('write')
+    },
+    transforms = [object, array, primitives];
 
 
 function hasReactiveImport(sourceFile: ts.SourceFile): boolean {
@@ -59,14 +68,15 @@ const transform = (sourceFile: ts.SourceFile, program: ts.Program): TransformRes
         checker = program.getTypeChecker(),
         code = sourceFile.getFullText(),
         current = sourceFile,
-        result: string;
+        result: string,
+        used = new Set<AliasKey>();
 
     if (!hasReactiveImport(sourceFile) || !hasReactiveUsage(code)) {
         return { changed: false, code, sourceFile };
     }
 
     for (let i = 0, n = transforms.length; i < n; i++) {
-        result = transforms[i](current, bindings, COMPILER_NAMESPACE, checker);
+        result = transforms[i](current, bindings, aliases, used, checker);
 
         if (result !== code) {
             current = ts.createSourceFile(sourceFile.fileName, result, sourceFile.languageVersion, true);
@@ -76,8 +86,13 @@ const transform = (sourceFile: ts.SourceFile, program: ts.Program): TransformRes
     }
 
     if (changed) {
-        code = imports.modify(code, current, PACKAGE, { remove: [COMPILER_ENTRYPOINT] });
-        code = `import * as ${COMPILER_NAMESPACE} from '@esportsplus/reactivity';\n` + code;
+        let add: string[] = [];
+
+        for (let key of used) {
+            add.push(`${key} as ${aliases[key]}`);
+        }
+
+        code = imports.modify(code, current, PACKAGE, { add, remove: [COMPILER_ENTRYPOINT] });
         sourceFile = ts.createSourceFile(sourceFile.fileName, code, sourceFile.languageVersion, true);
     }
 
