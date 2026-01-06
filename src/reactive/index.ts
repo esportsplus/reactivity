@@ -11,8 +11,9 @@ type Guard<T> =
         : never;
 
 
-function reactive<T extends Record<PropertyKey, any>>(_input: Guard<T>): Reactive<T>;
-function reactive<T>(_input: T): Reactive<T> {
+function reactive<T extends unknown[]>(_input: T): Reactive<T>;
+function reactive<T extends Record<PropertyKey, unknown>>(_input: Guard<T>): Reactive<T>;
+function reactive<T>(_input: unknown[] | Record<PropertyKey, unknown>): Reactive<T> {
     throw new Error(
         `${PACKAGE}: ${COMPILER_ENTRYPOINT}() called at runtime. ` +
         'Ensure vite plugin is configured.'

@@ -83,6 +83,7 @@ class ReactiveArray<T> extends Array<T> {
         this.dispatch('set', { index: i, item: value });
     }
 
+
     clear() {
         this.dispose();
         write(this._length, 0);

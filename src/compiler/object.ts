@@ -45,33 +45,30 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.Sourc
         return null;
     }
 
-    let value = prop.initializer,
+    let unwrapped = prop.initializer,
+        value = unwrapped,
         valueText = value.getText(sourceFile);
 
-    if (ts.isArrowFunction(value) || ts.isFunctionExpression(value)) {
+    while (ts.isAsExpression(unwrapped) || ts.isTypeAssertionExpression(unwrapped) || ts.isParenthesizedExpression(unwrapped)) {
+        unwrapped = unwrapped.expression;
+    }
+
+    if (ts.isArrowFunction(unwrapped) || ts.isFunctionExpression(unwrapped)) {
         return { isStatic: false, key, type: COMPILER_TYPES.Computed, valueText };
     }
 
-    if (ts.isArrayLiteralExpression(value)) {
-        let elements = value.elements,
-            elementsText = '',
-            isStatic = true;
+    if (ts.isArrayLiteralExpression(unwrapped)) {
+        let elements = unwrapped.elements,
+            hasTypeAssertion = value !== unwrapped,
+            isStatic = !hasTypeAssertion;
 
         for (let i = 0, n = elements.length; i < n; i++) {
-            if (i > 0) {
-                elementsText += ', ';
-            }
-
-            let el = elements[i];
-
-            elementsText += el.getText(sourceFile);
-
-            if (isStatic && !isStaticValue(el)) {
+            if (isStatic && !isStaticValue(elements[i])) {
                 isStatic = false;
             }
         }
 
-        return { isStatic, key, type: COMPILER_TYPES.Array, valueText: elementsText };
+        return { isStatic, key, type: COMPILER_TYPES.Array, valueText };
     }
 
     return { isStatic: isStaticValue(value), key, type: COMPILER_TYPES.Signal, valueText };
@@ -102,6 +99,7 @@ function buildClassCode(aliases: Aliases, className: string, properties: Analyze
         constructorParams: string[] = [],
         disposeStatements: string[] = [],
         fields: string[] = [],
+        genericParams: string[] = [],
         paramCounter = 0,
         setterParamCounter = 0;
 
@@ -120,55 +118,63 @@ function buildClassCode(aliases: Aliases, className: string, properties: Analyze
 
             if (isStatic) {
                 fields.push(`#${key} = ${aliases.signal}(${valueText});`);
+                accessors.push(`get ${key}() { return ${aliases.read}(this.#${key}); }`);
             }
             else {
-                let param = `_p${paramCounter++}`;
+                let generic = `T${paramCounter}`,
+                    param = `_p${paramCounter++}`;
 
-                constructorParams.push(`${param}: unknown`);
+                genericParams.push(generic);
+                constructorParams.push(`${param}: ${generic}`);
                 fields.push(`#${key};`);
                 constructorBody.push(`this.#${key} = ${aliases.signal}(${param});`);
+                accessors.push(`get ${key}() { return ${aliases.read}(this.#${key}) as ${generic}; }`);
             }
 
-            accessors.push(`get ${key}() { return ${aliases.read}(this.#${key}); }`);
             accessors.push(`set ${key}(${setterParam}) { ${aliases.write}(this.#${key}, ${setterParam}); }`);
         }
         else if (type === COMPILER_TYPES.Array) {
             used.add('ReactiveArray');
 
             if (isStatic) {
-                fields.push(`${key} = new ${aliases.ReactiveArray}(${valueText});`);
+                fields.push(`${key} = new ${aliases.ReactiveArray}(...${valueText});`);
             }
             else {
-                let param = `_p${paramCounter++}`;
+                let generic = `T${paramCounter}`,
+                    param = `_p${paramCounter++}`;
 
-                constructorParams.push(`${param}: unknown[]`);
-                fields.push(`${key};`);
+                genericParams.push(`${generic} extends unknown[]`);
+                constructorParams.push(`${param}: ${generic}`);
+                fields.push(`${key}!: ${aliases.ReactiveArray}<${generic}[number]>;`);
                 constructorBody.push(`this.${key} = new ${aliases.ReactiveArray}(...${param});`);
             }
 
             disposeStatements.push(`this.${key}.dispose();`);
         }
         else if (type === COMPILER_TYPES.Computed) {
-            let param = `_p${paramCounter++}`;
+            let generic = `T${paramCounter}`,
+                param = `_p${paramCounter++}`;
 
             used.add('computed');
             used.add('dispose');
             used.add('read');
-            constructorParams.push(`${param}: () => unknown`);
+            genericParams.push(generic);
+            constructorParams.push(`${param}: () => ${generic}`);
             fields.push(`#${key} = null;`);
             fields.push(`#_fn_${key};`);
             constructorBody.push(`this.#_fn_${key} = ${param};`);
-            accessors.push(`get ${key}() { return ${aliases.read}(this.#${key} ??= ${aliases.computed}(this.#_fn_${key})); }`);
+            accessors.push(`get ${key}() { return ${aliases.read}(this.#${key} ??= ${aliases.computed}(this.#_fn_${key})) as ${generic}; }`);
             disposeStatements.push(`if (this.#${key}) ${aliases.dispose}(this.#${key});`);
         }
     }
 
     let constructor = constructorParams.length > 0
-        ? `constructor(${constructorParams.join(', ')}) {\n                ${constructorBody.join('\n                ')}\n            }`
-        : '';
+            ? `constructor(${constructorParams.join(', ')}) {\n                ${constructorBody.join('\n                ')}\n            }`
+            : '',
+        generics = genericParams.length > 0 ? `<${genericParams.join(', ')}>` : '';
 
     return `
-        class ${className} {
+        class ${className}${generics} {
             ${fields.join('\n            ')}
 
             ${constructor}
@@ -192,12 +198,7 @@ function buildConstructorArgs(properties: AnalyzedProperty[]): string {
             continue;
         }
 
-        if (type === COMPILER_TYPES.Array) {
-            args.push(`[${valueText}]`);
-        }
-        else {
-            args.push(valueText);
-        }
+        args.push(valueText);
     }
 
     return args.join(', ');

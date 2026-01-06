@@ -4,7 +4,6 @@ import { COMPILER_ENTRYPOINT, COMPILER_ENTRYPOINT_REGEX, PACKAGE } from '~/const
 import type { AliasKey, Aliases, Bindings, TransformResult } from '~/types';
 import array from './array';
 import object from './object';
-import primitives from './primitives';
 
 
 let aliases: Aliases = {
@@ -16,7 +15,7 @@ let aliases: Aliases = {
         signal: uid('signal'),
         write: uid('write')
     },
-    transforms = [object, array, primitives];
+    transforms = [object, array];
 
 
 function hasReactiveImport(sourceFile: ts.SourceFile): boolean {

@@ -1,10 +1,53 @@
-import { ast, code as c, type Replacement } from '@esportsplus/typescript/compiler';
 import { ts } from '@esportsplus/typescript';
-import { COMPILER_TYPES } from '~/constants';
+import { ast, code as c, imports, type Replacement } from '@esportsplus/typescript/compiler';
+import { COMPILER_ENTRYPOINT, COMPILER_TYPES, PACKAGE } from '~/constants';
 import type { AliasKey, Aliases, Bindings } from '~/types';
 
 
-function visit(ctx: { bindings: Bindings, replacements: Replacement[], sourceFile: ts.SourceFile }, node: ts.Node): void {
+interface TransformContext {
+    aliases: Aliases;
+    bindings: Bindings;
+    checker?: ts.TypeChecker;
+    replacements: Replacement[];
+    sourceFile: ts.SourceFile;
+    used: Set<AliasKey>;
+}
+
+
+function isReactiveCall(node: ts.CallExpression, checker?: ts.TypeChecker): boolean {
+    if (!ts.isIdentifier(node.expression)) {
+        return false;
+    }
+
+    if (node.expression.text !== COMPILER_ENTRYPOINT) {
+        return false;
+    }
+
+    return imports.isFromPackage(node.expression, PACKAGE, checker);
+}
+
+function visit(ctx: TransformContext, node: ts.Node): void {
+    if (ts.isCallExpression(node) && isReactiveCall(node, ctx.checker) && node.arguments.length > 0) {
+        let arg = node.arguments[0];
+
+        if (ts.isArrayLiteralExpression(arg)) {
+            let varName: string | null = null;
+
+            if (node.parent && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
+                varName = node.parent.name.text;
+                ctx.bindings.set(varName, COMPILER_TYPES.Array);
+            }
+
+            ctx.used.add('ReactiveArray');
+            ctx.replacements.push({
+                end: node.end,
+                newText: arg.elements.length > 0
+                    ? ` new ${ctx.aliases.ReactiveArray}(...${arg.getText(ctx.sourceFile)})`
+                    : ` new ${ctx.aliases.ReactiveArray}()`,
+                start: node.pos
+            });
+        }
+    }
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
         if (ts.isIdentifier(node.initializer) && ctx.bindings.get(node.initializer.text) === COMPILER_TYPES.Array) {
             ctx.bindings.set(node.name.text, COMPILER_TYPES.Array);
@@ -81,15 +124,22 @@ function visit(ctx: { bindings: Bindings, replacements: Replacement[], sourceFil
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings, _aliases: Aliases, _used: Set<AliasKey>, _checker?: ts.TypeChecker): string => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, aliases: Aliases, used: Set<AliasKey>, checker?: ts.TypeChecker): string => {
     let code = sourceFile.getFullText(),
-        ctx = {
+        ctx: TransformContext = {
+            aliases,
             bindings,
+            checker,
             replacements: [],
-            sourceFile
+            sourceFile,
+            used
         };
 
     visit(ctx, sourceFile);
+
+    if (ctx.replacements.length === 0) {
+        return code;
+    }
 
     return c.replace(code, ctx.replacements);
 };
