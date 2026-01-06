@@ -1,7 +1,8 @@
 import { ts } from '@esportsplus/typescript';
-import { ast, code as c, imports, type Replacement } from '@esportsplus/typescript/compiler';
-import { COMPILER_ENTRYPOINT, COMPILER_TYPES, PACKAGE } from '~/constants';
+import { ast, code as c, type Replacement } from '@esportsplus/typescript/compiler';
+import { COMPILER_TYPES } from '~/constants';
 import type { AliasKey, Aliases, Bindings } from '~/types';
+import { isReactiveCall } from '.';
 
 
 interface TransformContext {
@@ -13,18 +14,6 @@ interface TransformContext {
     used: Set<AliasKey>;
 }
 
-
-function isReactiveCall(node: ts.CallExpression, checker?: ts.TypeChecker): boolean {
-    if (!ts.isIdentifier(node.expression)) {
-        return false;
-    }
-
-    if (node.expression.text !== COMPILER_ENTRYPOINT) {
-        return false;
-    }
-
-    return imports.isFromPackage(node.expression, PACKAGE, checker);
-}
 
 function visit(ctx: TransformContext, node: ts.Node): void {
     if (ts.isCallExpression(node) && isReactiveCall(node, ctx.checker) && node.arguments.length > 0) {

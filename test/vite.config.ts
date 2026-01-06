@@ -1,6 +1,6 @@
 import { resolve } from 'path';
 import { defineConfig } from 'vite';
-import reactivity from '../build/transformer/plugins/vite.js';
+import reactivity from '../build/compiler/plugins/vite.js';
 
 
 export default defineConfig({

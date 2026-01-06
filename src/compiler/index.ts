@@ -1,6 +1,6 @@
 import { ts } from '@esportsplus/typescript';
-import { code as c, imports, uid } from '@esportsplus/typescript/compiler';
-import { COMPILER_ENTRYPOINT, COMPILER_ENTRYPOINT_REGEX, PACKAGE } from '~/constants';
+import { imports, uid } from '@esportsplus/typescript/compiler';
+import { COMPILER_ENTRYPOINT, PACKAGE } from '~/constants';
 import type { AliasKey, Aliases, Bindings, TransformResult } from '~/types';
 import array from './array';
 import object from './object';
@@ -30,36 +30,17 @@ function hasReactiveImport(sourceFile: ts.SourceFile): boolean {
     return false;
 }
 
-function hasReactiveUsage(code: string): boolean {
-    if (!c.contains(code, { regex: COMPILER_ENTRYPOINT_REGEX })) {
+function isReactiveCall(node: ts.CallExpression, checker?: ts.TypeChecker): boolean {
+    if (!ts.isIdentifier(node.expression)) {
         return false;
     }
 
-    let sourceFile = ts.createSourceFile('detect.ts', code, ts.ScriptTarget.Latest, false),
-        used = false;
-
-    function visit(node: ts.Node): void {
-        if (used) {
-            return;
-        }
-
-        if (
-            ts.isCallExpression(node) &&
-            ts.isIdentifier(node.expression) &&
-            node.expression.text === COMPILER_ENTRYPOINT
-        ) {
-            used = true;
-            return;
-        }
-
-        ts.forEachChild(node, visit);
+    if (node.expression.text !== COMPILER_ENTRYPOINT) {
+        return false;
     }
 
-    visit(sourceFile);
-
-    return used;
+    return imports.isFromPackage(node.expression, PACKAGE, checker);
 }
-
 
 const transform = (sourceFile: ts.SourceFile, program: ts.Program): TransformResult => {
     let bindings: Bindings = new Map(),
@@ -70,7 +51,7 @@ const transform = (sourceFile: ts.SourceFile, program: ts.Program): TransformRes
         result: string,
         used = new Set<AliasKey>();
 
-    if (!hasReactiveImport(sourceFile) || !hasReactiveUsage(code)) {
+    if (!hasReactiveImport(sourceFile)) {
         return { changed: false, code, sourceFile };
     }
 
@@ -99,4 +80,4 @@ const transform = (sourceFile: ts.SourceFile, program: ts.Program): TransformRes
 };
 
 
-export { transform };
+export { isReactiveCall, transform };
