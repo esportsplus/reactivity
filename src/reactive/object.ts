@@ -1,12 +1,12 @@
 import { defineProperty, isArray, isPromise } from '@esportsplus/utilities';
 import { computed, dispose, effect, read, root, signal, write } from '~/system';
 import { Computed, Signal } from '~/types';
-import { REACTIVE_OBJECT } from '~/constants';
+import { COMPUTED, REACTIVE_ARRAY, REACTIVE_OBJECT, SIGNAL } from '~/constants';
 import { ReactiveArray } from './array';
 
 
 class ReactiveObject<T extends Record<PropertyKey, unknown>> {
-    private disposers: VoidFunction[] | null = null;
+    protected disposers: VoidFunction[] | null = null;
 
 
     constructor(data: T | null) {
@@ -19,19 +19,11 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
                 type = typeof value;
 
             if (type === 'function') {
-                let node: Computed<T[keyof T]> | Signal<T[keyof T] | undefined> | undefined;
+                let node = this[COMPUTED]( value as () => T[keyof T] );
 
                 defineProperty(this, key, {
                     enumerable: true,
-                    get: () => {
-                        if (node === undefined) {
-                            node = this.setupComputed(
-                                value as () => T[keyof T]
-                            );
-                        }
-
-                        return read(node!);
-                    }
+                    get: () => read(node)
                 });
 
                 continue;
@@ -41,13 +33,9 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
                 // Skip isArray when possible
             }
             else if (isArray(value)) {
-                let node = new ReactiveArray(...value);
-
-                (this.disposers ??= []).push( () => node.dispose() );
-
                 defineProperty(this, key, {
                     enumerable: true,
-                    value: node
+                    value: this[REACTIVE_ARRAY](value)
                 });
 
                 continue;
@@ -68,9 +56,17 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
     }
 
 
-    protected setupComputed<T extends Computed<ReturnType<T>>['fn']>(fn: T) {
+    protected [REACTIVE_ARRAY]<U>(value: U[]): ReactiveArray<U> {
+        let node = new ReactiveArray(...value);
+
+        (this.disposers ??= []).push( () => node.dispose() );
+
+        return node;
+    }
+
+    protected [COMPUTED]<T extends Computed<ReturnType<T>>['fn']>(value: T) {
         return root(() => {
-            let node: Computed<ReturnType<T>> | Signal<ReturnType<T> | undefined> = computed(fn);
+            let node: Computed<ReturnType<T>> | Signal<ReturnType<T> | undefined> = computed(value);
 
             if (isPromise(node.value)) {
                 let factory = node,
@@ -98,6 +94,10 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
 
             return node;
         });
+    }
+
+    protected [SIGNAL]<T>(value: T) {
+        return signal(value);
     }
 
 

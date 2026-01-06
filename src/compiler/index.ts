@@ -7,6 +7,7 @@ import object from './object';
 
 
 let aliases: Aliases = {
+        Computed: uid('Computed'),
         computed: uid('computed'),
         dispose: uid('dispose'),
         effect: uid('effect'),

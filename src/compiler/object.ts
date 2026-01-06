@@ -96,140 +96,86 @@ function isStaticValue(node: ts.Node): boolean {
 function buildClassCode(aliases: Aliases, className: string, properties: AnalyzedProperty[], used: Set<AliasKey>): string {
     let accessors: string[] = [],
         body: string[] = [],
-        disposables: string[] = [],
         fields: string[] = [],
         generics: string[] = [],
         parameters: string[] = [],
         setters = 0;
 
-    fields.push(`[${aliases.REACTIVE_OBJECT}] = true;`);
-    used.add('REACTIVE_OBJECT');
+    used.add('ReactiveObject');
 
     for (let i = 0, n = properties.length; i < n; i++) {
-        let { isStatic, key, type, valueText } = properties[i];
+        let { isStatic, key, type, valueText } = properties[i],
+            generic = `T${parameters.length}`,
+            parameter = `_p${parameters.length}`;
 
         if (type === COMPILER_TYPES.Signal) {
-            let setter = `_v${setters++}`;
+            let value = `_v${setters++}`;
 
             used.add('read');
             used.add('signal');
             used.add('write');
 
             if (isStatic) {
-                accessors.push(`get ${key}() { return ${aliases.read}(this.#${key}); }`);
-                fields.push(`#${key} = ${aliases.signal}(${valueText});`);
+                accessors.push(`
+                    get ${key}() {
+                        return ${aliases.read}(this.#${key});
+                    }
+                    set ${key}(${value}) {
+                        ${aliases.write}(this.#${key}, ${value});
+                    }
+                `);
+                fields.push(`#${key} = this.setupSignal(${valueText});`);
             }
             else {
-                let generic = `T${parameters.length}`,
-                    param = `_p${parameters.length}`;
-
-                accessors.push(`get ${key}() { return ${aliases.read}(this.#${key}) as ${generic}; }`);
-                body.push(`this.#${key} = ${aliases.signal}(${param});`);
+                accessors.push(`
+                    get ${key}() {
+                        return ${aliases.read}(this.#${key}) as ${generic};
+                    }
+                    set ${key}(${value}) {
+                        ${aliases.write}(this.#${key}, ${value});
+                    }
+                `);
+                body.push(`this.#${key} = this.setupSignal(${parameter});`);
                 fields.push(`#${key};`);
                 generics.push(generic);
-                parameters.push(`${param}: ${generic}`);
+                parameters.push(`${parameter}: ${generic}`);
             }
-
-            accessors.push(`set ${key}(${setter}) { ${aliases.write}(this.#${key}, ${setter}); }`);
         }
         else if (type === COMPILER_TYPES.Array) {
-            used.add('ReactiveArray');
-
-            if (isStatic) {
-                fields.push(`${key} = new ${aliases.ReactiveArray}(...${valueText});`);
-            }
-            else {
-                let generic = `T${parameters.length}`,
-                    param = `_p${parameters.length}`;
-
-                body.push(`this.${key} = new ${aliases.ReactiveArray}(...${param});`);
-                fields.push(`${key}!: ${aliases.ReactiveArray}<${generic}[number]>;`);
-                generics.push(`${generic} extends unknown[]`);
-                parameters.push(`${param}: ${generic}`);
-            }
-
-            disposables.push(`this.${key}.dispose();`);
-        }
-        else if (type === COMPILER_TYPES.Computed) {
-            let generic = `T${parameters.length}`,
-                param = `_p${parameters.length}`;
-
-            used.add('computed');
-            used.add('dispose');
-            used.add('effect');
-            used.add('isPromise');
-            used.add('Reactive');
-            used.add('read');
-            used.add('root');
-            used.add('signal');
-            used.add('write');
-
             accessors.push(`
                 get ${key}() {
-                    return ${aliases.read}(this.#${key}) as ${aliases.Reactive}<${generic}>;
-                }
-            `);
-            body.push(`
-                this.#${key} = ${aliases.root}(() => {
-                    this.#${key} = ${aliases.computed}(${param});
-
-                    if (${aliases.isPromise}(this.#${key}.value)) {
-                        let factory = this.#${key},
-                            version = 0;
-
-                        this.#${key} = ${aliases.signal}(undefined);
-
-                        (this.#disposers ??= []).push(
-                            ${aliases.effect}(() => {
-                                let id = ++version;
-
-                                (${aliases.read}(factory) as Promise<typeof factory>).then((v) => {
-                                    if (id !== version) {
-                                        return;
-                                    }
-
-                                    ${aliases.write}(this.#${key}, v);
-                                });
-                            })
-                        );
-                    }
-                    else {
-                        (this.#disposers ??= []).push(() => ${aliases.dispose}(this.#${key}));
-                    }
-
                     return this.#${key};
-                });
-            `);
-            fields.push(`#${key}: any;`);
-            generics.push(generic);
-            parameters.push(`${param}: () => ${generic}`);
-        }
-    }
-
-    if (used.has('computed')) {
-        fields.push(`#disposers: VoidFunction[] | null = null;`);
-        disposables.push(`
-            if (this.#disposers) {
-                for (let i = 0, n = this.#disposers.length; i < n; i++) {
-                    this.#disposers[i]();
                 }
-            }
-        `);
+            `);
+            body.push(`this.#${key} = this.setupArray(${parameter});`);
+            fields.push(`#${key};`);
+            generics.push(`${generic} extends unknown[]`);
+            parameters.push(`${parameter}: ${generic}`);
+            used.add('ReactiveArray');
+        }
+        else if (type === COMPILER_TYPES.Computed) {
+            accessors.push(`
+                get ${key}() {
+                    return ${aliases.read}(this.#${key});
+                }
+            `);
+            body.push(`this.#${key} = this.setupComputed(${parameter});`);
+            fields.push(`#${key};`);
+            generics.push(`${generic} extends ${aliases.Computed}<ReturnType<${generic}>>['fn']`);
+            parameters.push(`${parameter}: ${generic}`);
+            used.add('Computed');
+            used.add('read');
+        }
     }
 
     return `
-        class ${className}${generics.length > 0 ? `<${generics.join(', ')}>` : ''} {
+        class ${className}${generics.length > 0 ? `<${generics.join(', ')}>` : ''} extends ${aliases.ReactiveObject}<any> {
             ${fields.join('\n')}
-            ${
-                parameters.length > 0
-                    ? `constructor(${parameters.join(', ')}) { ${body.join('\n')} }`
-                    : ''
+            constructor(${parameters.join(', ')}) {
+                super(null);
+                ${body.join('\n')}
             }
             ${accessors.join('\n')}
-
-            dispose() {
-                ${disposables.length > 0 ? disposables.join('\n') : ''}
-            }
         }
     `;
 }
