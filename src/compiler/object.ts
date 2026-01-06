@@ -1,6 +1,6 @@
 import { ts } from '@esportsplus/typescript';
-import { code as c, type Replacement } from '@esportsplus/typescript/compiler';
-import { COMPILER_TYPES, PACKAGE } from '~/constants';
+import { code as c, imports, type Replacement } from '@esportsplus/typescript/compiler';
+import { COMPILER_ENTRYPOINT, COMPILER_TYPES, PACKAGE } from '~/constants';
 import type { Bindings } from '~/types';
 
 
@@ -21,8 +21,8 @@ interface ReactiveObjectCall {
 interface TransformContext {
     bindings: Bindings;
     calls: ReactiveObjectCall[];
+    checker?: ts.TypeChecker;
     classCounter: number;
-    hasReactiveImport: boolean;
     lastImportEnd: number;
     ns: string;
     sourceFile: ts.SourceFile;
@@ -109,34 +109,26 @@ function buildClassCode(className: string, properties: AnalyzedProperty[], ns: s
     `;
 }
 
+function isReactiveCall(node: ts.CallExpression, checker?: ts.TypeChecker): boolean {
+    if (!ts.isIdentifier(node.expression)) {
+        return false;
+    }
+
+    if (node.expression.text !== COMPILER_ENTRYPOINT) {
+        return false;
+    }
+
+    return imports.isFromPackage(node.expression, PACKAGE, checker);
+}
+
 function visit(ctx: TransformContext, node: ts.Node): void {
     if (ts.isImportDeclaration(node)) {
         ctx.lastImportEnd = node.end;
-
-        if (
-            ts.isStringLiteral(node.moduleSpecifier) &&
-            node.moduleSpecifier.text.includes(PACKAGE)
-        ) {
-            let clause = node.importClause;
-
-            if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
-                let elements = clause.namedBindings.elements;
-
-                for (let i = 0, n = elements.length; i < n; i++) {
-                    if (elements[i].name.text === 'reactive') {
-                        ctx.hasReactiveImport = true;
-                        break;
-                    }
-                }
-            }
-        }
     }
 
     if (
-        ctx.hasReactiveImport &&
         ts.isCallExpression(node) &&
-        ts.isIdentifier(node.expression) &&
-        node.expression.text === 'reactive'
+        isReactiveCall(node, ctx.checker)
     ) {
         let arg = node.arguments[0];
 
@@ -186,13 +178,13 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings, ns: string): string => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, ns: string, checker?: ts.TypeChecker): string => {
     let code = sourceFile.getFullText(),
         ctx: TransformContext = {
             bindings,
             calls: [],
+            checker,
             classCounter: 0,
-            hasReactiveImport: false,
             lastImportEnd: 0,
             ns,
             sourceFile
@@ -225,3 +217,4 @@ export default (sourceFile: ts.SourceFile, bindings: Bindings, ns: string): stri
 
     return c.replace(code, replacements);
 };
+

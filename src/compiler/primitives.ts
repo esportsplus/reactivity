@@ -1,7 +1,7 @@
 import { ts } from '@esportsplus/typescript';
-import { ast, code as c, type Range, type Replacement } from '@esportsplus/typescript/compiler';
-import type { Bindings } from '~/types';
+import { ast, code as c, imports, type Range, type Replacement } from '@esportsplus/typescript/compiler';
 import { COMPILER_ENTRYPOINT, COMPILER_TYPES, PACKAGE } from '~/constants';
+import type { Bindings } from '~/types';
 
 
 interface ArgContext {
@@ -20,8 +20,8 @@ interface ScopeBinding {
 
 interface TransformContext {
     bindings: Bindings;
+    checker?: ts.TypeChecker;
     computedArgRanges: Range[];
-    hasReactiveImport: boolean;
     ns: string;
     replacements: Replacement[];
     scopedBindings: ScopeBinding[];
@@ -104,18 +104,28 @@ function isInScope(reference: ts.Node, binding: ScopeBinding): boolean {
     return false;
 }
 
-function isReactiveReassignment(node: ts.Node): boolean {
+function isReactiveCall(node: ts.CallExpression, checker?: ts.TypeChecker): boolean {
+    if (!ts.isIdentifier(node.expression)) {
+        return false;
+    }
+
+    if (node.expression.text !== COMPILER_ENTRYPOINT) {
+        return false;
+    }
+
+    return imports.isFromPackage(node.expression, PACKAGE, checker);
+}
+
+function isReactiveReassignment(node: ts.Node, checker?: ts.TypeChecker): boolean {
     let parent = node.parent;
 
     if (
         ts.isBinaryExpression(parent) &&
         parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
         parent.right === node &&
-        ts.isCallExpression(node) &&
-        ts.isIdentifier((node as ts.CallExpression).expression) &&
-        ((node as ts.CallExpression).expression as ts.Identifier).text === COMPILER_ENTRYPOINT
+        ts.isCallExpression(node)
     ) {
-        return true;
+        return isReactiveCall(node as ts.CallExpression, checker);
     }
 
     return false;
@@ -149,28 +159,9 @@ function isWriteContext(node: ts.Identifier): 'simple' | 'compound' | 'increment
 
 function visit(ctx: TransformContext, node: ts.Node): void {
     if (
-        ts.isImportDeclaration(node) &&
-        ts.isStringLiteral(node.moduleSpecifier) &&
-        node.moduleSpecifier.text.includes(PACKAGE)
-    ) {
-        let clause = node.importClause;
-
-        if (clause?.namedBindings && ts.isNamedImports(clause.namedBindings)) {
-            for (let i = 0, n = clause.namedBindings.elements.length; i < n; i++) {
-                if (clause.namedBindings.elements[i].name.text === COMPILER_ENTRYPOINT) {
-                    ctx.hasReactiveImport = true;
-                    break;
-                }
-            }
-        }
-    }
-
-    if (
-        ctx.hasReactiveImport &&
         ts.isCallExpression(node) &&
-        ts.isIdentifier(node.expression) &&
-        node.expression.text === COMPILER_ENTRYPOINT &&
-        node.arguments.length > 0
+        node.arguments.length > 0 &&
+        isReactiveCall(node, ctx.checker)
     ) {
         let arg = node.arguments[0],
             classification: COMPILER_TYPES | null = COMPILER_TYPES.Signal;
@@ -237,6 +228,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         }
     }
 
+
     if (ts.isIdentifier(node) && node.parent && !isInDeclarationInit(node.parent)) {
         if (ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) {
             ts.forEachChild(node, n => visit(ctx, n));
@@ -255,7 +247,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
         if (binding && node.parent) {
             if (
-                !isReactiveReassignment(node.parent) &&
+                !isReactiveReassignment(node.parent, ctx.checker) &&
                 !(ts.isTypeOfExpression(node.parent) && node.parent.expression === node)
             ) {
                 let writeCtx = isWriteContext(node);
@@ -272,7 +264,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                             });
                         }
                         else if (writeCtx === 'compound' && ts.isBinaryExpression(parent)) {
-                            let op = COMPOUND_OPERATORS.get(parent.operatorToken.kind) ?? '+';
+                            let op = COMPOUND_OPERATORS.get(parent.operatorToken.kind) ?? '+'
 
                             ctx.replacements.push({
                                 end: parent.end,
@@ -324,6 +316,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
     ts.forEachChild(node, n => visit(ctx, n));
 }
 
+
 function visitArg(ctx: ArgContext, node: ts.Node): void {
     if (ts.isIdentifier(node) && node.parent) {
         if (
@@ -347,12 +340,12 @@ function visitArg(ctx: ArgContext, node: ts.Node): void {
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings, ns: string): string => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, ns: string, checker?: ts.TypeChecker): string => {
     let code = sourceFile.getFullText(),
         ctx: TransformContext = {
             bindings,
+            checker,
             computedArgRanges: [],
-            hasReactiveImport: false,
             ns,
             replacements: [],
             scopedBindings: [],
@@ -368,3 +361,4 @@ export default (sourceFile: ts.SourceFile, bindings: Bindings, ns: string): stri
 
     return c.replace(code, ctx.replacements);
 };
+

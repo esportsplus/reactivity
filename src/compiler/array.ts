@@ -81,7 +81,7 @@ function visit(ctx: { bindings: Bindings, replacements: Replacement[], sourceFil
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings, _ns: string): string => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, _ns: string, _checker?: ts.TypeChecker): string => {
     let code = sourceFile.getFullText(),
         ctx = {
             bindings,
