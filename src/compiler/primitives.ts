@@ -12,7 +12,6 @@ interface ScopeBinding {
 
 interface TransformContext {
     bindings: Bindings;
-    checker?: ts.TypeChecker;
     isReactiveCall: (node: ts.Node) => boolean;
     replacements: ReplacementIntent[];
     scopedBindings: ScopeBinding[];
@@ -239,15 +238,9 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 }
 
 
-export default (
-    sourceFile: ts.SourceFile,
-    bindings: Bindings,
-    isReactiveCall: (node: ts.Node) => boolean,
-    checker?: ts.TypeChecker
-) => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: (node: ts.Node) => boolean) => {
     let ctx: TransformContext = {
             bindings,
-            checker,
             isReactiveCall,
             replacements: [],
             scopedBindings: [],

@@ -5,14 +5,6 @@ import { COMPILER_NAMESPACE, COMPILER_TYPES } from '~/constants';
 import type { Bindings } from '~/types';
 
 
-interface VisitContext {
-    bindings: Bindings;
-    checker?: ts.TypeChecker;
-    replacements: ReplacementIntent[];
-    sourceFile: ts.SourceFile;
-}
-
-
 function getElementTypeText(typeNode: ts.TypeNode, sourceFile: ts.SourceFile): string | null {
     if (ts.isArrayTypeNode(typeNode)) {
         return typeNode.elementType.getText(sourceFile);
@@ -31,7 +23,7 @@ function getElementTypeText(typeNode: ts.TypeNode, sourceFile: ts.SourceFile): s
     return null;
 }
 
-function visit(ctx: VisitContext, node: ts.Node): void {
+function visit(ctx: { bindings: Bindings, replacements: ReplacementIntent[], sourceFile: ts.SourceFile }, node: ts.Node): void {
     if (
         ts.isCallExpression(node) &&
         ts.isIdentifier(node.expression) &&
@@ -72,7 +64,7 @@ function visit(ctx: VisitContext, node: ts.Node): void {
         }
 
         if (ts.isPropertyAccessExpression(node.initializer)) {
-            let path = ast.getPropertyPathString(node.initializer);
+            let path = ast.getPropertyPath(node.initializer);
 
             if (path && ctx.bindings.get(path) === COMPILER_TYPES.Array) {
                 ctx.bindings.set(node.name.text, COMPILER_TYPES.Array);
@@ -140,10 +132,9 @@ function visit(ctx: VisitContext, node: ts.Node): void {
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings, checker?: ts.TypeChecker): ReplacementIntent[] => {
-    let ctx: VisitContext = {
+export default (sourceFile: ts.SourceFile, bindings: Bindings): ReplacementIntent[] => {
+    let ctx = {
             bindings,
-            checker,
             replacements: [],
             sourceFile
         };

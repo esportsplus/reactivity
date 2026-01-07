@@ -8,42 +8,23 @@ import object from './object';
 import primitives from './primitives';
 
 
-function hasReactiveImport(sourceFile: ts.SourceFile): boolean {
-    return imports.find(sourceFile, PACKAGE).some(i => i.specifiers.has(COMPILER_ENTRYPOINT));
-}
+type FindRemainingContext = {
+    checker: ts.TypeChecker | undefined;
+    replacements: ReplacementIntent[];
+    sourceFile: ts.SourceFile;
+    transformedNodes: Set<ts.Node>;
+};
 
-function isReactiveSymbol(checker: ts.TypeChecker, node: ts.Node): boolean {
-    let symbol = checker.getSymbolAtLocation(node);
+function findRemainingCalls(
+    checker: ts.TypeChecker | undefined,
+    sourceFile: ts.SourceFile,
+    transformedNodes: Set<ts.Node>
+): ReplacementIntent[] {
+    let ctx: FindRemainingContext = { checker, replacements: [], sourceFile, transformedNodes };
 
-    if (!symbol) {
-        return false;
-    }
+    visit(ctx, sourceFile);
 
-    // Follow aliases to original symbol
-    if (symbol.flags & ts.SymbolFlags.Alias) {
-        symbol = checker.getAliasedSymbol(symbol);
-    }
-
-    let declarations = symbol.getDeclarations();
-
-    if (!declarations || declarations.length === 0) {
-        return false;
-    }
-
-    for (let i = 0, n = declarations.length; i < n; i++) {
-        let decl = declarations[i],
-            sourceFile = decl.getSourceFile();
-
-        // Check if declaration is from our package
-        if (sourceFile.fileName.includes(PACKAGE) || sourceFile.fileName.includes('reactivity')) {
-            // Verify it's the reactive export
-            if (symbol.name === COMPILER_ENTRYPOINT) {
-                return true;
-            }
-        }
-    }
-
-    return false;
+    return ctx.replacements;
 }
 
 function isReactiveCallExpression(checker: ts.TypeChecker | undefined, node: ts.Node): node is ts.CallExpression {
@@ -62,16 +43,28 @@ function isReactiveCallExpression(checker: ts.TypeChecker | undefined, node: ts.
 
         // Use checker to resolve aliases
         if (checker) {
-            return isReactiveSymbol(checker, expr);
+            return imports.inPackage(checker, expr, PACKAGE, COMPILER_ENTRYPOINT);
         }
     }
 
     // Property access: ns.reactive(...)
     if (ts.isPropertyAccessExpression(expr) && expr.name.text === COMPILER_ENTRYPOINT && checker) {
-        return isReactiveSymbol(checker, expr);
+        return imports.inPackage(checker, expr, PACKAGE);
     }
 
     return false;
+}
+
+function visit(ctx: FindRemainingContext, node: ts.Node): void {
+    // Check if call or its expression has already been transformed
+    if (isReactiveCallExpression(ctx.checker, node) && !ctx.transformedNodes.has(node) && !ctx.transformedNodes.has(node.expression)) {
+        ctx.replacements.push({
+            generate: () => `${COMPILER_NAMESPACE}.reactive(${node.arguments.map(a => a.getText(ctx.sourceFile)).join(', ')})`,
+            node
+        });
+    }
+
+    ts.forEachChild(node, n => visit(ctx, n));
 }
 
 
@@ -79,45 +72,29 @@ const plugin: Plugin = {
     patterns: ['reactive(', 'reactive<'],
 
     transform: (ctx: TransformContext) => {
-        if (!hasReactiveImport(ctx.sourceFile)) {
+        if (!imports.find(ctx.sourceFile, PACKAGE).some(i => i.specifiers.has(COMPILER_ENTRYPOINT))) {
             return {};
         }
 
         let bindings: Bindings = new Map(),
             importsIntent: ImportIntent[] = [],
-            isReactiveCall = (node: ts.Node) => isReactiveCallExpression(ctx.checker, node),
+            isReactive = (node: ts.Node) => isReactiveCallExpression(ctx.checker, node),
             prepend: string[] = [],
             replacements: ReplacementIntent[] = [];
 
         // Run primitives transform first (tracks bindings for signal/computed)
-        replacements.push(...primitives(ctx.sourceFile, bindings, isReactiveCall, ctx.checker));
+        replacements.push(...primitives(ctx.sourceFile, bindings, isReactive));
 
         // Run object transform
-        let objectResult = object(ctx.sourceFile, bindings, ctx.checker);
+        let objectResult = object(ctx.sourceFile, bindings);
 
         prepend.push(...objectResult.prepend);
-        replacements.push(...objectResult.replacements, ...array(ctx.sourceFile, bindings, ctx.checker));
-
-        // Find remaining reactive() calls that weren't transformed and replace with namespace version
-        let transformedNodes = new Set(replacements.map(r => r.node));
-
-        function findRemainingReactiveCalls(node: ts.Node): void {
-            if (isReactiveCall(node)) {
-                let call = node as ts.CallExpression;
-
-                // Check if call or its expression has already been transformed
-                if (!transformedNodes.has(call) && !transformedNodes.has(call.expression)) {
-                    replacements.push({
-                        generate: () => `${COMPILER_NAMESPACE}.reactive(${call.arguments.map(a => a.getText(ctx.sourceFile)).join(', ')})`,
-                        node: call
-                    });
-                }
-            }
-
-            ts.forEachChild(node, findRemainingReactiveCalls);
-        }
-
-        findRemainingReactiveCalls(ctx.sourceFile);
+        replacements.push(
+            ...objectResult.replacements,
+            ...array(ctx.sourceFile, bindings),
+            // Find remaining reactive() calls that weren't transformed and replace with namespace version
+            ...findRemainingCalls(ctx.checker, ctx.sourceFile, new Set(replacements.map(r => r.node)))
+        );
 
         // Build import intent
         if (replacements.length > 0 || prepend.length > 0) {

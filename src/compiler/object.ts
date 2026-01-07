@@ -22,7 +22,6 @@ interface ReactiveObjectCall {
 interface VisitContext {
     bindings: Bindings;
     calls: ReactiveObjectCall[];
-    checker?: ts.TypeChecker;
     sourceFile: ts.SourceFile;
 }
 
@@ -221,11 +220,10 @@ type ObjectTransformResult = {
 };
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings, checker?: ts.TypeChecker): ObjectTransformResult => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings): ObjectTransformResult => {
     let ctx: VisitContext = {
             bindings,
             calls: [],
-            checker,
             sourceFile
         };
 
@@ -245,9 +243,9 @@ export default (sourceFile: ts.SourceFile, bindings: Bindings, checker?: ts.Type
         replacements.push({
             generate: () => ` new ${call.className}(${
                 call.properties
-                .filter(({ isStatic, type }) => !isStatic || type === COMPILER_TYPES.Computed)
-                .map(p => p.valueText)
-                .join(', ')
+                    .filter(({ isStatic, type }) => !isStatic || type === COMPILER_TYPES.Computed)
+                    .map(p => p.valueText)
+                    .join(', ')
             })`,
             node: call.node,
         });
