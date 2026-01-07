@@ -89,12 +89,13 @@ const plugin: Plugin = {
         let objectResult = object(ctx.sourceFile, bindings);
 
         prepend.push(...objectResult.prepend);
-        replacements.push(
-            ...objectResult.replacements,
-            ...array(ctx.sourceFile, bindings),
-            // Find remaining reactive() calls that weren't transformed and replace with namespace version
-            ...findRemainingCalls(ctx.checker, ctx.sourceFile, new Set(replacements.map(r => r.node)))
-        );
+        replacements.push(...objectResult.replacements);
+
+        // Run array transform separately ( avoid race conditions )
+        replacements.push(...array(ctx.sourceFile, bindings));
+
+        // Find remaining reactive() calls that weren't transformed and replace with namespace version
+        replacements.push(...findRemainingCalls(ctx.checker, ctx.sourceFile, new Set(replacements.map(r => r.node))));
 
         // Build import intent
         if (replacements.length > 0 || prepend.length > 0) {

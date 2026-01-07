@@ -39,7 +39,7 @@ const COMPOUND_OPERATORS = new Map<ts.SyntaxKind, string>([
 ]);
 
 
-function isInScope(reference: ts.Node, binding: ScopeBinding): boolean {
+function inScope(reference: ts.Node, binding: ScopeBinding): boolean {
     let current: ts.Node | undefined = reference;
 
     while (current) {
@@ -142,7 +142,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         for (let i = 0, n = bindings.length; i < n; i++) {
             let b = bindings[i];
 
-            if (b.name === name && isInScope(node, b)) {
+            if (b.name === name && inScope(node, b)) {
                 binding = b;
             }
         }
