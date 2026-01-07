@@ -16,7 +16,8 @@ type Guard<T> =
 
 function reactive<T extends unknown[]>(input: T): Reactive<T>;
 function reactive<T extends Record<PropertyKey, unknown>>(input: Guard<T>): Reactive<T>;
-function reactive<T extends unknown[] | Record<PropertyKey, unknown>>(input: T): Reactive<T> {
+function reactive<T>(input: T): Reactive<T>;
+function reactive<T>(input: T): Reactive<T> {
     let dispose = false,
         value = root(() => {
             let response: Reactive<T> | undefined;
@@ -40,7 +41,7 @@ function reactive<T extends unknown[] | Record<PropertyKey, unknown>>(input: T):
         });
 
     if (dispose) {
-        onCleanup(() => value.dispose());
+        onCleanup(() => (value as any as { dispose: VoidFunction }).dispose());
     }
 
     return value;

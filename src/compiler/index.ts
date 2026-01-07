@@ -5,6 +5,7 @@ import { COMPILER_ENTRYPOINT, COMPILER_NAMESPACE, PACKAGE } from '~/constants';
 import type { Bindings } from '~/types';
 import array from './array';
 import object from './object';
+import primitives from './primitives';
 
 
 function hasReactiveImport(sourceFile: ts.SourceFile): boolean {
@@ -84,8 +85,12 @@ const plugin: Plugin = {
 
         let bindings: Bindings = new Map(),
             importsIntent: ImportIntent[] = [],
+            isReactiveCall = (node: ts.Node) => isReactiveCallExpression(ctx.checker, node),
             prepend: string[] = [],
             replacements: ReplacementIntent[] = [];
+
+        // Run primitives transform first (tracks bindings for signal/computed)
+        replacements.push(...primitives(ctx.sourceFile, bindings, isReactiveCall, ctx.checker));
 
         // Run object transform
         let objectResult = object(ctx.sourceFile, bindings, ctx.checker);
@@ -102,8 +107,8 @@ const plugin: Plugin = {
         let transformedNodes = new Set(replacements.map(r => r.node));
 
         function findRemainingReactiveCalls(node: ts.Node): void {
-            if (isReactiveCallExpression(ctx.checker, node) && !transformedNodes.has(node)) {
-                let call = node;
+            if (isReactiveCall(node) && !transformedNodes.has(node)) {
+                let call = node as ts.CallExpression;
 
                 replacements.push({
                     generate: () => `${COMPILER_NAMESPACE}.reactive(${call.arguments.map(a => a.getText(ctx.sourceFile)).join(', ')})`,
