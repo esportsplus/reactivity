@@ -3,10 +3,6 @@ import { COMPILER_TYPES, COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HE
 import { ReactiveArray } from './reactive';
 
 
-type AliasKey = 'COMPUTED' | 'Computed' | 'computed' | 'dispose' | 'effect' | 'isPromise' | 'Reactive' | 'REACTIVE_ARRAY' | 'ReactiveArray' | 'REACTIVE_OBJECT' | 'ReactiveObject' | 'read' | 'root' | 'SIGNAL' | 'signal' | 'write';
-
-type Aliases = Record<AliasKey, string>;
-
 type Bindings = Map<string, COMPILER_TYPES>;
 
 interface Computed<T> {
@@ -67,8 +63,6 @@ interface TransformResult {
 
 
 export type {
-    AliasKey,
-    Aliases,
     Bindings,
     Computed,
     Link,

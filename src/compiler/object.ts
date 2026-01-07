@@ -1,7 +1,7 @@
 import { ts } from '@esportsplus/typescript';
 import { code as c, uid, type Replacement } from '@esportsplus/typescript/compiler';
-import { COMPILER_TYPES } from '~/constants';
-import type { AliasKey, Aliases, Bindings } from '~/types';
+import { COMPILER_NAMESPACE, COMPILER_TYPES } from '~/constants';
+import type { Bindings } from '~/types';
 import { isReactiveCall } from '.';
 
 
@@ -21,14 +21,12 @@ interface ReactiveObjectCall {
 }
 
 interface TransformContext {
-    aliases: Aliases;
     bindings: Bindings;
     calls: ReactiveObjectCall[];
     checker?: ts.TypeChecker;
     classCounter: number;
     lastImportEnd: number;
     sourceFile: ts.SourceFile;
-    used: Set<AliasKey>;
 }
 
 
@@ -74,6 +72,84 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.Sourc
     return { isStatic: isStaticValue(value), key, type: COMPILER_TYPES.Signal, valueText };
 }
 
+function buildClassCode(className: string, properties: AnalyzedProperty[]): string {
+    let accessors: string[] = [],
+        body: string[] = [],
+        fields: string[] = [],
+        generics: string[] = [],
+        parameters: string[] = [],
+        setters = 0;
+
+    for (let i = 0, n = properties.length; i < n; i++) {
+        let { isStatic, key, type, valueText } = properties[i],
+            generic = `T${parameters.length}`,
+            parameter = `_p${parameters.length}`;
+
+        if (type === COMPILER_TYPES.Signal) {
+            let value = `_v${setters++}`;
+
+            if (isStatic) {
+                accessors.push(`
+                    get ${key}() {
+                        return ${COMPILER_NAMESPACE}.read(this.#${key});
+                    }
+                    set ${key}(${value}) {
+                        ${COMPILER_NAMESPACE}.write(this.#${key}, ${value});
+                    }
+                `);
+                fields.push(`#${key} = this[${COMPILER_NAMESPACE}.SIGNAL](${valueText});`);
+            }
+            else {
+                accessors.push(`
+                    get ${key}() {
+                        return ${COMPILER_NAMESPACE}.read(this.#${key}) as ${generic};
+                    }
+                    set ${key}(${value}) {
+                        ${COMPILER_NAMESPACE}.write(this.#${key}, ${value});
+                    }
+                `);
+                body.push(`this.#${key} = this[${COMPILER_NAMESPACE}.SIGNAL](${parameter});`);
+                fields.push(`#${key};`);
+                generics.push(generic);
+                parameters.push(`${parameter}: ${generic}`);
+            }
+        }
+        else if (type === COMPILER_TYPES.Array) {
+            accessors.push(`
+                get ${key}() {
+                    return this.#${key};
+                }
+            `);
+            body.push(`this.#${key} = this[${COMPILER_NAMESPACE}.REACTIVE_ARRAY](${parameter});`);
+            fields.push(`#${key};`);
+            generics.push(`${generic} extends unknown[]`);
+            parameters.push(`${parameter}: ${generic}`);
+        }
+        else if (type === COMPILER_TYPES.Computed) {
+            accessors.push(`
+                get ${key}() {
+                    return ${COMPILER_NAMESPACE}.read(this.#${key});
+                }
+            `);
+            body.push(`this.#${key} = this[${COMPILER_NAMESPACE}.COMPUTED](${parameter});`);
+            fields.push(`#${key};`);
+            generics.push(`${generic} extends ${COMPILER_NAMESPACE}.Computed<ReturnType<${generic}>>['fn']`);
+            parameters.push(`${parameter}: ${generic}`);
+        }
+    }
+
+    return `
+        class ${className}${generics.length > 0 ? `<${generics.join(', ')}>` : ''} extends ${COMPILER_NAMESPACE}.ReactiveObject<any> {
+            ${fields.join('\n')}
+            constructor(${parameters.join(', ')}) {
+                super(null);
+                ${body.join('\n')}
+            }
+            ${accessors.join('\n')}
+        }
+    `;
+}
+
 function isStaticValue(node: ts.Node): boolean {
     if (
         ts.isNumericLiteral(node) ||
@@ -91,95 +167,6 @@ function isStaticValue(node: ts.Node): boolean {
     }
 
     return false;
-}
-
-function buildClassCode(aliases: Aliases, className: string, properties: AnalyzedProperty[], used: Set<AliasKey>): string {
-    let accessors: string[] = [],
-        body: string[] = [],
-        fields: string[] = [],
-        generics: string[] = [],
-        parameters: string[] = [],
-        setters = 0;
-
-    used.add('ReactiveObject');
-
-    for (let i = 0, n = properties.length; i < n; i++) {
-        let { isStatic, key, type, valueText } = properties[i],
-            generic = `T${parameters.length}`,
-            parameter = `_p${parameters.length}`;
-
-        if (type === COMPILER_TYPES.Signal) {
-            let value = `_v${setters++}`;
-
-            used.add('read');
-            used.add('SIGNAL');
-            used.add('write');
-
-            if (isStatic) {
-                accessors.push(`
-                    get ${key}() {
-                        return ${aliases.read}(this.#${key});
-                    }
-                    set ${key}(${value}) {
-                        ${aliases.write}(this.#${key}, ${value});
-                    }
-                `);
-                fields.push(`#${key} = this[${aliases.SIGNAL}](${valueText});`);
-            }
-            else {
-                accessors.push(`
-                    get ${key}() {
-                        return ${aliases.read}(this.#${key}) as ${generic};
-                    }
-                    set ${key}(${value}) {
-                        ${aliases.write}(this.#${key}, ${value});
-                    }
-                `);
-                body.push(`this.#${key} = this[${aliases.SIGNAL}](${parameter});`);
-                fields.push(`#${key};`);
-                generics.push(generic);
-                parameters.push(`${parameter}: ${generic}`);
-            }
-        }
-        else if (type === COMPILER_TYPES.Array) {
-            accessors.push(`
-                get ${key}() {
-                    return this.#${key};
-                }
-            `);
-            body.push(`this.#${key} = this[${aliases.REACTIVE_ARRAY}](${parameter});`);
-            fields.push(`#${key};`);
-            generics.push(`${generic} extends unknown[]`);
-            parameters.push(`${parameter}: ${generic}`);
-            used.add('REACTIVE_ARRAY');
-            used.add('ReactiveArray');
-        }
-        else if (type === COMPILER_TYPES.Computed) {
-            accessors.push(`
-                get ${key}() {
-                    return ${aliases.read}(this.#${key});
-                }
-            `);
-            body.push(`this.#${key} = this[${aliases.COMPUTED}](${parameter});`);
-            fields.push(`#${key};`);
-            generics.push(`${generic} extends ${aliases.Computed}<ReturnType<${generic}>>['fn']`);
-            parameters.push(`${parameter}: ${generic}`);
-            used.add('COMPUTED');
-            used.add('Computed');
-            used.add('read');
-        }
-    }
-
-    return `
-        class ${className}${generics.length > 0 ? `<${generics.join(', ')}>` : ''} extends ${aliases.ReactiveObject}<any> {
-            ${fields.join('\n')}
-            constructor(${parameters.join(', ')}) {
-                super(null);
-                ${body.join('\n')}
-            }
-            ${accessors.join('\n')}
-        }
-    `;
 }
 
 function visit(ctx: TransformContext, node: ts.Node): void {
@@ -239,17 +226,15 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings, aliases: Aliases, used: Set<AliasKey>, checker?: ts.TypeChecker): string => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, checker?: ts.TypeChecker): string => {
     let code = sourceFile.getFullText(),
         ctx: TransformContext = {
-            aliases,
             bindings,
             calls: [],
             checker,
             classCounter: 0,
             lastImportEnd: 0,
-            sourceFile,
-            used
+            sourceFile
         };
 
     visit(ctx, sourceFile);
@@ -258,7 +243,7 @@ export default (sourceFile: ts.SourceFile, bindings: Bindings, aliases: Aliases,
         return code;
     }
 
-    let classes = ctx.calls.map(c => buildClassCode(aliases, c.className, c.properties, used)).join('\n'),
+    let classes = ctx.calls.map(c => buildClassCode(c.className, c.properties)).join('\n'),
         replacements: Replacement[] = [];
 
     replacements.push({
@@ -284,4 +269,3 @@ export default (sourceFile: ts.SourceFile, bindings: Bindings, aliases: Aliases,
 
     return c.replace(code, replacements);
 };
-

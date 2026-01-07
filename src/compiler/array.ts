@@ -1,36 +1,33 @@
 import { ts } from '@esportsplus/typescript';
 import { ast, code as c, type Replacement } from '@esportsplus/typescript/compiler';
-import { COMPILER_TYPES } from '~/constants';
-import type { AliasKey, Aliases, Bindings } from '~/types';
+import { COMPILER_NAMESPACE, COMPILER_TYPES } from '~/constants';
+import type { Bindings } from '~/types';
 import { isReactiveCall } from '.';
 
 
 interface TransformContext {
-    aliases: Aliases;
     bindings: Bindings;
     checker?: ts.TypeChecker;
     replacements: Replacement[];
     sourceFile: ts.SourceFile;
-    used: Set<AliasKey>;
 }
 
 
 function visit(ctx: TransformContext, node: ts.Node): void {
     if (ts.isCallExpression(node) && isReactiveCall(node, ctx.checker) && node.arguments.length > 0) {
         let arg = node.arguments[0],
-            arrayLiteral = ts.isAsExpression(arg) ? arg.expression : arg;
+            expression = ts.isAsExpression(arg) ? arg.expression : arg;
 
-        if (ts.isArrayLiteralExpression(arrayLiteral)) {
+        if (ts.isArrayLiteralExpression(expression)) {
             if (node.parent && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
                 ctx.bindings.set(node.parent.name.text, COMPILER_TYPES.Array);
             }
 
-            ctx.used.add('ReactiveArray');
             ctx.replacements.push({
                 end: node.end,
-                newText: arrayLiteral.elements.length > 0
-                    ? ` new ${ctx.aliases.ReactiveArray}(...${arrayLiteral.getText(ctx.sourceFile)})`
-                    : ` new ${ctx.aliases.ReactiveArray}()`,
+                newText: expression.elements.length > 0
+                    ? ` new ${COMPILER_NAMESPACE}.ReactiveArray(...${expression.getText(ctx.sourceFile)})`
+                    : ` new ${COMPILER_NAMESPACE}.ReactiveArray()`,
                 start: node.pos
             });
         }
@@ -111,15 +108,13 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings, aliases: Aliases, used: Set<AliasKey>, checker?: ts.TypeChecker): string => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, checker?: ts.TypeChecker): string => {
     let code = sourceFile.getFullText(),
         ctx: TransformContext = {
-            aliases,
             bindings,
             checker,
             replacements: [],
-            sourceFile,
-            used
+            sourceFile
         };
 
     visit(ctx, sourceFile);
