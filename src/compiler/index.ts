@@ -1,3 +1,4 @@
+import type { PluginContext } from '@esportsplus/typescript/compiler';
 import { ts } from '@esportsplus/typescript';
 import { ast, imports } from '@esportsplus/typescript/compiler';
 import { COMPILER_ENTRYPOINT, COMPILER_NAMESPACE, PACKAGE } from '~/constants';
@@ -6,13 +7,46 @@ import array from './array';
 import object from './object';
 
 
+type AnalyzedFile = {
+    hasReactiveImport: boolean;
+};
+
+
+const CONTEXT_KEY = 'reactivity:analyzed';
+
+
 let transforms = [object, array];
 
+
+function getAnalyzedFile(context: PluginContext | undefined, filename: string): AnalyzedFile | undefined {
+    return (context?.get(CONTEXT_KEY) as Map<string, AnalyzedFile> | undefined)?.get(filename);
+}
+
+function hasReactiveImport(sourceFile: ts.SourceFile): boolean {
+    return imports.find(sourceFile, PACKAGE).some(i => i.specifiers.has(COMPILER_ENTRYPOINT));
+}
 
 function isReactiveCallNode(node: ts.Node): boolean {
     return ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === COMPILER_ENTRYPOINT;
 }
 
+
+const analyze = (sourceFile: ts.SourceFile, _program: ts.Program, context: PluginContext): void => {
+    if (!hasReactiveImport(sourceFile)) {
+        return;
+    }
+
+    let files = context.get(CONTEXT_KEY) as Map<string, AnalyzedFile> | undefined;
+
+    if (!files) {
+        files = new Map();
+        context.set(CONTEXT_KEY, files);
+    }
+
+    files.set(sourceFile.fileName, {
+        hasReactiveImport: true
+    });
+};
 
 const isReactiveCall = (node: ts.CallExpression, _checker?: ts.TypeChecker): boolean => {
     if (!ts.isIdentifier(node.expression)) {
@@ -20,17 +54,27 @@ const isReactiveCall = (node: ts.CallExpression, _checker?: ts.TypeChecker): boo
     }
 
     return node.expression.text === COMPILER_ENTRYPOINT;
-}
+};
 
-const transform = (sourceFile: ts.SourceFile, program: ts.Program): TransformResult => {
+const transform = (sourceFile: ts.SourceFile, program: ts.Program, context?: PluginContext): TransformResult => {
     let bindings: Bindings = new Map(),
         changed = false,
         checker = program.getTypeChecker(),
         code = sourceFile.getFullText(),
         current = sourceFile,
+        filename = sourceFile.fileName,
         result: string;
 
-    if (!imports.find(sourceFile, PACKAGE).some(i => i.specifiers.has(COMPILER_ENTRYPOINT))) {
+    // Try to get pre-analyzed data from context
+    let analyzed = getAnalyzedFile(context, filename);
+
+    // Fall back to inline check (for Vite or when context unavailable)
+    if (!analyzed) {
+        if (!hasReactiveImport(sourceFile)) {
+            return { changed: false, code, sourceFile };
+        }
+    }
+    else if (!analyzed.hasReactiveImport) {
         return { changed: false, code, sourceFile };
     }
 
@@ -45,14 +89,13 @@ const transform = (sourceFile: ts.SourceFile, program: ts.Program): TransformRes
     }
 
     if (changed) {
-        let add: string[] = [`* as ${COMPILER_NAMESPACE}`],
-            remove: string[] = [];
+        let remove: string[] = [];
 
         if (!ast.hasMatch(current, isReactiveCallNode)) {
             remove.push(COMPILER_ENTRYPOINT);
         }
 
-        code = imports.modify(code, current, PACKAGE, { add, remove });
+        code = imports.modify(code, current, PACKAGE, { namespace: COMPILER_NAMESPACE, remove });
         sourceFile = ts.createSourceFile(sourceFile.fileName, code, sourceFile.languageVersion, true);
     }
 
@@ -60,4 +103,4 @@ const transform = (sourceFile: ts.SourceFile, program: ts.Program): TransformRes
 };
 
 
-export { isReactiveCall, transform };
+export { analyze, isReactiveCall, transform };

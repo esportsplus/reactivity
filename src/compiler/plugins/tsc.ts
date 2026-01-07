@@ -1,5 +1,5 @@
 import { plugin } from '@esportsplus/typescript/compiler';
-import { transform } from '..';
+import { analyze, transform } from '..';
 
 
-export default plugin.tsc(transform) as ReturnType<typeof plugin.tsc>;
+export default plugin.tsc({ analyze, transform }) as ReturnType<typeof plugin.tsc>;
