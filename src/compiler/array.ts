@@ -31,12 +31,13 @@ function getElementTypeText(typeNode: ts.TypeNode, sourceFile: ts.SourceFile): s
     return null;
 }
 
-function isReactiveCall(node: ts.CallExpression): boolean {
-    return ts.isIdentifier(node.expression) && node.expression.text === 'reactive';
-}
-
 function visit(ctx: VisitContext, node: ts.Node): void {
-    if (ts.isCallExpression(node) && isReactiveCall(node) && node.arguments.length > 0) {
+    if (
+        ts.isCallExpression(node) &&
+        ts.isIdentifier(node.expression) &&
+        node.expression.text === 'reactive' &&
+        node.arguments.length > 0
+    ) {
         let arg = node.arguments[0],
             expression = ts.isAsExpression(arg) ? arg.expression : arg;
 
@@ -94,16 +95,17 @@ function visit(ctx: VisitContext, node: ts.Node): void {
         }
     }
 
-    let parent = node.parent;
-
     if (
         ts.isPropertyAccessExpression(node) &&
         node.name.text === 'length' &&
-        (!!parent && (
-            (ts.isBinaryExpression(parent) && parent.left === node) ||
-            ts.isPostfixUnaryExpression(parent) ||
-            ts.isPrefixUnaryExpression(parent)
-        )) === false
+        (
+            !node.parent ||
+            (
+                !(ts.isBinaryExpression(node.parent) && node.parent.left === node) &&
+                !ts.isPostfixUnaryExpression(node.parent) &&
+                !ts.isPrefixUnaryExpression(node.parent)
+            )
+        )
     ) {
         let name = ast.getExpressionName(node.expression);
 

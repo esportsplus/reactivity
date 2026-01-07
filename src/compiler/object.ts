@@ -166,12 +166,8 @@ function isStaticValue(node: ts.Node): boolean {
     return false;
 }
 
-function isReactiveCall(node: ts.CallExpression): boolean {
-    return ts.isIdentifier(node.expression) && node.expression.text === "reactive";
-}
-
 function visit(ctx: VisitContext, node: ts.Node): void {
-    if (ts.isCallExpression(node) && isReactiveCall(node)) {
+    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'reactive') {
         let arg = node.arguments[0];
 
         if (arg && ts.isObjectLiteralExpression(arg)) {
@@ -246,7 +242,6 @@ export default (sourceFile: ts.SourceFile, bindings: Bindings, checker?: ts.Type
         let call = ctx.calls[i];
 
         prepend.push(buildClassCode(call.className, call.properties));
-
         replacements.push({
             generate: () => ` new ${call.className}(${
                 call.properties
