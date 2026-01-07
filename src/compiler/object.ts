@@ -248,13 +248,13 @@ export default (sourceFile: ts.SourceFile, bindings: Bindings, checker?: ts.Type
         prepend.push(buildClassCode(call.className, call.properties));
 
         replacements.push({
-            node: call.node,
             generate: () => ` new ${call.className}(${
                 call.properties
-                    .filter(({ isStatic, type }) => !isStatic || type === COMPILER_TYPES.Computed)
-                    .map(p => p.valueText)
-                    .join(', ')
-            })`
+                .filter(({ isStatic, type }) => !isStatic || type === COMPILER_TYPES.Computed)
+                .map(p => p.valueText)
+                .join(', ')
+            })`,
+            node: call.node,
         });
     }
 

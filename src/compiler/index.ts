@@ -96,24 +96,22 @@ const plugin: Plugin = {
         let objectResult = object(ctx.sourceFile, bindings, ctx.checker);
 
         prepend.push(...objectResult.prepend);
-        replacements.push(...objectResult.replacements);
-
-        // Run array transform
-        let arrayResult = array(ctx.sourceFile, bindings, ctx.checker);
-
-        replacements.push(...arrayResult);
+        replacements.push(...objectResult.replacements, ...array(ctx.sourceFile, bindings, ctx.checker));
 
         // Find remaining reactive() calls that weren't transformed and replace with namespace version
         let transformedNodes = new Set(replacements.map(r => r.node));
 
         function findRemainingReactiveCalls(node: ts.Node): void {
-            if (isReactiveCall(node) && !transformedNodes.has(node)) {
+            if (isReactiveCall(node)) {
                 let call = node as ts.CallExpression;
 
-                replacements.push({
-                    generate: () => `${COMPILER_NAMESPACE}.reactive(${call.arguments.map(a => a.getText(ctx.sourceFile)).join(', ')})`,
-                    node: call
-                });
+                // Check if call or its expression has already been transformed
+                if (!transformedNodes.has(call) && !transformedNodes.has(call.expression)) {
+                    replacements.push({
+                        generate: () => `${COMPILER_NAMESPACE}.reactive(${call.arguments.map(a => a.getText(ctx.sourceFile)).join(', ')})`,
+                        node: call
+                    });
+                }
             }
 
             ts.forEachChild(node, findRemainingReactiveCalls);

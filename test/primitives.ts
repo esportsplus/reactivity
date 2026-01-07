@@ -1,171 +1,87 @@
-// Test: Reactive Primitives (Standalone + Object-wrapped)
-import { effect, reactive } from '@esportsplus/reactivity';
+import { reactive } from '@esportsplus/reactivity';
 
 
-// =============================================================================
-// Standalone Signal Primitives
-// =============================================================================
-
-console.log('=== Standalone Signal Primitives ===');
-
+// Signal creation
 let count = reactive(0);
-let name = reactive('initial');
+let name = reactive('test');
 let flag = reactive(true);
+let nullable = reactive<string | null>(null);
 
-console.log('Initial count:', count);
-console.log('Initial name:', name);
-console.log('Initial flag:', flag);
+// Computed creation
+let doubled = reactive(() => count * 2);
+let greeting = reactive(() => `Hello ${name}!`);
+let complex = reactive(() => flag ? count : 0);
 
-// Simple assignment
+// Read access
+console.log(count);
+console.log(name);
+console.log(doubled);
+
+// Write access - simple assignment
 count = 10;
-name = 'updated';
+name = 'world';
 flag = false;
 
-console.log('After assignment - count:', count);
-console.log('After assignment - name:', name);
-console.log('After assignment - flag:', flag);
+// Compound assignment operators
+count += 5;
+count -= 2;
+count *= 3;
+count /= 2;
+count %= 7;
+count **= 2;
+count &= 0xFF;
+count |= 0x0F;
+count ^= 0xAA;
+count <<= 2;
+count >>= 1;
+count >>>= 1;
+count &&= 1;
+count ||= 0;
+count ??= 42;
 
+// Increment/decrement - statement context
+count++;
+count--;
+++count;
+--count;
 
-// =============================================================================
-// Standalone Computed Primitives
-// =============================================================================
+// Increment/decrement - expression context (prefix)
+let a = ++count;
+let b = --count;
+console.log(a, b);
 
-console.log('\n=== Standalone Computed Primitives ===');
+// Increment/decrement - expression context (postfix)
+let c = count++;
+let d = count--;
+console.log(c, d);
 
-let base = reactive(10);
-let doubled = reactive(() => base * 2);
-let quadrupled = reactive(() => doubled * 2);
+// Nested reads in computed
+let x = reactive(1);
+let y = reactive(2);
+let sum = reactive(() => x + y);
+let product = reactive(() => x * y);
+let nested = reactive(() => sum + product);
 
-console.log('base:', base);
-console.log('doubled:', doubled);
-console.log('quadrupled:', quadrupled);
-
-base = 5;
-console.log('After base = 5:');
-console.log('  doubled:', doubled);
-console.log('  quadrupled:', quadrupled);
-
-
-// =============================================================================
-// Compound Assignments with Standalone Primitives
-// =============================================================================
-
-console.log('\n=== Compound Assignments ===');
-
-let value = reactive(10);
-
-value += 5;
-console.log('After += 5:', value);
-
-value -= 3;
-console.log('After -= 3:', value);
-
-value *= 2;
-console.log('After *= 2:', value);
-
-
-// =============================================================================
-// Increment/Decrement with Standalone Primitives
-// =============================================================================
-
-console.log('\n=== Increment/Decrement ===');
-
-let counter = reactive(0);
-
-counter++;
-console.log('After counter++:', counter);
-
-++counter;
-console.log('After ++counter:', counter);
-
-counter--;
-console.log('After counter--:', counter);
-
-
-// =============================================================================
-// Mixed Standalone and Object Primitives
-// =============================================================================
-
-console.log('\n=== Mixed Standalone and Object ===');
-
-let multiplier = reactive(2);
-
-let obj = reactive({
-    value: 10,
-    scaled: () => obj.value * multiplier
+// Conditional reads
+let conditional = reactive(() => {
+    if (flag) {
+        return x + y;
+    }
+    return 0;
 });
 
-console.log('obj.value:', obj.value);
-console.log('obj.scaled:', obj.scaled);
+// Function with reactive reads
+function calculate() {
+    return count + x + y;
+}
 
-multiplier = 3;
-console.log('After multiplier = 3:');
-console.log('  obj.scaled:', obj.scaled);
+// Arrow function with reactive reads
+const calc = () => count * 2;
 
-obj.value = 20;
-console.log('After obj.value = 20:');
-console.log('  obj.scaled:', obj.scaled);
+// Reactive in loop
+for (let i = 0; i < 10; i++) {
+    count += i;
+}
 
-
-// =============================================================================
-// Effects with Standalone Primitives
-// =============================================================================
-
-console.log('\n=== Effects with Standalone Primitives ===');
-
-let effectCount = 0;
-let watched = reactive(0);
-
-let cleanup = effect(() => {
-    effectCount++;
-    console.log(`Effect #${effectCount}: watched = ${watched}`);
-});
-
-watched = 1;
-watched = 2;
-watched = 3;
-
-cleanup();
-
-watched = 4; // Should not trigger effect
-console.log('After cleanup, watched set to 4 (no effect should run)');
-console.log('Total effect runs:', effectCount);
-
-
-// =============================================================================
-// String Template Computeds
-// =============================================================================
-
-console.log('\n=== String Template Computeds ===');
-
-let firstName = reactive('John');
-let lastName = reactive('Doe');
-let fullName = reactive(() => `${firstName} ${lastName}`);
-
-console.log('Full name:', fullName);
-
-firstName = 'Jane';
-console.log('After firstName = Jane:', fullName);
-
-
-// =============================================================================
-// Object-wrapped Primitives (original tests)
-// =============================================================================
-
-console.log('\n=== Object-wrapped Primitives ===');
-
-let state = reactive({
-    count: 0,
-    flag: true,
-    name: 'initial'
-});
-
-console.log('Initial count:', state.count);
-
-state.count = 10;
-state.name = 'updated';
-state.flag = false;
-
-console.log('After assignment - count:', state.count);
-console.log('After assignment - name:', state.name);
-console.log('After assignment - flag:', state.flag);
+// Reassignment with new reactive
+count = reactive(100);

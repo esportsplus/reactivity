@@ -40,24 +40,6 @@ const COMPOUND_OPERATORS = new Map<ts.SyntaxKind, string>([
 ]);
 
 
-function findBinding(bindings: ScopeBinding[], name: string, node: ts.Node): ScopeBinding | undefined {
-    for (let i = 0, n = bindings.length; i < n; i++) {
-        let b = bindings[i];
-
-        if (b.name === name && isInScope(node, b)) {
-            return b;
-        }
-    }
-
-    return undefined;
-}
-
-function isInDeclarationInit(node: ts.Node): boolean {
-    let parent = node.parent;
-
-    return ts.isVariableDeclaration(parent) && parent.initializer === node;
-}
-
 function isInScope(reference: ts.Node, binding: ScopeBinding): boolean {
     let current: ts.Node | undefined = reference;
 
@@ -67,47 +49,6 @@ function isInScope(reference: ts.Node, binding: ScopeBinding): boolean {
         }
 
         current = current.parent;
-    }
-
-    return false;
-}
-
-function isReactiveReassignment(ctx: TransformContext, node: ts.Node): boolean {
-    let parent = node.parent;
-
-    if (
-        ts.isBinaryExpression(parent) &&
-        parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
-        parent.right === node &&
-        ctx.isReactiveCall(node)
-    ) {
-        return true;
-    }
-
-    return false;
-}
-
-function isWriteContext(node: ts.Identifier): 'compound' | 'increment' | 'simple' | false {
-    let parent = node.parent;
-
-    if (ts.isBinaryExpression(parent) && parent.left === node) {
-        let op = parent.operatorToken.kind;
-
-        if (op === ts.SyntaxKind.EqualsToken) {
-            return 'simple';
-        }
-
-        if (COMPOUND_OPERATORS.has(op)) {
-            return 'compound';
-        }
-    }
-
-    if (ts.isPostfixUnaryExpression(parent) || ts.isPrefixUnaryExpression(parent)) {
-        let op = parent.operator;
-
-        if (op === ts.SyntaxKind.MinusMinusToken || op === ts.SyntaxKind.PlusPlusToken) {
-            return 'increment';
-        }
     }
 
     return false;
@@ -185,26 +126,61 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         }
     }
 
-    if (ts.isIdentifier(node) && node.parent && !isInDeclarationInit(node.parent)) {
+    if (
+        ts.isIdentifier(node) &&
+        node.parent &&
+        !(ts.isVariableDeclaration(node.parent) && node.parent.name === node)
+    ) {
         if (ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) {
             ts.forEachChild(node, n => visit(ctx, n));
             return;
         }
 
-        let binding = findBinding(ctx.scopedBindings, node.text, node),
+        let bindings = ctx.scopedBindings,
+            binding,
             name = node.text;
 
+        for (let i = 0, n = bindings.length; i < n; i++) {
+            let b = bindings[i];
+
+            if (b.name === name && isInScope(node, b)) {
+                binding = b;
+            }
+        }
+
         if (binding && node.parent) {
+            let parent = node.parent;
+
             if (
-                !isReactiveReassignment(ctx, node.parent) &&
-                !(ts.isTypeOfExpression(node.parent) && node.parent.expression === node)
+                !(
+                    ts.isBinaryExpression(parent) &&
+                    parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
+                    ctx.isReactiveCall(parent.right)
+                ) &&
+                !(ts.isTypeOfExpression(parent) && parent.expression === node)
             ) {
-                let writeCtx = isWriteContext(node);
+                let writeCtx;
+
+                if (ts.isBinaryExpression(parent) && parent.left === node) {
+                    let op = parent.operatorToken.kind;
+
+                    if (op === ts.SyntaxKind.EqualsToken) {
+                        writeCtx = 'simple';
+                    }
+                    else if (COMPOUND_OPERATORS.has(op)) {
+                        writeCtx = 'compound';
+                    }
+                }
+                else if (ts.isPostfixUnaryExpression(parent) || ts.isPrefixUnaryExpression(parent)) {
+                    let op = parent.operator;
+
+                    if (op === ts.SyntaxKind.MinusMinusToken || op === ts.SyntaxKind.PlusPlusToken) {
+                        writeCtx = 'increment';
+                    }
+                }
 
                 if (writeCtx) {
                     if (binding.type !== COMPILER_TYPES.Computed) {
-                        let parent = node.parent;
-
                         if (writeCtx === 'simple' && ts.isBinaryExpression(parent)) {
                             let right = parent.right;
 

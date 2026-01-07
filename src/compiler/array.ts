@@ -126,12 +126,10 @@ function visit(ctx: VisitContext, node: ts.Node): void {
         if (name && ctx.bindings.get(name) === COMPILER_TYPES.Array) {
             ctx.replacements.push({
                 node,
-                generate: (sf) => {
-                    let index = element.argumentExpression.getText(sf),
-                        value = node.right.getText(sf);
-
-                    return `${element.expression.getText(sf)}.$set(${index}, ${value})`;
-                }
+                generate: (sf) => `${element.expression.getText(sf)}.$set(
+                    ${element.argumentExpression.getText(sf)},
+                    ${node.right.getText(sf)}
+                )`
             });
         }
     }
