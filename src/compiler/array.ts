@@ -13,6 +13,24 @@ interface VisitContext {
 }
 
 
+function getElementTypeText(typeNode: ts.TypeNode, sourceFile: ts.SourceFile): string | null {
+    if (ts.isArrayTypeNode(typeNode)) {
+        return typeNode.elementType.getText(sourceFile);
+    }
+
+    if (
+        ts.isTypeReferenceNode(typeNode) &&
+        ts.isIdentifier(typeNode.typeName) &&
+        typeNode.typeName.text === 'Array' &&
+        typeNode.typeArguments &&
+        typeNode.typeArguments.length > 0
+    ) {
+        return typeNode.typeArguments[0].getText(sourceFile);
+    }
+
+    return null;
+}
+
 function isReactiveCall(node: ts.CallExpression): boolean {
     return ts.isIdentifier(node.expression) && node.expression.text === 'reactive';
 }
@@ -23,15 +41,26 @@ function visit(ctx: VisitContext, node: ts.Node): void {
             expression = ts.isAsExpression(arg) ? arg.expression : arg;
 
         if (ts.isArrayLiteralExpression(expression)) {
+            let elementType: string | null = null;
+
+            if (ts.isAsExpression(arg) && arg.type) {
+                elementType = getElementTypeText(arg.type, ctx.sourceFile);
+            }
+            else if (node.parent && ts.isVariableDeclaration(node.parent) && node.parent.type) {
+                elementType = getElementTypeText(node.parent.type, ctx.sourceFile);
+            }
+
             if (node.parent && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
                 ctx.bindings.set(node.parent.name.text, COMPILER_TYPES.Array);
             }
 
+            let typeParam = elementType ? `<${elementType}>` : '';
+
             ctx.replacements.push({
                 node,
                 generate: (sf) => expression.elements.length > 0
-                    ? ` new ${COMPILER_NAMESPACE}.ReactiveArray(...${expression.getText(sf)})`
-                    : ` new ${COMPILER_NAMESPACE}.ReactiveArray()`
+                    ? ` new ${COMPILER_NAMESPACE}.ReactiveArray${typeParam}(...${expression.getText(sf)})`
+                    : ` new ${COMPILER_NAMESPACE}.ReactiveArray${typeParam}()`
             });
         }
     }
