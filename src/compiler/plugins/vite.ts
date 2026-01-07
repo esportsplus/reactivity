@@ -1,10 +1,9 @@
-import { PACKAGE } from '../../constants';
 import { plugin } from '@esportsplus/typescript/compiler';
-import { analyze, transform } from '..';
+import { PACKAGE } from '~/constants';
+import reactivityPlugin from '..';
 
 
 export default plugin.vite({
-    analyze,
     name: PACKAGE,
-    transform
+    plugins: [reactivityPlugin]
 });

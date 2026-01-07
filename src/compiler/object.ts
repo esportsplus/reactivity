@@ -1,8 +1,8 @@
+import type { ReplacementIntent } from '@esportsplus/typescript/compiler';
 import { ts } from '@esportsplus/typescript';
-import { code as c, uid, type Replacement } from '@esportsplus/typescript/compiler';
+import { uid } from '@esportsplus/typescript/compiler';
 import { COMPILER_NAMESPACE, COMPILER_TYPES } from '~/constants';
 import type { Bindings } from '~/types';
-import { isReactiveCall } from '.';
 
 
 interface AnalyzedProperty {
@@ -14,18 +14,15 @@ interface AnalyzedProperty {
 
 interface ReactiveObjectCall {
     className: string;
-    end: number;
+    node: ts.CallExpression;
     properties: AnalyzedProperty[];
-    start: number;
     varName: string | null;
 }
 
-interface TransformContext {
+interface VisitContext {
     bindings: Bindings;
     calls: ReactiveObjectCall[];
     checker?: ts.TypeChecker;
-    classCounter: number;
-    lastImportEnd: number;
     sourceFile: ts.SourceFile;
 }
 
@@ -169,15 +166,12 @@ function isStaticValue(node: ts.Node): boolean {
     return false;
 }
 
-function visit(ctx: TransformContext, node: ts.Node): void {
-    if (ts.isImportDeclaration(node)) {
-        ctx.lastImportEnd = node.end;
-    }
+function isReactiveCall(node: ts.CallExpression): boolean {
+    return ts.isIdentifier(node.expression) && node.expression.text === "reactive";
+}
 
-    if (
-        ts.isCallExpression(node) &&
-        isReactiveCall(node, ctx.checker)
-    ) {
+function visit(ctx: VisitContext, node: ts.Node): void {
+    if (ts.isCallExpression(node) && isReactiveCall(node)) {
         let arg = node.arguments[0];
 
         if (arg && ts.isObjectLiteralExpression(arg)) {
@@ -214,9 +208,8 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
             ctx.calls.push({
                 className: uid('ReactiveObject'),
-                end: node.end,
+                node,
                 properties,
-                start: node.pos,
                 varName
             });
         }
@@ -226,46 +219,44 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings, checker?: ts.TypeChecker): string => {
-    let code = sourceFile.getFullText(),
-        ctx: TransformContext = {
+type ObjectTransformResult = {
+    prepend: string[];
+    replacements: ReplacementIntent[];
+};
+
+
+export default (sourceFile: ts.SourceFile, bindings: Bindings, checker?: ts.TypeChecker): ObjectTransformResult => {
+    let ctx: VisitContext = {
             bindings,
             calls: [],
             checker,
-            classCounter: 0,
-            lastImportEnd: 0,
             sourceFile
         };
 
     visit(ctx, sourceFile);
 
     if (ctx.calls.length === 0) {
-        return code;
+        return { prepend: [], replacements: [] };
     }
 
-    let classes = ctx.calls.map(c => buildClassCode(c.className, c.properties)).join('\n'),
-        replacements: Replacement[] = [];
-
-    replacements.push({
-        end: ctx.lastImportEnd,
-        newText: code.substring(0, ctx.lastImportEnd) + '\n' + classes + '\n',
-        start: 0
-    });
+    let prepend: string[] = [],
+        replacements: ReplacementIntent[] = [];
 
     for (let i = 0, n = ctx.calls.length; i < n; i++) {
         let call = ctx.calls[i];
 
+        prepend.push(buildClassCode(call.className, call.properties));
+
         replacements.push({
-            end: call.end,
-            newText: ` new ${call.className}(${
+            node: call.node,
+            generate: () => ` new ${call.className}(${
                 call.properties
                     .filter(({ isStatic, type }) => !isStatic || type === COMPILER_TYPES.Computed)
                     .map(p => p.valueText)
                     .join(', ')
-            })`,
-            start: call.start
+            })`
         });
     }
 
-    return c.replace(code, replacements);
+    return { prepend, replacements };
 };
