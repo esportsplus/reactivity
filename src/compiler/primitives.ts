@@ -64,8 +64,16 @@ function visit(ctx: TransformContext, node: ts.Node): void {
             if (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) {
                 classification = TYPES.Computed;
             }
-            else if (ts.isArrayLiteralExpression(arg) || ts.isObjectLiteralExpression(arg)) {
-                classification = null;
+            else {
+                let unwrapped = arg;
+
+                while (ts.isAsExpression(unwrapped) || ts.isParenthesizedExpression(unwrapped) || ts.isTypeAssertionExpression(unwrapped)) {
+                    unwrapped = unwrapped.expression;
+                }
+
+                if (ts.isArrayLiteralExpression(unwrapped) || ts.isObjectLiteralExpression(unwrapped)) {
+                    classification = null;
+                }
             }
 
             if (classification) {

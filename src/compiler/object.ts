@@ -229,10 +229,6 @@ export default (sourceFile: ts.SourceFile, bindings: Bindings): ObjectTransformR
 
     visit(ctx, sourceFile);
 
-    if (ctx.calls.length === 0) {
-        return { prepend: [], replacements: [] };
-    }
-
     let prepend: string[] = [],
         replacements: ReplacementIntent[] = [];
 
