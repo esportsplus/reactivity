@@ -13,6 +13,10 @@
             "types": "./build/index.d.ts",
             "default": "./build/index.js"
         },
+        "./compiler": {
+            "types": "./build/compiler/index.d.ts",
+            "default": "./build/compiler/index.js"
+        },
         "./compiler/tsc": {
             "types": "./build/compiler/plugins/tsc.d.ts",
             "default": "./build/compiler/plugins/tsc.js"
