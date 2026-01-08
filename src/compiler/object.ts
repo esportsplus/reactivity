@@ -1,14 +1,14 @@
 import type { ReplacementIntent } from '@esportsplus/typescript/compiler';
 import { ts } from '@esportsplus/typescript';
 import { uid } from '@esportsplus/typescript/compiler';
-import { COMPILER_NAMESPACE, COMPILER_TYPES } from '~/constants';
-import type { Bindings } from '~/types';
+import { NAMESPACE, TYPES } from './constants';
+import type { Bindings } from './types';
 
 
 interface AnalyzedProperty {
     isStatic: boolean;
     key: string;
-    type: COMPILER_TYPES;
+    type: TYPES;
     valueText: string;
 }
 
@@ -49,7 +49,7 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.Sourc
     }
 
     if (ts.isArrowFunction(unwrapped) || ts.isFunctionExpression(unwrapped)) {
-        return { isStatic: false, key, type: COMPILER_TYPES.Computed, valueText };
+        return { isStatic: false, key, type: TYPES.Computed, valueText };
     }
 
     if (ts.isArrayLiteralExpression(unwrapped)) {
@@ -62,10 +62,10 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.Sourc
             }
         }
 
-        return { isStatic, key, type: COMPILER_TYPES.Array, valueText };
+        return { isStatic, key, type: TYPES.Array, valueText };
     }
 
-    return { isStatic: isStaticValue(value), key, type: COMPILER_TYPES.Signal, valueText };
+    return { isStatic: isStaticValue(value), key, type: TYPES.Signal, valueText };
 }
 
 function buildClassCode(className: string, properties: AnalyzedProperty[]): string {
@@ -81,61 +81,61 @@ function buildClassCode(className: string, properties: AnalyzedProperty[]): stri
             generic = `T${parameters.length}`,
             parameter = `_p${parameters.length}`;
 
-        if (type === COMPILER_TYPES.Signal) {
+        if (type === TYPES.Signal) {
             let value = `_v${setters++}`;
 
             if (isStatic) {
                 accessors.push(`
                     get ${key}() {
-                        return ${COMPILER_NAMESPACE}.read(this.#${key});
+                        return ${NAMESPACE}.read(this.#${key});
                     }
                     set ${key}(${value}) {
-                        ${COMPILER_NAMESPACE}.write(this.#${key}, ${value});
+                        ${NAMESPACE}.write(this.#${key}, ${value});
                     }
                 `);
-                fields.push(`#${key} = this[${COMPILER_NAMESPACE}.SIGNAL](${valueText});`);
+                fields.push(`#${key} = this[${NAMESPACE}.SIGNAL](${valueText});`);
             }
             else {
                 accessors.push(`
                     get ${key}() {
-                        return ${COMPILER_NAMESPACE}.read(this.#${key}) as ${generic};
+                        return ${NAMESPACE}.read(this.#${key}) as ${generic};
                     }
                     set ${key}(${value}) {
-                        ${COMPILER_NAMESPACE}.write(this.#${key}, ${value});
+                        ${NAMESPACE}.write(this.#${key}, ${value});
                     }
                 `);
-                body.push(`this.#${key} = this[${COMPILER_NAMESPACE}.SIGNAL](${parameter});`);
+                body.push(`this.#${key} = this[${NAMESPACE}.SIGNAL](${parameter});`);
                 fields.push(`#${key};`);
                 generics.push(generic);
                 parameters.push(`${parameter}: ${generic}`);
             }
         }
-        else if (type === COMPILER_TYPES.Array) {
+        else if (type === TYPES.Array) {
             accessors.push(`
                 get ${key}() {
                     return this.#${key};
                 }
             `);
-            body.push(`this.#${key} = this[${COMPILER_NAMESPACE}.REACTIVE_ARRAY](${parameter});`);
+            body.push(`this.#${key} = this[${NAMESPACE}.REACTIVE_ARRAY](${parameter});`);
             fields.push(`#${key};`);
             generics.push(`${generic} extends unknown[]`);
             parameters.push(`${parameter}: ${generic}`);
         }
-        else if (type === COMPILER_TYPES.Computed) {
+        else if (type === TYPES.Computed) {
             accessors.push(`
                 get ${key}() {
-                    return ${COMPILER_NAMESPACE}.read(this.#${key});
+                    return ${NAMESPACE}.read(this.#${key});
                 }
             `);
-            body.push(`this.#${key} = this[${COMPILER_NAMESPACE}.COMPUTED](${parameter});`);
+            body.push(`this.#${key} = this[${NAMESPACE}.COMPUTED](${parameter});`);
             fields.push(`#${key};`);
-            generics.push(`${generic} extends ${COMPILER_NAMESPACE}.Computed<ReturnType<${generic}>>['fn']`);
+            generics.push(`${generic} extends ${NAMESPACE}.Computed<ReturnType<${generic}>>['fn']`);
             parameters.push(`${parameter}: ${generic}`);
         }
     }
 
     return `
-        class ${className}${generics.length > 0 ? `<${generics.join(', ')}>` : ''} extends ${COMPILER_NAMESPACE}.ReactiveObject<any> {
+        class ${className}${generics.length > 0 ? `<${generics.join(', ')}>` : ''} extends ${NAMESPACE}.ReactiveObject<any> {
             ${fields.join('\n')}
             constructor(${parameters.join(', ')}) {
                 super(null);
@@ -176,7 +176,7 @@ function visit(ctx: VisitContext, node: ts.Node): void {
 
             if (node.parent && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
                 varname = node.parent.name.text;
-                ctx.bindings.set(varname, COMPILER_TYPES.Object);
+                ctx.bindings.set(varname, TYPES.Object);
             }
 
             for (let i = 0, n = props.length; i < n; i++) {
@@ -196,8 +196,8 @@ function visit(ctx: VisitContext, node: ts.Node): void {
 
                 properties.push(analyzed);
 
-                if (analyzed.type === COMPILER_TYPES.Array && varname) {
-                    ctx.bindings.set(`${varname}.${analyzed.key}`, COMPILER_TYPES.Array);
+                if (analyzed.type === TYPES.Array && varname) {
+                    ctx.bindings.set(`${varname}.${analyzed.key}`, TYPES.Array);
                 }
             }
 
@@ -243,7 +243,7 @@ export default (sourceFile: ts.SourceFile, bindings: Bindings): ObjectTransformR
         replacements.push({
             generate: () => ` new ${call.className}(${
                 call.properties
-                    .filter(({ isStatic, type }) => !isStatic || type === COMPILER_TYPES.Computed)
+                    .filter(({ isStatic, type }) => !isStatic || type === TYPES.Computed)
                     .map(p => p.valueText)
                     .join(', ')
             })`,

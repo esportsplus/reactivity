@@ -1,8 +1,8 @@
 import type { ImportIntent, ReplacementIntent, TransformContext } from '@esportsplus/typescript/compiler';
 import { ts } from '@esportsplus/typescript';
 import { imports } from '@esportsplus/typescript/compiler';
-import { COMPILER_ENTRYPOINT, COMPILER_NAMESPACE, PACKAGE } from '~/constants';
-import type { Bindings } from '~/types';
+import { ENTRYPOINT, NAMESPACE, PACKAGE } from './constants';
+import type { Bindings } from './types';
 import array from './array';
 import object from './object';
 import primitives from './primitives';
@@ -37,18 +37,18 @@ function isReactiveCallExpression(checker: ts.TypeChecker | undefined, node: ts.
     // Direct call: reactive(...) or aliasedName(...)
     if (ts.isIdentifier(expr)) {
         // Fast path: literal "reactive"
-        if (expr.text === COMPILER_ENTRYPOINT) {
+        if (expr.text === ENTRYPOINT) {
             return true;
         }
 
         // Use checker to resolve aliases
         if (checker) {
-            return imports.includes(checker, expr, PACKAGE, COMPILER_ENTRYPOINT);
+            return imports.includes(checker, expr, PACKAGE, ENTRYPOINT);
         }
     }
 
     // Property access: ns.reactive(...)
-    if (ts.isPropertyAccessExpression(expr) && expr.name.text === COMPILER_ENTRYPOINT && checker) {
+    if (ts.isPropertyAccessExpression(expr) && expr.name.text === ENTRYPOINT && checker) {
         return imports.includes(checker, expr, PACKAGE);
     }
 
@@ -59,7 +59,7 @@ function visit(ctx: FindRemainingContext, node: ts.Node): void {
     // Check if call or its expression has already been transformed
     if (isReactiveCallExpression(ctx.checker, node) && !ctx.transformedNodes.has(node) && !ctx.transformedNodes.has(node.expression)) {
         ctx.replacements.push({
-            generate: () => `${COMPILER_NAMESPACE}.reactive(${node.arguments.map(a => a.getText(ctx.sourceFile)).join(', ')})`,
+            generate: () => `${NAMESPACE}.reactive(${node.arguments.map(a => a.getText(ctx.sourceFile)).join(', ')})`,
             node
         });
     }
@@ -71,7 +71,7 @@ function visit(ctx: FindRemainingContext, node: ts.Node): void {
 export default {
     patterns: ['reactive(', 'reactive<'],
     transform: (ctx: TransformContext) => {
-        if (!imports.all(ctx.sourceFile, PACKAGE).some(i => i.specifiers.has(COMPILER_ENTRYPOINT))) {
+        if (!imports.all(ctx.sourceFile, PACKAGE).some(i => i.specifiers.has(ENTRYPOINT))) {
             return {};
         }
 
@@ -104,9 +104,9 @@ export default {
         // Build import intent
         if (intents.replacements.length > 0 || intents.prepend.length > 0) {
             intents.imports.push({
-                namespace: COMPILER_NAMESPACE,
+                namespace: NAMESPACE,
                 package: PACKAGE,
-                remove: [COMPILER_ENTRYPOINT]
+                remove: [ENTRYPOINT]
             });
         }
 

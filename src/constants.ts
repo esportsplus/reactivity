@@ -1,19 +1,3 @@
-import { uid } from '@esportsplus/typescript/compiler';
-
-
-const COMPILER_ENTRYPOINT = 'reactive';
-
-const COMPILER_ENTRYPOINT_REGEX = /\breactive\b/;
-
-const COMPILER_NAMESPACE = uid('reactivity');
-
-const enum COMPILER_TYPES {
-    Array,
-    Computed,
-    Object,
-    Signal
-}
-
 const COMPUTED = Symbol('reactivity.computed');
 
 const PACKAGE = '@esportsplus/reactivity';
@@ -46,9 +30,9 @@ const STATE_NOTIFY_MASK = (STATE_CHECK | STATE_DIRTY);
 
 
 export {
-    COMPILER_ENTRYPOINT, COMPILER_ENTRYPOINT_REGEX, COMPILER_NAMESPACE, COMPILER_TYPES, COMPUTED,
-    PACKAGE,
+    COMPUTED,
     REACTIVE_ARRAY, REACTIVE_OBJECT,
+    PACKAGE,
     SIGNAL,
     STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
     STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_NOTIFY_MASK, STATE_RECOMPUTING

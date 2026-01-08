@@ -1,8 +1,8 @@
 import type { ReplacementIntent } from '@esportsplus/typescript/compiler';
 import { ts } from '@esportsplus/typescript';
 import { ast } from '@esportsplus/typescript/compiler';
-import { COMPILER_NAMESPACE, COMPILER_TYPES } from '~/constants';
-import type { Bindings } from '~/types';
+import { NAMESPACE, TYPES } from './constants';
+import type { Bindings } from './types';
 
 
 function getElementTypeText(typeNode: ts.TypeNode, sourceFile: ts.SourceFile): string | null {
@@ -44,7 +44,7 @@ function visit(ctx: { bindings: Bindings, replacements: ReplacementIntent[], sou
             }
 
             if (node.parent && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
-                ctx.bindings.set(node.parent.name.text, COMPILER_TYPES.Array);
+                ctx.bindings.set(node.parent.name.text, TYPES.Array);
             }
 
             let typeParam = elementType ? `<${elementType}>` : '';
@@ -52,22 +52,22 @@ function visit(ctx: { bindings: Bindings, replacements: ReplacementIntent[], sou
             ctx.replacements.push({
                 node,
                 generate: (sf) => expression.elements.length > 0
-                    ? ` new ${COMPILER_NAMESPACE}.ReactiveArray${typeParam}(...${expression.getText(sf)})`
-                    : ` new ${COMPILER_NAMESPACE}.ReactiveArray${typeParam}()`
+                    ? ` new ${NAMESPACE}.ReactiveArray${typeParam}(...${expression.getText(sf)})`
+                    : ` new ${NAMESPACE}.ReactiveArray${typeParam}()`
             });
         }
     }
 
     if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.initializer) {
-        if (ts.isIdentifier(node.initializer) && ctx.bindings.get(node.initializer.text) === COMPILER_TYPES.Array) {
-            ctx.bindings.set(node.name.text, COMPILER_TYPES.Array);
+        if (ts.isIdentifier(node.initializer) && ctx.bindings.get(node.initializer.text) === TYPES.Array) {
+            ctx.bindings.set(node.name.text, TYPES.Array);
         }
 
         if (ts.isPropertyAccessExpression(node.initializer)) {
             let path = ast.property.path(node.initializer);
 
-            if (path && ctx.bindings.get(path) === COMPILER_TYPES.Array) {
-                ctx.bindings.set(node.name.text, COMPILER_TYPES.Array);
+            if (path && ctx.bindings.get(path) === TYPES.Array) {
+                ctx.bindings.set(node.name.text, TYPES.Array);
             }
         }
     }
@@ -82,7 +82,7 @@ function visit(ctx: { bindings: Bindings, replacements: ReplacementIntent[], sou
                 ts.isIdentifier(param.type.typeName) &&
                 param.type.typeName.text === 'ReactiveArray'
             ) {
-                ctx.bindings.set(param.name.text, COMPILER_TYPES.Array);
+                ctx.bindings.set(param.name.text, TYPES.Array);
             }
         }
     }
@@ -101,7 +101,7 @@ function visit(ctx: { bindings: Bindings, replacements: ReplacementIntent[], sou
     ) {
         let name = ast.expression.name(node.expression);
 
-        if (name && ctx.bindings.get(name) === COMPILER_TYPES.Array) {
+        if (name && ctx.bindings.get(name) === TYPES.Array) {
             ctx.replacements.push({
                 node,
                 generate: (sf) => `${node.expression.getText(sf)}.$length()`
@@ -117,7 +117,7 @@ function visit(ctx: { bindings: Bindings, replacements: ReplacementIntent[], sou
         let element = node.left,
             name = ast.expression.name(element.expression);
 
-        if (name && ctx.bindings.get(name) === COMPILER_TYPES.Array) {
+        if (name && ctx.bindings.get(name) === TYPES.Array) {
             ctx.replacements.push({
                 node,
                 generate: (sf) => `${element.expression.getText(sf)}.$set(

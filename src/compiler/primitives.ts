@@ -1,13 +1,13 @@
 import type { ReplacementIntent } from '@esportsplus/typescript/compiler';
 import { ts } from '@esportsplus/typescript';
-import { COMPILER_NAMESPACE, COMPILER_TYPES } from '~/constants';
-import type { Bindings } from '~/types';
+import { NAMESPACE, TYPES } from './constants';
+import type { Bindings } from './types';
 
 
 interface ScopeBinding {
     name: string;
     scope: ts.Node;
-    type: COMPILER_TYPES;
+    type: TYPES;
 }
 
 interface TransformContext {
@@ -59,10 +59,10 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
         if (call.arguments.length > 0) {
             let arg = call.arguments[0],
-                classification: COMPILER_TYPES | null = COMPILER_TYPES.Signal;
+                classification: TYPES | null = TYPES.Signal;
 
             if (ts.isArrowFunction(arg) || ts.isFunctionExpression(arg)) {
-                classification = COMPILER_TYPES.Computed;
+                classification = TYPES.Computed;
             }
             else if (ts.isArrayLiteralExpression(arg) || ts.isObjectLiteralExpression(arg)) {
                 classification = null;
@@ -114,9 +114,9 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
                 // Replace just the 'reactive' identifier with the appropriate namespace function
                 ctx.replacements.push({
-                    generate: () => classification === COMPILER_TYPES.Computed
-                        ? `${COMPILER_NAMESPACE}.computed`
-                        : `${COMPILER_NAMESPACE}.signal`,
+                    generate: () => classification === TYPES.Computed
+                        ? `${NAMESPACE}.computed`
+                        : `${NAMESPACE}.signal`,
                     node: call.expression
                 });
 
@@ -179,12 +179,12 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                 }
 
                 if (writeCtx) {
-                    if (binding.type !== COMPILER_TYPES.Computed) {
+                    if (binding.type !== TYPES.Computed) {
                         if (writeCtx === 'simple' && ts.isBinaryExpression(parent)) {
                             let right = parent.right;
 
                             ctx.replacements.push({
-                                generate: (sf) => `${COMPILER_NAMESPACE}.write(${name}, ${right.getText(sf)})`,
+                                generate: (sf) => `${NAMESPACE}.write(${name}, ${right.getText(sf)})`,
                                 node: parent
                             });
                         }
@@ -193,7 +193,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                                 right = parent.right;
 
                             ctx.replacements.push({
-                                generate: (sf) => `${COMPILER_NAMESPACE}.write(${name}, ${name}.value ${op} ${right.getText(sf)})`,
+                                generate: (sf) => `${NAMESPACE}.write(${name}, ${name}.value ${op} ${right.getText(sf)})`,
                                 node: parent
                             });
                         }
@@ -203,13 +203,13 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 
                             if (ts.isExpressionStatement(parent.parent)) {
                                 ctx.replacements.push({
-                                    generate: () => `${COMPILER_NAMESPACE}.write(${name}, ${name}.value ${delta})`,
+                                    generate: () => `${NAMESPACE}.write(${name}, ${name}.value ${delta})`,
                                     node: parent
                                 });
                             }
                             else if (isPrefix) {
                                 ctx.replacements.push({
-                                    generate: () => `(${COMPILER_NAMESPACE}.write(${name}, ${name}.value ${delta}), ${name}.value)`,
+                                    generate: () => `(${NAMESPACE}.write(${name}, ${name}.value ${delta}), ${name}.value)`,
                                     node: parent
                                 });
                             }
@@ -217,7 +217,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                                 let tmp = `_t${ctx.tmpCounter++}`;
 
                                 ctx.replacements.push({
-                                    generate: () => `((${tmp}) => (${COMPILER_NAMESPACE}.write(${name}, ${tmp} ${delta}), ${tmp}))(${name}.value)`,
+                                    generate: () => `((${tmp}) => (${NAMESPACE}.write(${name}, ${tmp} ${delta}), ${tmp}))(${name}.value)`,
                                     node: parent
                                 });
                             }
@@ -226,7 +226,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                 }
                 else {
                     ctx.replacements.push({
-                        generate: () => `${COMPILER_NAMESPACE}.read(${name})`,
+                        generate: () => `${NAMESPACE}.read(${name})`,
                         node
                     });
                 }
