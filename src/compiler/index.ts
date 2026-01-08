@@ -76,42 +76,40 @@ export default {
         }
 
         let bindings: Bindings = new Map(),
-            importsIntent: ImportIntent[] = [],
-            prepend: string[] = [],
-            replacements: ReplacementIntent[] = [];
+            intents = {
+                imports: [] as ImportIntent[],
+                prepend: [] as string[],
+                replacements: [] as ReplacementIntent[]
+            };
 
         // Run primitives transform first (tracks bindings for signal/computed)
-        replacements.push(
+        intents.replacements.push(
             ...primitives(ctx.sourceFile, bindings, (node: ts.Node) => isReactiveCallExpression(ctx.checker, node))
         );
 
         // Run object transform
-        let objectResult = object(ctx.sourceFile, bindings);
+        let { prepend, replacements } = object(ctx.sourceFile, bindings);
 
-        prepend.push(...objectResult.prepend);
-        replacements.push(...objectResult.replacements);
+        intents.prepend.push(...prepend);
+        intents.replacements.push(...replacements);
 
         // Run array transform separately ( avoid race conditions )
-        replacements.push(...array(ctx.sourceFile, bindings));
+        intents.replacements.push(...array(ctx.sourceFile, bindings));
 
         // Find remaining reactive() calls that weren't transformed and replace with namespace version
-        replacements.push(
-            ...findRemainingCalls(ctx.checker, ctx.sourceFile, new Set(replacements.map(r => r.node)))
+        intents.replacements.push(
+            ...findRemainingCalls(ctx.checker, ctx.sourceFile, new Set(intents.replacements.map(r => r.node)))
         );
 
         // Build import intent
-        if (replacements.length > 0 || prepend.length > 0) {
-            importsIntent.push({
+        if (intents.replacements.length > 0 || intents.prepend.length > 0) {
+            intents.imports.push({
                 namespace: COMPILER_NAMESPACE,
                 package: PACKAGE,
                 remove: [COMPILER_ENTRYPOINT]
             });
         }
 
-        return {
-            imports: importsIntent,
-            prepend,
-            replacements
-        };
+        return intents;
     }
 };
