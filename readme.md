@@ -60,6 +60,8 @@ console.log(user.canVote);  // false
 user.dispose();
 ```
 
+> **Note:** `dispose` is a reserved key and cannot be used as a property name in reactive objects.
+
 ### Reactive Arrays
 
 ```typescript
@@ -79,6 +81,32 @@ console.log(state.total);  // 15
 state.items.on('push', ({ items }) => {
     console.log('Added:', items);
 });
+
+// Cleanup resources
+state.items.dispose();
+```
+
+### Async Computeds
+
+Computed properties that return Promises are automatically unwrapped:
+
+```typescript
+import { reactive } from '@esportsplus/reactivity';
+
+let state = reactive({
+    userId: 1,
+    user: async () => {
+        let response = await fetch(`/api/users/${state.userId}`);
+        return response.json();
+    }
+});
+
+// Initially undefined while loading
+console.log(state.user);  // undefined
+
+// After promise resolves, value is available
+// Changing userId triggers a new fetch
+state.userId = 2;
 ```
 
 ### Effects
@@ -189,8 +217,8 @@ let user = new ReactiveObject_1();
 
 | Function | Description |
 |----------|-------------|
-| `reactive(value)` | Creates a signal from a primitive value |
-| `reactive(() => expr)` | Creates a computed value |
+| `reactive(value)` | Creates a signal from a primitive value (compile-time only) |
+| `reactive(() => expr)` | Creates a computed value (compile-time only) |
 | `reactive({...})` | Creates a reactive object with signals and computeds |
 | `reactive([...])` | Creates a reactive array |
 | `effect(fn)` | Runs a function that re-executes when dependencies change |
@@ -215,8 +243,52 @@ These are typically only used by the transformer output:
 |----------|-------------|
 | `isSignal(value)` | Checks if value is a Signal |
 | `isComputed(value)` | Checks if value is a Computed |
+| `isPromise(value)` | Checks if value is a Promise |
 
-## ReactiveArray Events
+### Classes
+
+For advanced use cases, the underlying classes are exported:
+
+| Class | Description |
+|-------|-------------|
+| `ReactiveArray<T>` | Array subclass with reactivity and event dispatching |
+| `ReactiveObject<T>` | Base class for reactive objects |
+
+### Constants
+
+Symbol constants for type identification:
+
+| Constant | Description |
+|----------|-------------|
+| `SIGNAL` | Symbol identifying Signal nodes |
+| `COMPUTED` | Symbol identifying Computed nodes |
+| `REACTIVE_ARRAY` | Symbol identifying ReactiveArray instances |
+| `REACTIVE_OBJECT` | Symbol identifying ReactiveObject instances |
+
+### Types
+
+| Type | Description |
+|------|-------------|
+| `Signal<T>` | Signal node type |
+| `Computed<T>` | Computed node type |
+| `Reactive<T>` | Utility type for inferring reactive object/array types |
+
+## ReactiveArray
+
+### Methods
+
+| Method | Description |
+|--------|-------------|
+| `$length()` | Returns the reactive length (tracks reads) |
+| `$set(index, value)` | Sets an item at index reactively |
+| `clear()` | Removes all items and disposes nested reactive objects |
+| `dispose()` | Disposes all nested reactive objects |
+| `on(event, listener)` | Subscribes to an array event |
+| `once(event, listener)` | Subscribes to an event once |
+
+All standard array methods (`push`, `pop`, `shift`, `unshift`, `splice`, `sort`, `reverse`, `concat`) are supported and trigger corresponding events.
+
+### Events
 
 | Event | Payload | Description |
 |-------|---------|-------------|
@@ -227,7 +299,7 @@ These are typically only used by the transformer output:
 | `reverse` | `undefined` | Array was reversed |
 | `set` | `{ index, item }` | Item was set at index |
 | `shift` | `{ item: T }` | Item was shifted |
-| `sort` | `{ order: number[] }` | Array was sorted |
+| `sort` | `{ order: number[] }` | Array was sorted (order maps new→old indices) |
 | `splice` | `{ start, deleteCount, items }` | Array was spliced |
 | `unshift` | `{ items: T[] }` | Items were unshifted |
 
