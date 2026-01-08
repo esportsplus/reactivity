@@ -1,6 +1,6 @@
 const COMPUTED = Symbol('reactivity.computed');
 
-const PACKAGE = '@esportsplus/reactivity';
+const PACKAGE_NAME = '@esportsplus/reactivity';
 
 const REACTIVE_ARRAY = Symbol('reactivity.reactive.array');
 
@@ -32,7 +32,7 @@ const STATE_NOTIFY_MASK = (STATE_CHECK | STATE_DIRTY);
 export {
     COMPUTED,
     REACTIVE_ARRAY, REACTIVE_OBJECT,
-    PACKAGE,
+    PACKAGE_NAME,
     SIGNAL,
     STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
     STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_NOTIFY_MASK, STATE_RECOMPUTING

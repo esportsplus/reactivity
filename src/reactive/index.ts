@@ -3,7 +3,7 @@ import { isArray, isObject } from '@esportsplus/utilities';
 import { Reactive } from '~/types';
 import { ReactiveArray } from './array';
 import { ReactiveObject } from './object';
-import { PACKAGE } from '~/constants';
+import { PACKAGE_NAME } from '~/constants';
 
 
 type Guard<T> =
@@ -37,7 +37,7 @@ function reactive<T>(input: T): Reactive<T> {
                 return response;
             }
 
-            throw new Error(`${PACKAGE}: 'reactive' received invalid input - ${JSON.stringify(input)}`);
+            throw new Error(`${PACKAGE_NAME}: 'reactive' received invalid input - ${JSON.stringify(input)}`);
         });
 
     if (dispose) {

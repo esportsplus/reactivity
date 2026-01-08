@@ -17,4 +17,4 @@ const enum TYPES {
 
 
 export { ENTRYPOINT, ENTRYPOINT_REGEX, NAMESPACE, TYPES };
-export { PACKAGE } from '../constants';
+export { PACKAGE_NAME } from '../constants';

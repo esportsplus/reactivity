@@ -1,7 +1,7 @@
 import type { ImportIntent, ReplacementIntent, TransformContext } from '@esportsplus/typescript/compiler';
 import { ts } from '@esportsplus/typescript';
 import { imports } from '@esportsplus/typescript/compiler';
-import { ENTRYPOINT, NAMESPACE, PACKAGE } from './constants';
+import { ENTRYPOINT, NAMESPACE, PACKAGE_NAME } from './constants';
 import type { Bindings } from './types';
 import array from './array';
 import object from './object';
@@ -43,13 +43,13 @@ function isReactiveCallExpression(checker: ts.TypeChecker | undefined, node: ts.
 
         // Use checker to resolve aliases
         if (checker) {
-            return imports.includes(checker, expr, PACKAGE, ENTRYPOINT);
+            return imports.includes(checker, expr, PACKAGE_NAME, ENTRYPOINT);
         }
     }
 
     // Property access: ns.reactive(...)
     if (ts.isPropertyAccessExpression(expr) && expr.name.text === ENTRYPOINT && checker) {
-        return imports.includes(checker, expr, PACKAGE);
+        return imports.includes(checker, expr, PACKAGE_NAME);
     }
 
     return false;
@@ -71,7 +71,7 @@ function visit(ctx: FindRemainingContext, node: ts.Node): void {
 export default {
     patterns: ['reactive(', 'reactive<'],
     transform: (ctx: TransformContext) => {
-        if (!imports.all(ctx.sourceFile, PACKAGE).some(i => i.specifiers.has(ENTRYPOINT))) {
+        if (!imports.all(ctx.sourceFile, PACKAGE_NAME).some(i => i.specifiers.has(ENTRYPOINT))) {
             return {};
         }
 
@@ -105,7 +105,7 @@ export default {
         if (intents.replacements.length > 0 || intents.prepend.length > 0) {
             intents.imports.push({
                 namespace: NAMESPACE,
-                package: PACKAGE,
+                package: PACKAGE_NAME,
                 remove: [ENTRYPOINT]
             });
         }
