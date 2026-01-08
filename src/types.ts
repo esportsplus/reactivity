@@ -43,7 +43,7 @@ type Reactive<T> = T extends (...args: unknown[]) => Promise<infer R>
         : T extends (infer U)[]
             ? U[] & Pick<ReactiveArray<U>, 'clear' | 'dispose' | 'on' | 'once'>
             : T extends Record<PropertyKey, unknown>
-                ? { [K in keyof T]: Reactive<T[K]>; } & { dispose: VoidFunction }
+                ? { [K in keyof T]: T[K] extends (infer U)[] ? Reactive<U[]> : T[K]; } & { dispose: VoidFunction }
                 : T;
 
 type Signal<T> = {
