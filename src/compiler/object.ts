@@ -1,4 +1,4 @@
-import type { ReplacementIntent } from '@esportsplus/typescript/compiler';
+import { code, type ReplacementIntent } from '@esportsplus/typescript/compiler';
 import { ts } from '@esportsplus/typescript';
 import { uid } from '@esportsplus/typescript/compiler';
 import { NAMESPACE, TYPES } from './constants';
@@ -12,10 +12,16 @@ interface AnalyzedProperty {
     valueText: string;
 }
 
+type ObjectTransformResult = {
+    prepend: string[];
+    replacements: ReplacementIntent[];
+}
+
 interface ReactiveObjectCall {
-    className: string;
+    classname: string;
     node: ts.CallExpression;
     properties: AnalyzedProperty[];
+    typehint: string | null;
     varname: string | null;
 }
 
@@ -65,12 +71,18 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.Sourc
         return { isStatic, key, type: TYPES.Array, valueText };
     }
 
-    return { isStatic: isStaticValue(value), key, type: TYPES.Signal, valueText };
+    return {
+        isStatic: isStaticValue(value),
+        key,
+        type: TYPES.Signal,
+        valueText
+    };
 }
 
-function buildClassCode(className: string, properties: AnalyzedProperty[]): string {
+function buildClassCode(classname: string, properties: AnalyzedProperty[], typehint: string | null): string {
     let accessors: string[] = [],
         body: string[] = [],
+        constraint: string[] = [],
         fields: string[] = [],
         generics: string[] = [],
         parameters: string[] = [],
@@ -78,8 +90,14 @@ function buildClassCode(className: string, properties: AnalyzedProperty[]): stri
 
     for (let i = 0, n = properties.length; i < n; i++) {
         let { isStatic, key, type, valueText } = properties[i],
-            generic = `T${parameters.length}`,
+            generic = typehint ? `T['${key}']` : `T${parameters.length}`,
             parameter = `_p${parameters.length}`;
+
+        // When typehint is present, treat signal properties as non-static to preserve types
+        if (typehint && type === TYPES.Signal) {
+            constraint.push(`'${key}'?: unknown`);
+            isStatic = false;
+        }
 
         if (type === TYPES.Signal) {
             let value = `_v${setters++}`;
@@ -106,11 +124,19 @@ function buildClassCode(className: string, properties: AnalyzedProperty[]): stri
                 `);
                 body.push(`this.#${key} = this[${NAMESPACE}.SIGNAL](${parameter});`);
                 fields.push(`#${key};`);
-                generics.push(generic);
+
+                if (!typehint) {
+                    generics.push(generic);
+                }
+
                 parameters.push(`${parameter}: ${generic}`);
             }
         }
         else if (type === TYPES.Array) {
+            if (typehint) {
+                constraint.push(`'${key}'?: unknown[]`);
+            }
+
             accessors.push(`
                 get ${key}() {
                     return this.#${key};
@@ -118,10 +144,18 @@ function buildClassCode(className: string, properties: AnalyzedProperty[]): stri
             `);
             body.push(`this.#${key} = this[${NAMESPACE}.REACTIVE_ARRAY](${parameter});`);
             fields.push(`#${key};`);
-            generics.push(`${generic} extends unknown[]`);
+
+            if (!typehint) {
+                generics.push(`${generic} extends unknown[]`);
+            }
+
             parameters.push(`${parameter}: ${generic}`);
         }
         else if (type === TYPES.Computed) {
+            if (typehint) {
+                constraint.push(`'${key}'?: unknown`);
+            }
+
             accessors.push(`
                 get ${key}() {
                     return ${NAMESPACE}.read(this.#${key});
@@ -129,40 +163,41 @@ function buildClassCode(className: string, properties: AnalyzedProperty[]): stri
             `);
             body.push(`this.#${key} = this[${NAMESPACE}.COMPUTED](${parameter});`);
             fields.push(`#${key};`);
-            generics.push(`${generic} extends ${NAMESPACE}.Computed<ReturnType<${generic}>>['fn']`);
+
+            if (!typehint) {
+                generics.push(`${generic} extends ${NAMESPACE}.Computed<ReturnType<${generic}>>['fn']`);
+            }
+
             parameters.push(`${parameter}: ${generic}`);
         }
     }
 
-    return `
-        class ${className}${generics.length > 0 ? `<${generics.join(', ')}>` : ''} extends ${NAMESPACE}.ReactiveObject<any> {
+    return code`
+        class ${classname}${
+            typehint
+                ? `<T extends { ${constraint.join(', ')} }>`
+                : generics.length && `<${generics.join(', ')}>`
+        } extends ${NAMESPACE}.ReactiveObject<any> {
             ${fields.join('\n')}
+
             constructor(${parameters.join(', ')}) {
                 super(null);
                 ${body.join('\n')}
             }
+
             ${accessors.join('\n')}
         }
     `;
 }
 
 function isStaticValue(node: ts.Node): boolean {
-    if (
-        ts.isNumericLiteral(node) ||
+    return ts.isNumericLiteral(node) ||
         ts.isStringLiteral(node) ||
         node.kind === ts.SyntaxKind.TrueKeyword ||
         node.kind === ts.SyntaxKind.FalseKeyword ||
         node.kind === ts.SyntaxKind.NullKeyword ||
-        node.kind === ts.SyntaxKind.UndefinedKeyword
-    ) {
-        return true;
-    }
-
-    if (ts.isPrefixUnaryExpression(node) && ts.isNumericLiteral(node.operand)) {
-        return true;
-    }
-
-    return false;
+        node.kind === ts.SyntaxKind.UndefinedKeyword ||
+        (ts.isPrefixUnaryExpression(node) && ts.isNumericLiteral(node.operand));
 }
 
 function visit(ctx: VisitContext, node: ts.Node): void {
@@ -202,9 +237,10 @@ function visit(ctx: VisitContext, node: ts.Node): void {
             }
 
             ctx.calls.push({
-                className: uid('ReactiveObject'),
+                classname: uid('ReactiveObject'),
                 node,
                 properties,
+                typehint: node.typeArguments?.[0]?.getText(ctx.sourceFile) ?? null,
                 varname
             });
         }
@@ -212,12 +248,6 @@ function visit(ctx: VisitContext, node: ts.Node): void {
 
     ts.forEachChild(node, n => visit(ctx, n));
 }
-
-
-type ObjectTransformResult = {
-    prepend: string[];
-    replacements: ReplacementIntent[];
-};
 
 
 export default (sourceFile: ts.SourceFile, bindings: Bindings): ObjectTransformResult => {
@@ -233,16 +263,21 @@ export default (sourceFile: ts.SourceFile, bindings: Bindings): ObjectTransformR
         replacements: ReplacementIntent[] = [];
 
     for (let i = 0, n = ctx.calls.length; i < n; i++) {
-        let call = ctx.calls[i];
+        let call = ctx.calls[i],
+            typehint = call.typehint;
 
-        prepend.push(buildClassCode(call.className, call.properties));
+        prepend.push(buildClassCode(call.classname, call.properties, typehint));
         replacements.push({
-            generate: () => ` new ${call.className}(${
-                call.properties
-                    .filter(({ isStatic, type }) => !isStatic || type === TYPES.Computed)
+            generate: () => {
+                let args = call.properties
+                    .filter(({ isStatic, type }) => typehint || !isStatic || type === TYPES.Computed)
                     .map(p => p.valueText)
-                    .join(', ')
-            })`,
+                    .join(', ');
+
+                return typehint
+                    ? ` new ${call.classname}<${typehint}>(${args})`
+                    : ` new ${call.classname}(${args})`;
+            },
             node: call.node,
         });
     }
