@@ -16,7 +16,7 @@ interface ReactiveObjectCall {
     className: string;
     node: ts.CallExpression;
     properties: AnalyzedProperty[];
-    varName: string | null;
+    varname: string | null;
 }
 
 interface VisitContext {
@@ -172,11 +172,11 @@ function visit(ctx: VisitContext, node: ts.Node): void {
         if (arg && ts.isObjectLiteralExpression(arg)) {
             let properties: AnalyzedProperty[] = [],
                 props = arg.properties,
-                varName: string | null = null;
+                varname: string | null = null;
 
             if (node.parent && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
-                varName = node.parent.name.text;
-                ctx.bindings.set(varName, COMPILER_TYPES.Object);
+                varname = node.parent.name.text;
+                ctx.bindings.set(varname, COMPILER_TYPES.Object);
             }
 
             for (let i = 0, n = props.length; i < n; i++) {
@@ -196,8 +196,8 @@ function visit(ctx: VisitContext, node: ts.Node): void {
 
                 properties.push(analyzed);
 
-                if (analyzed.type === COMPILER_TYPES.Array && varName) {
-                    ctx.bindings.set(`${varName}.${analyzed.key}`, COMPILER_TYPES.Array);
+                if (analyzed.type === COMPILER_TYPES.Array && varname) {
+                    ctx.bindings.set(`${varname}.${analyzed.key}`, COMPILER_TYPES.Array);
                 }
             }
 
@@ -205,7 +205,7 @@ function visit(ctx: VisitContext, node: ts.Node): void {
                 className: uid('ReactiveObject'),
                 node,
                 properties,
-                varName
+                varname
             });
         }
     }

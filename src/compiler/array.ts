@@ -64,7 +64,7 @@ function visit(ctx: { bindings: Bindings, replacements: ReplacementIntent[], sou
         }
 
         if (ts.isPropertyAccessExpression(node.initializer)) {
-            let path = ast.getPropertyPath(node.initializer);
+            let path = ast.property.path(node.initializer);
 
             if (path && ctx.bindings.get(path) === COMPILER_TYPES.Array) {
                 ctx.bindings.set(node.name.text, COMPILER_TYPES.Array);
@@ -99,7 +99,7 @@ function visit(ctx: { bindings: Bindings, replacements: ReplacementIntent[], sou
             )
         )
     ) {
-        let name = ast.getExpressionName(node.expression);
+        let name = ast.expression.name(node.expression);
 
         if (name && ctx.bindings.get(name) === COMPILER_TYPES.Array) {
             ctx.replacements.push({
@@ -115,7 +115,7 @@ function visit(ctx: { bindings: Bindings, replacements: ReplacementIntent[], sou
         ts.isElementAccessExpression(node.left)
     ) {
         let element = node.left,
-            name = ast.getExpressionName(element.expression);
+            name = ast.expression.name(element.expression);
 
         if (name && ctx.bindings.get(name) === COMPILER_TYPES.Array) {
             ctx.replacements.push({

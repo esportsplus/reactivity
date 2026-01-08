@@ -69,10 +69,10 @@ function visit(ctx: TransformContext, node: ts.Node): void {
             }
 
             if (classification) {
-                let varName: string | null = null;
+                let varname: string | null = null;
 
                 if (call.parent && ts.isVariableDeclaration(call.parent) && ts.isIdentifier(call.parent.name)) {
-                    varName = call.parent.name.text;
+                    varname = call.parent.name.text;
                 }
                 else if (
                     call.parent &&
@@ -80,10 +80,10 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                     call.parent.operatorToken.kind === ts.SyntaxKind.EqualsToken &&
                     ts.isIdentifier(call.parent.left)
                 ) {
-                    varName = call.parent.left.text;
+                    varname = call.parent.left.text;
                 }
 
-                if (varName) {
+                if (varname) {
                     let current = call.parent,
                         scope;
 
@@ -108,8 +108,8 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                         scope = call.getSourceFile();
                     }
 
-                    ctx.scopedBindings.push({ name: varName, scope, type: classification });
-                    ctx.bindings.set(varName, classification);
+                    ctx.bindings.set(varname, classification);
+                    ctx.scopedBindings.push({ name: varname, scope, type: classification });
                 }
 
                 // Replace just the 'reactive' identifier with the appropriate namespace function

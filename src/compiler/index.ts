@@ -1,4 +1,4 @@
-import type { ImportIntent, Plugin, ReplacementIntent, TransformContext } from '@esportsplus/typescript/compiler';
+import type { ImportIntent, ReplacementIntent, TransformContext } from '@esportsplus/typescript/compiler';
 import { ts } from '@esportsplus/typescript';
 import { imports } from '@esportsplus/typescript/compiler';
 import { COMPILER_ENTRYPOINT, COMPILER_NAMESPACE, PACKAGE } from '~/constants';
@@ -43,13 +43,13 @@ function isReactiveCallExpression(checker: ts.TypeChecker | undefined, node: ts.
 
         // Use checker to resolve aliases
         if (checker) {
-            return imports.inPackage(checker, expr, PACKAGE, COMPILER_ENTRYPOINT);
+            return imports.includes(checker, expr, PACKAGE, COMPILER_ENTRYPOINT);
         }
     }
 
     // Property access: ns.reactive(...)
     if (ts.isPropertyAccessExpression(expr) && expr.name.text === COMPILER_ENTRYPOINT && checker) {
-        return imports.inPackage(checker, expr, PACKAGE);
+        return imports.includes(checker, expr, PACKAGE);
     }
 
     return false;
@@ -68,22 +68,22 @@ function visit(ctx: FindRemainingContext, node: ts.Node): void {
 }
 
 
-const plugin: Plugin = {
+export default {
     patterns: ['reactive(', 'reactive<'],
-
     transform: (ctx: TransformContext) => {
-        if (!imports.find(ctx.sourceFile, PACKAGE).some(i => i.specifiers.has(COMPILER_ENTRYPOINT))) {
+        if (!imports.all(ctx.sourceFile, PACKAGE).some(i => i.specifiers.has(COMPILER_ENTRYPOINT))) {
             return {};
         }
 
         let bindings: Bindings = new Map(),
             importsIntent: ImportIntent[] = [],
-            isReactive = (node: ts.Node) => isReactiveCallExpression(ctx.checker, node),
             prepend: string[] = [],
             replacements: ReplacementIntent[] = [];
 
         // Run primitives transform first (tracks bindings for signal/computed)
-        replacements.push(...primitives(ctx.sourceFile, bindings, isReactive));
+        replacements.push(
+            ...primitives(ctx.sourceFile, bindings, (node: ts.Node) => isReactiveCallExpression(ctx.checker, node))
+        );
 
         // Run object transform
         let objectResult = object(ctx.sourceFile, bindings);
@@ -95,7 +95,9 @@ const plugin: Plugin = {
         replacements.push(...array(ctx.sourceFile, bindings));
 
         // Find remaining reactive() calls that weren't transformed and replace with namespace version
-        replacements.push(...findRemainingCalls(ctx.checker, ctx.sourceFile, new Set(replacements.map(r => r.node))));
+        replacements.push(
+            ...findRemainingCalls(ctx.checker, ctx.sourceFile, new Set(replacements.map(r => r.node)))
+        );
 
         // Build import intent
         if (replacements.length > 0 || prepend.length > 0) {
@@ -113,6 +115,3 @@ const plugin: Plugin = {
         };
     }
 };
-
-
-export default plugin;

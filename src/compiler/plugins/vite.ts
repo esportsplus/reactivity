@@ -1,9 +1,9 @@
 import { plugin } from '@esportsplus/typescript/compiler';
 import { PACKAGE } from '~/constants';
-import reactivityPlugin from '..';
+import reactivity from '..';
 
 
 export default plugin.vite({
     name: PACKAGE,
-    plugins: [reactivityPlugin]
+    plugins: [reactivity]
 });

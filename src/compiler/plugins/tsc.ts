@@ -1,4 +1,4 @@
-import plugin from '..';
+import reactivity from '..';
 
 
-export default plugin;
+export default reactivity;
