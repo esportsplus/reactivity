@@ -74,6 +74,15 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                 if (ts.isArrayLiteralExpression(unwrapped) || ts.isObjectLiteralExpression(unwrapped)) {
                     classification = null;
                 }
+                // Dynamic expression - use runtime reactive via namespace
+                else if (ts.isCallExpression(unwrapped) || ts.isIdentifier(unwrapped)) {
+                    ctx.replacements.push({
+                        generate: () => `${NAMESPACE}.reactive`,
+                        node: call.expression
+                    });
+                    ts.forEachChild(node, n => visit(ctx, n));
+                    return;
+                }
             }
 
             if (classification) {
