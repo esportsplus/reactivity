@@ -177,7 +177,7 @@ function buildClassCode(classname: string, properties: AnalyzedProperty[], typeh
         class ${classname}${
             typehint
                 ? `<T extends { ${constraint.join(', ')} }>`
-                : generics.length && `<${generics.join(', ')}>`
+                : generics.length !== 0 && `<${generics.join(', ')}>`
         } extends ${NAMESPACE}.ReactiveObject<any> {
             ${fields.join('\n')}
 
