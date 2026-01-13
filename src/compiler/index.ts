@@ -9,14 +9,15 @@ import primitives from './primitives';
 
 
 type FindRemainingContext = {
-    checker: ts.TypeChecker | undefined;
+    checker: ts.TypeChecker;
     replacements: ReplacementIntent[];
     sourceFile: ts.SourceFile;
     transformedNodes: Set<ts.Node>;
 };
 
+
 function findRemainingCalls(
-    checker: ts.TypeChecker | undefined,
+    checker: ts.TypeChecker,
     sourceFile: ts.SourceFile,
     transformedNodes: Set<ts.Node>
 ): ReplacementIntent[] {
@@ -27,7 +28,7 @@ function findRemainingCalls(
     return ctx.replacements;
 }
 
-function isReactiveCallExpression(checker: ts.TypeChecker | undefined, node: ts.Node): node is ts.CallExpression {
+function isReactiveCallExpression(checker: ts.TypeChecker, node: ts.Node): node is ts.CallExpression {
     if (!ts.isCallExpression(node)) {
         return false;
     }
@@ -36,24 +37,18 @@ function isReactiveCallExpression(checker: ts.TypeChecker | undefined, node: ts.
 
     // Direct call: reactive(...) or aliasedName(...)
     if (ts.isIdentifier(expr)) {
-        // Use checker to verify symbol origin (handles re-exports)
-        if (checker) {
-            return imports.includes(checker, expr, PACKAGE_NAME, ENTRYPOINT);
-        }
-
-        // Fallback without checker: match by name only
-        return expr.text === ENTRYPOINT;
+        return imports.includes(checker, expr, PACKAGE_NAME, ENTRYPOINT);
     }
 
     // Property access: ns.reactive(...)
-    if (ts.isPropertyAccessExpression(expr) && expr.name.text === ENTRYPOINT && checker) {
+    if (ts.isPropertyAccessExpression(expr) && expr.name.text === ENTRYPOINT) {
         return imports.includes(checker, expr, PACKAGE_NAME);
     }
 
     return false;
 }
 
-function hasReactiveCalls(checker: ts.TypeChecker | undefined, node: ts.Node): boolean {
+function hasReactiveCalls(checker: ts.TypeChecker, node: ts.Node): boolean {
     if (isReactiveCallExpression(checker, node)) {
         return true;
     }
@@ -70,7 +65,6 @@ function hasReactiveCalls(checker: ts.TypeChecker | undefined, node: ts.Node): b
 }
 
 function visit(ctx: FindRemainingContext, node: ts.Node): void {
-    // Check if call or its expression has already been transformed
     if (isReactiveCallExpression(ctx.checker, node) && !ctx.transformedNodes.has(node) && !ctx.transformedNodes.has(node.expression)) {
         ctx.replacements.push({
             generate: () => `${NAMESPACE}.reactive(${node.arguments.map(a => a.getText(ctx.sourceFile)).join(', ')})`,
@@ -85,8 +79,7 @@ function visit(ctx: FindRemainingContext, node: ts.Node): void {
 export default {
     patterns: ['reactive(', 'reactive<'],
     transform: (ctx: TransformContext) => {
-        // Use TypeChecker to detect reactive calls from any source (including re-exports)
-        if (!hasReactiveCalls(ctx.checker, ctx.sourceFile)) {
+        if (!ctx.checker || !hasReactiveCalls(ctx.checker, ctx.sourceFile)) {
             return {};
         }
 
@@ -99,7 +92,7 @@ export default {
 
         // Run primitives transform first (tracks bindings for signal/computed)
         intents.replacements.push(
-            ...primitives(ctx.sourceFile, bindings, (node: ts.Node) => isReactiveCallExpression(ctx.checker, node))
+            ...primitives(ctx.sourceFile, bindings, (node: ts.Node) => isReactiveCallExpression(ctx.checker!, node))
         );
 
         // Run object transform
