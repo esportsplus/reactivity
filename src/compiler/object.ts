@@ -1,7 +1,7 @@
-import { code, type ReplacementIntent } from '@esportsplus/typescript/compiler';
+import { code, imports, type ReplacementIntent } from '@esportsplus/typescript/compiler';
 import { ts } from '@esportsplus/typescript';
 import { uid } from '@esportsplus/typescript/compiler';
-import { NAMESPACE, TYPES } from './constants';
+import { ENTRYPOINT, NAMESPACE, PACKAGE_NAME, TYPES } from './constants';
 import type { Bindings } from './types';
 
 
@@ -28,6 +28,7 @@ interface ReactiveObjectCall {
 interface VisitContext {
     bindings: Bindings;
     calls: ReactiveObjectCall[];
+    checker: ts.TypeChecker | undefined;
     sourceFile: ts.SourceFile;
 }
 
@@ -200,8 +201,24 @@ function isStaticValue(node: ts.Node): boolean {
         (ts.isPrefixUnaryExpression(node) && ts.isNumericLiteral(node.operand));
 }
 
+function isReactiveCall(checker: ts.TypeChecker | undefined, node: ts.Node): node is ts.CallExpression {
+    if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression)) {
+        return false;
+    }
+
+    let expr = node.expression;
+
+    // Use checker to verify symbol origin (handles re-exports)
+    if (checker) {
+        return imports.includes(checker, expr, PACKAGE_NAME, ENTRYPOINT);
+    }
+
+    // Fallback without checker: match by name only
+    return expr.text === ENTRYPOINT;
+}
+
 function visit(ctx: VisitContext, node: ts.Node): void {
-    if (ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'reactive') {
+    if (isReactiveCall(ctx.checker, node)) {
         let arg = node.arguments[0];
 
         if (arg && ts.isObjectLiteralExpression(arg)) {
@@ -250,10 +267,11 @@ function visit(ctx: VisitContext, node: ts.Node): void {
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings): ObjectTransformResult => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, checker?: ts.TypeChecker): ObjectTransformResult => {
     let ctx: VisitContext = {
             bindings,
             calls: [],
+            checker,
             sourceFile
         };
 

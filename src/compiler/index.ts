@@ -36,15 +36,13 @@ function isReactiveCallExpression(checker: ts.TypeChecker | undefined, node: ts.
 
     // Direct call: reactive(...) or aliasedName(...)
     if (ts.isIdentifier(expr)) {
-        // Fast path: literal "reactive"
-        if (expr.text === ENTRYPOINT) {
-            return true;
-        }
-
-        // Use checker to resolve aliases
+        // Use checker to verify symbol origin (handles re-exports)
         if (checker) {
             return imports.includes(checker, expr, PACKAGE_NAME, ENTRYPOINT);
         }
+
+        // Fallback without checker: match by name only
+        return expr.text === ENTRYPOINT;
     }
 
     // Property access: ns.reactive(...)
@@ -53,6 +51,22 @@ function isReactiveCallExpression(checker: ts.TypeChecker | undefined, node: ts.
     }
 
     return false;
+}
+
+function hasReactiveCalls(checker: ts.TypeChecker | undefined, node: ts.Node): boolean {
+    if (isReactiveCallExpression(checker, node)) {
+        return true;
+    }
+
+    let found = false;
+
+    ts.forEachChild(node, child => {
+        if (!found && hasReactiveCalls(checker, child)) {
+            found = true;
+        }
+    });
+
+    return found;
 }
 
 function visit(ctx: FindRemainingContext, node: ts.Node): void {
@@ -71,7 +85,8 @@ function visit(ctx: FindRemainingContext, node: ts.Node): void {
 export default {
     patterns: ['reactive(', 'reactive<'],
     transform: (ctx: TransformContext) => {
-        if (!imports.all(ctx.sourceFile, PACKAGE_NAME).some(i => i.specifiers.has(ENTRYPOINT))) {
+        // Use TypeChecker to detect reactive calls from any source (including re-exports)
+        if (!hasReactiveCalls(ctx.checker, ctx.sourceFile)) {
             return {};
         }
 
@@ -88,13 +103,13 @@ export default {
         );
 
         // Run object transform
-        let { prepend, replacements } = object(ctx.sourceFile, bindings);
+        let { prepend, replacements } = object(ctx.sourceFile, bindings, ctx.checker);
 
         intents.prepend.push(...prepend);
         intents.replacements.push(...replacements);
 
         // Run array transform separately ( avoid race conditions )
-        intents.replacements.push(...array(ctx.sourceFile, bindings));
+        intents.replacements.push(...array(ctx.sourceFile, bindings, ctx.checker));
 
         // Find remaining reactive() calls that weren't transformed and replace with namespace version
         intents.replacements.push(

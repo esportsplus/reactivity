@@ -1,9 +1,33 @@
 import type { ReplacementIntent } from '@esportsplus/typescript/compiler';
 import { ts } from '@esportsplus/typescript';
-import { ast } from '@esportsplus/typescript/compiler';
-import { NAMESPACE, TYPES } from './constants';
+import { ast, imports } from '@esportsplus/typescript/compiler';
+import { ENTRYPOINT, NAMESPACE, PACKAGE_NAME, TYPES } from './constants';
 import type { Bindings } from './types';
 
+
+type VisitContext = {
+    bindings: Bindings;
+    checker: ts.TypeChecker | undefined;
+    replacements: ReplacementIntent[];
+    sourceFile: ts.SourceFile;
+};
+
+
+function isReactiveCall(checker: ts.TypeChecker | undefined, node: ts.Node): node is ts.CallExpression {
+    if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression)) {
+        return false;
+    }
+
+    let expr = node.expression;
+
+    // Use checker to verify symbol origin (handles re-exports)
+    if (checker) {
+        return imports.includes(checker, expr, PACKAGE_NAME, ENTRYPOINT);
+    }
+
+    // Fallback without checker: match by name only
+    return expr.text === ENTRYPOINT;
+}
 
 function getElementTypeText(typeNode: ts.TypeNode, sourceFile: ts.SourceFile): string | null {
     if (ts.isArrayTypeNode(typeNode)) {
@@ -23,13 +47,8 @@ function getElementTypeText(typeNode: ts.TypeNode, sourceFile: ts.SourceFile): s
     return null;
 }
 
-function visit(ctx: { bindings: Bindings, replacements: ReplacementIntent[], sourceFile: ts.SourceFile }, node: ts.Node): void {
-    if (
-        ts.isCallExpression(node) &&
-        ts.isIdentifier(node.expression) &&
-        node.expression.text === 'reactive' &&
-        node.arguments.length > 0
-    ) {
+function visit(ctx: VisitContext, node: ts.Node): void {
+    if (isReactiveCall(ctx.checker, node) && node.arguments.length > 0) {
         let arg = node.arguments[0],
             expression = ts.isAsExpression(arg) ? arg.expression : arg;
 
@@ -132,9 +151,10 @@ function visit(ctx: { bindings: Bindings, replacements: ReplacementIntent[], sou
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings): ReplacementIntent[] => {
-    let ctx = {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, checker?: ts.TypeChecker): ReplacementIntent[] => {
+    let ctx: VisitContext = {
             bindings,
+            checker,
             replacements: [],
             sourceFile
         };
