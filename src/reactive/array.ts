@@ -64,9 +64,18 @@ class ReactiveArray<T> extends Array<T> {
     }
 
 
-    $length() {
+    get $length() {
         return read(this._length);
     }
+
+    set $length(value: number) {
+        if (value > super.length) {
+            throw Error(`@esportsplus/reactivity: cannot set length to a value larger than the current length, use splice instead.`);
+        }
+
+        this.splice(value, super.length);
+    }
+
 
     $set(i: number, value: T) {
         let prev = this[i];
