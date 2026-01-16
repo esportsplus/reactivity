@@ -13,14 +13,14 @@ importers:
         version: 0.27.2
     devDependencies:
       '@esportsplus/typescript':
-        specifier: ^0.28.4
-        version: 0.28.4
+        specifier: ^0.29.0
+        version: 0.29.0
       '@types/node':
-        specifier: ^25.0.8
-        version: 25.0.8
+        specifier: ^25.0.9
+        version: 25.0.9
       vite:
         specifier: ^7.3.1
-        version: 7.3.1(@types/node@25.0.8)
+        version: 7.3.1(@types/node@25.0.9)
 
 packages:
 
@@ -183,8 +183,8 @@ packages:
   '@esportsplus/cli-passthrough@0.0.12':
     resolution: {integrity: sha512-8gnWk5L7IG5Fl6mffDYpnkK1xJHUj/PpBuMhqrb/6wadb1UKSWk/seN2uOdITCfK/UlhmtdQqGljg3dA/bGT8w==}
 
-  '@esportsplus/typescript@0.28.4':
-    resolution: {integrity: sha512-9trn+0Lixf+3dpJFJCVuKgwJxQLdMugs5UHLE1GD94GFTwtuw+cmh5XYlOaldje3EdKk/bnQStUn/+VKda6+tQ==}
+  '@esportsplus/typescript@0.29.0':
+    resolution: {integrity: sha512-Jj3iCWd9A/VGxbOelkq2F2nNWeGeof5dcscSKTJeSjC5lVsDpbL0rAypPvDjZOry2Wy0InBuqcT5R6v6/xV16w==}
     hasBin: true
 
   '@esportsplus/utilities@0.27.2':
@@ -315,8 +315,8 @@ packages:
   '@types/estree@1.0.8':
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
 
-  '@types/node@25.0.8':
-    resolution: {integrity: sha512-powIePYMmC3ibL0UJ2i2s0WIbq6cg6UyVFQxSCpaPxxzAaziRfimGivjdF943sSGV6RADVbk0Nvlm5P/FB44Zg==}
+  '@types/node@25.0.9':
+    resolution: {integrity: sha512-/rpCXHlCWeqClNBwUhDcusJxXYDjZTyE8v5oTO7WbL8eij2nKhUeU89/6xgjU7N4/Vh3He0BtyhJdQbDyhiXAw==}
 
   anymatch@3.1.3:
     resolution: {integrity: sha512-KMReFUr0B4t+D+OBkjR3KYqvocp2XaSzO55UcB6mgQMd3KbcE+mWTyvVV7D/zsdEbNnV6acZUutkiHQXvTr1Rw==}
@@ -628,11 +628,11 @@ snapshots:
 
   '@esportsplus/cli-passthrough@0.0.12': {}
 
-  '@esportsplus/typescript@0.28.4':
+  '@esportsplus/typescript@0.29.0':
     dependencies:
       '@esportsplus/cli-passthrough': 0.0.12
       '@esportsplus/utilities': 0.27.2
-      '@types/node': 25.0.8
+      '@types/node': 25.0.9
       tsc-alias: 1.8.16
       typescript: 5.9.3
 
@@ -718,7 +718,7 @@ snapshots:
 
   '@types/estree@1.0.8': {}
 
-  '@types/node@25.0.8':
+  '@types/node@25.0.9':
     dependencies:
       undici-types: 7.16.0
 
@@ -938,7 +938,7 @@ snapshots:
 
   undici-types@7.16.0: {}
 
-  vite@7.3.1(@types/node@25.0.8):
+  vite@7.3.1(@types/node@25.0.9):
     dependencies:
       esbuild: 0.27.2
       fdir: 6.5.0(picomatch@4.0.3)
@@ -947,5 +947,5 @@ snapshots:
       rollup: 4.54.0
       tinyglobby: 0.2.15
     optionalDependencies:
-      '@types/node': 25.0.8
+      '@types/node': 25.0.9
       fsevents: 2.3.3
