@@ -55,6 +55,21 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.Sourc
         unwrapped = unwrapped.expression;
     }
 
+    if (ts.isAsExpression(value) || ts.isTypeAssertionExpression(value)) {
+        let type = (value as ts.AsExpression).type;
+
+        if (
+            ts.isArrayTypeNode(type) ||
+            (
+                ts.isTypeReferenceNode(type) &&
+                ts.isIdentifier(type.typeName) &&
+                type.typeName.text === 'Array'
+            )
+        ) {
+            return { isStatic: false, key, type: TYPES.Array, valueText };
+        }
+    }
+
     if (ts.isArrowFunction(unwrapped) || ts.isFunctionExpression(unwrapped)) {
         return { isStatic: false, key, type: TYPES.Computed, valueText };
     }
