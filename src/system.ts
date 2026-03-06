@@ -173,7 +173,7 @@ function link<T>(dep: Signal<T> | Computed<T>, sub: Computed<T>) {
     }
 }
 
-function notify<T>(computed: Computed<T>, newState = STATE_DIRTY) {
+function notify<T>(computed: Computed<T>, newState: number) {
     let state = computed.state;
 
     if ((state & STATE_NOTIFY_MASK) >= newState) {
@@ -298,6 +298,7 @@ function stabilize() {
     observer = o;
 
     if (stabilizer === STABILIZER_RESCHEDULE) {
+        stabilizer = STABILIZER_SCHEDULED;
         microtask(stabilize);
     }
     else {
@@ -474,7 +475,7 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
 
                     for (let i = 0; i <= heap_n; i++) {
                         for (let computed = heap[i]; computed !== undefined; computed = computed.nextHeap) {
-                            notify(computed);
+                            notify(computed, STATE_DIRTY);
                         }
                     }
                 }
@@ -535,12 +536,13 @@ const write = <T>(signal: Signal<T>, value: T) => {
         return;
     }
 
-    notified = false;
     signal.value = value;
 
     if (signal.subs === null) {
         return;
     }
+
+    notified = false;
 
     for (let link: Link | null = signal.subs; link; link = link.nextSub) {
         insertIntoHeap(link.sub);

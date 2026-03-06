@@ -6,7 +6,8 @@
     "devDependencies": {
         "@esportsplus/typescript": "^0.29.0",
         "@types/node": "^25.0.9",
-        "vite": "^7.3.1"
+        "vite": "^7.3.1",
+        "vitest": "^4.0.18"
     },
     "exports": {
         ".": {
