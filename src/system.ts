@@ -2,13 +2,15 @@ import {
     COMPUTED,
     SIGNAL,
     STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
-    STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_NOTIFY_MASK, STATE_RECOMPUTING
+    STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_NOTIFY_MASK, STATE_RECOMPUTING,
+    STATUS_ERROR, STATUS_PENDING, STATUS_SETTLED
 } from './constants';
 import { Computed, Link, Signal } from './types';
-import { isObject } from '@esportsplus/utilities';
+import { isObject, isPromise } from '@esportsplus/utilities';
 
 
 let depth = 0,
+    foundPending = false,
     heap: (Computed<unknown> | undefined)[] = new Array(64),
     heap_i = 0,
     heap_n = 0,
@@ -17,6 +19,7 @@ let depth = 0,
     microtask = queueMicrotask,
     notified = false,
     observer: Computed<unknown> | null = null,
+    pendingCheckActive = false,
     scope: Computed<unknown> | null = null,
     stabilizer = STABILIZER_IDLE,
     version = 0;
@@ -39,6 +42,55 @@ function cleanup<T>(computed: Computed<T>): void {
     }
 
     computed.cleanup = null;
+}
+
+function consumeAsyncIterable<T>(node: Computed<T>, iterable: AsyncIterable<T>) {
+    let id = node.version;
+
+    node.status = STATUS_PENDING;
+
+    (async () => {
+        try {
+            let first = true;
+
+            for await (let value of iterable) {
+                if (id !== node.version) {
+                    return;
+                }
+
+                if (first) {
+                    first = false;
+                    node.error = undefined;
+                    node.status = STATUS_SETTLED;
+                }
+
+                if (value !== node.value) {
+                    node.value = value;
+
+                    for (let c = node.subs; c; c = c.nextSub) {
+                        let s = c.sub,
+                            state = s.state;
+
+                        if (state & STATE_CHECK) {
+                            s.state = state | STATE_DIRTY;
+                        }
+
+                        insertIntoHeap(s);
+                    }
+
+                    schedule();
+                }
+            }
+        }
+        catch (reason) {
+            if (id !== node.version) {
+                return;
+            }
+
+            node.error = reason;
+            node.status = STATUS_ERROR;
+        }
+    })();
 }
 
 function deleteFromHeap<T>(computed: Computed<T>) {
@@ -105,6 +157,10 @@ function insertIntoHeap<T>(computed: Computed<T>) {
             heap.length = Math.max(height + 1, Math.ceil(heap.length * 2));
         }
     }
+}
+
+function isAsyncIterable(value: unknown): value is AsyncIterable<unknown> {
+    return isObject(value) && Symbol.asyncIterator in (value as Record<symbol, unknown>);
 }
 
 // https://github.com/stackblitz/alien-signals/blob/v2.0.3/src/system.ts#L52
@@ -207,6 +263,7 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
     observer = computed;
     computed.depsTail = null;
     computed.state = STATE_RECOMPUTING;
+    computed.version++;
 
     depth++;
     version++;
@@ -239,7 +296,21 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
         }
     }
 
-    if (ok && value !== computed.value) {
+    if (!ok) {
+        return;
+    }
+
+    if (isPromise(value)) {
+        resolveAsync(computed, value as Promise<T>);
+        return;
+    }
+
+    if (isAsyncIterable(value)) {
+        consumeAsyncIterable(computed, value as AsyncIterable<T>);
+        return;
+    }
+
+    if (value !== computed.value) {
         computed.value = value as T;
 
         for (let c = computed.subs; c; c = c.nextSub) {
@@ -255,6 +326,48 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
 
         schedule();
     }
+}
+
+function resolveAsync<T>(node: Computed<T>, promise: Promise<T>) {
+    let id = node.version;
+
+    node.status = STATUS_PENDING;
+
+    promise.then(
+        (value) => {
+            if (id !== node.version) {
+                return;
+            }
+
+            node.error = undefined;
+            node.status = STATUS_SETTLED;
+
+            if (value !== node.value) {
+                node.value = value;
+
+                for (let c = node.subs; c; c = c.nextSub) {
+                    let s = c.sub,
+                        state = s.state;
+
+                    if (state & STATE_CHECK) {
+                        s.state = state | STATE_DIRTY;
+                    }
+
+                    insertIntoHeap(s);
+                }
+
+                schedule();
+            }
+        },
+        (reason) => {
+            if (id !== node.version) {
+                return;
+            }
+
+            node.error = reason;
+            node.status = STATUS_ERROR;
+        }
+    );
 }
 
 function schedule() {
@@ -364,15 +477,18 @@ const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
             cleanup: null,
             deps: null,
             depsTail: null,
+            error: undefined,
             fn: fn,
             height: 0,
             nextHeap: undefined,
             prevHeap: null as any,
             state: STATE_NONE,
+            status: STATUS_SETTLED,
             subs: null,
             subsTail: null,
             type: COMPUTED,
             value: undefined as T,
+            version: 0,
         };
 
     self.prevHeap = self;
@@ -431,6 +547,23 @@ const isComputed = (value: unknown): value is Computed<unknown> => {
     return isObject(value) && value.type === COMPUTED;
 };
 
+const isPending = (fn: () => void): boolean => {
+    let prev = pendingCheckActive,
+        prevFound = foundPending;
+
+    foundPending = false;
+    pendingCheckActive = true;
+
+    fn();
+
+    let result = foundPending;
+
+    foundPending = prevFound;
+    pendingCheckActive = prev;
+
+    return result;
+};
+
 const isSignal = (value: unknown): value is Signal<unknown> => {
     return isObject(value) && value.type === SIGNAL;
 };
@@ -458,6 +591,10 @@ const onCleanup = (fn: VoidFunction): typeof fn => {
 };
 
 const read = <T>(node: Signal<T> | Computed<T>): T => {
+    if (pendingCheckActive && node.type === COMPUTED && node.status === STATUS_PENDING) {
+        foundPending = true;
+    }
+
     if (observer) {
         link(node, observer);
 
@@ -485,6 +622,26 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
     }
 
     return node.value;
+};
+
+const readError = <T>(node: Signal<T> | Computed<T>): unknown => {
+    read(node);
+
+    if (node.type === COMPUTED) {
+        return node.error;
+    }
+
+    return undefined;
+};
+
+const readStatus = <T>(node: Signal<T> | Computed<T>): typeof STATUS_ERROR | typeof STATUS_PENDING | typeof STATUS_SETTLED => {
+    read(node);
+
+    if (node.type === COMPUTED) {
+        return node.status;
+    }
+
+    return STATUS_SETTLED;
 };
 
 const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
@@ -554,9 +711,9 @@ export {
     computed,
     dispose,
     effect,
-    isComputed, isSignal,
+    isComputed, isPending, isSignal,
     onCleanup,
-    read, root,
+    read, readError, readStatus, root,
     signal,
     write
 };

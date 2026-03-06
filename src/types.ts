@@ -1,5 +1,5 @@
 import { ts } from '@esportsplus/typescript';
-import { COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
+import { COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING, STATUS_ERROR, STATUS_PENDING, STATUS_SETTLED } from './constants';
 import { ReactiveArray } from './reactive';
 
 
@@ -7,6 +7,7 @@ interface Computed<T> {
     cleanup: VoidFunction | VoidFunction[] | null;
     deps: Link | null;
     depsTail: Link | null;
+    error: unknown;
     fn: (onCleanup: (fn: VoidFunction) => typeof fn) => T;
     height: number;
     nextHeap: Computed<unknown> | undefined;
@@ -17,10 +18,15 @@ interface Computed<T> {
         typeof STATE_IN_HEAP |
         typeof STATE_NONE |
         typeof STATE_RECOMPUTING;
+    status:
+        typeof STATUS_ERROR |
+        typeof STATUS_PENDING |
+        typeof STATUS_SETTLED;
     subs: Link | null;
     subsTail: Link | null;
     type: typeof COMPUTED;
     value: T;
+    version: number;
 }
 
 interface Link {
@@ -36,15 +42,17 @@ interface Link {
 // Instead we will use this as a shim.
 declare const READONLY: unique symbol;
 
-type Reactive<T> = T extends (...args: unknown[]) => Promise<infer R>
+type Reactive<T> = T extends (...args: unknown[]) => AsyncIterable<infer R>
     ? (R | undefined) & { readonly [READONLY]: true }
-    : T extends (...args: any[]) => infer R
-        ? R & { readonly [READONLY]: true }
-        : T extends (infer U)[]
-            ? U[] & Pick<ReactiveArray<U>, 'clear' | 'dispose' | 'on' | 'once'>
-            : T extends Record<PropertyKey, unknown>
-                ? { [K in keyof T]: T[K] extends (infer U)[] ? Reactive<U[]> : T[K]; } & { dispose: VoidFunction }
-                : T;
+    : T extends (...args: unknown[]) => Promise<infer R>
+        ? (R | undefined) & { readonly [READONLY]: true }
+        : T extends (...args: any[]) => infer R
+            ? R & { readonly [READONLY]: true }
+            : T extends (infer U)[]
+                ? U[] & Pick<ReactiveArray<U>, 'clear' | 'dispose' | 'on' | 'once'>
+                : T extends Record<PropertyKey, unknown>
+                    ? { [K in keyof T]: T[K] extends (infer U)[] ? Reactive<U[]> : T[K]; } & { dispose: VoidFunction }
+                    : T;
 
 type Signal<T> = {
     subs: Link | null;

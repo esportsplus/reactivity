@@ -1,6 +1,6 @@
-import { defineProperty, isArray, isPromise } from '@esportsplus/utilities';
-import { computed, dispose, effect, read, root, signal, write } from '~/system';
-import { Computed, Signal } from '~/types';
+import { defineProperty, isArray } from '@esportsplus/utilities';
+import { computed, dispose, read, root, signal, write } from '~/system';
+import { Computed } from '~/types';
 import { COMPUTED, REACTIVE_ARRAY, REACTIVE_OBJECT, SIGNAL } from '~/constants';
 import { ReactiveArray } from './array';
 
@@ -66,31 +66,9 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
 
     protected [COMPUTED]<T extends Computed<ReturnType<T>>['fn']>(value: T) {
         return root(() => {
-            let node: Computed<ReturnType<T>> | Signal<ReturnType<T> | undefined> = computed(value);
+            let node = computed(value);
 
-            if (isPromise(node.value)) {
-                let factory = node,
-                    version = 0;
-
-                node = signal<ReturnType<T> | undefined>(undefined);
-
-                (this.disposers ??= []).push(
-                    effect(() => {
-                        let id = ++version;
-
-                        (read(factory) as Promise<ReturnType<T>>).then((v) => {
-                            if (id !== version) {
-                                return;
-                            }
-
-                            write(node as Signal<typeof v>, v);
-                        });
-                    })
-                )
-            }
-            else {
-                (this.disposers ??= []).push(() => dispose(node as Computed<ReturnType<T>>));
-            }
+            (this.disposers ??= []).push(() => dispose(node));
 
             return node;
         });
