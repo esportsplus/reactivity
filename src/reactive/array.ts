@@ -69,11 +69,11 @@ class ReactiveArray<T> extends Array<T> {
     }
 
     set $length(value: number) {
-        if (value > super.length) {
+        if (value > this.length) {
             throw Error(`@esportsplus/reactivity: cannot set length to a value larger than the current length, use splice instead.`);
         }
 
-        this.splice(value, super.length);
+        this.splice(value, this.length);
     }
 
 
@@ -86,7 +86,7 @@ class ReactiveArray<T> extends Array<T> {
 
         this[i] = value;
 
-        if (i >= super.length) {
+        if (i >= this.length) {
             write(this._length, i + 1);
         }
 
@@ -121,7 +121,7 @@ class ReactiveArray<T> extends Array<T> {
         }
 
         if (added.length) {
-            write(this._length, super.length);
+            write(this._length, this.length);
             this.dispatch('concat', { items: added });
         }
 
@@ -135,6 +135,8 @@ class ReactiveArray<T> extends Array<T> {
             return;
         }
 
+        let dirty = false;
+
         for (let i = 0, n = listeners.length; i < n; i++) {
             let listener = listeners[i];
 
@@ -146,16 +148,20 @@ class ReactiveArray<T> extends Array<T> {
                 listener(value);
 
                 if (listener.once !== undefined) {
+                    dirty = true;
                     listeners[i] = null;
                 }
             }
             catch {
+                dirty = true;
                 listeners[i] = null;
             }
         }
 
-        while (listeners.length && listeners[listeners.length - 1] === null) {
-            listeners.pop();
+        if (dirty) {
+            while (listeners.length && listeners[listeners.length - 1] === null) {
+                listeners.pop();
+            }
         }
     }
 
@@ -205,7 +211,7 @@ class ReactiveArray<T> extends Array<T> {
 
         if (item !== undefined) {
             dispose(item);
-            write(this._length, super.length);
+            write(this._length, this.length);
 
             this.dispatch('pop', { item });
         }
@@ -215,7 +221,7 @@ class ReactiveArray<T> extends Array<T> {
 
     push(...items: T[]) {
         if (!items.length) {
-            return super.length;
+            return this.length;
         }
 
         let length = super.push(...items);
@@ -238,7 +244,7 @@ class ReactiveArray<T> extends Array<T> {
 
         if (item !== undefined) {
             dispose(item);
-            write(this._length, super.length);
+            write(this._length, this.length);
 
             this.dispatch('shift', { item });
         }
@@ -247,19 +253,19 @@ class ReactiveArray<T> extends Array<T> {
     }
 
     sort(fn?: (a: T, b: T) => number) {
-        let before = new Array(this.length) as T[];
+        let n = this.length,
+            before = new Array(n) as T[];
 
-        for (let i = 0, n = before.length; i < n; i++) {
+        for (let i = 0; i < n; i++) {
             before[i] = this[i];
         }
 
         super.sort(fn);
 
         let buckets = new Map<any, number[]>(),
-            cursors = new Map<any, number>(),
-            order = new Array(this.length);
+            order = new Array(n);
 
-        for (let i = 0, n = before.length; i < n; i++) {
+        for (let i = 0; i < n; i++) {
             let value = before[i],
                 list = buckets.get(value);
 
@@ -271,19 +277,14 @@ class ReactiveArray<T> extends Array<T> {
             }
         }
 
-        for (let i = 0, n = this.length; i < n; i++) {
-            let value = this[i],
-                list = buckets.get(value);
+        for (let i = 0; i < n; i++) {
+            let list = buckets.get(this[i])!;
 
-            if (!list) {
-                order[i] = i;
-                continue;
+            order[i] = list.length === 1 ? list[0] : list[list.length - 1];
+
+            if (list.length > 1) {
+                list.pop();
             }
-
-            let cursor = cursors.get(value) || 0;
-
-            order[i] = list[cursor];
-            cursors.set(value, cursor + 1);
         }
 
         this.dispatch('sort', { order });
@@ -295,7 +296,7 @@ class ReactiveArray<T> extends Array<T> {
         let removed = super.splice(start, deleteCount, ...items);
 
         if (items.length > 0 || removed.length > 0) {
-            write(this._length, super.length);
+            write(this._length, this.length);
 
             for (let i = 0, n = removed.length; i < n; i++) {
                 dispose(removed[i]);

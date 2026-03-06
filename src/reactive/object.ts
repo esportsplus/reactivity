@@ -14,8 +14,11 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
             return;
         }
 
-        for (let key in data) {
-            let value = data[key as keyof T],
+        let keys = Object.keys(data);
+
+        for (let i = 0, n = keys.length; i < n; i++) {
+            let key = keys[i],
+                value = data[key as keyof T],
                 type = typeof value;
 
             if (type === 'function') {
