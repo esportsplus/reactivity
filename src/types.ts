@@ -1,5 +1,5 @@
 import { ts } from '@esportsplus/typescript';
-import { COMPUTED, SIGNAL, STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_RECOMPUTING } from './constants';
+import { SIGNAL } from './constants';
 import { ReactiveArray } from './reactive';
 
 
@@ -11,15 +11,9 @@ interface Computed<T> {
     height: number;
     nextHeap: Computed<unknown> | undefined;
     prevHeap: Computed<unknown>;
-    state:
-        typeof STATE_CHECK |
-        typeof STATE_DIRTY |
-        typeof STATE_IN_HEAP |
-        typeof STATE_NONE |
-        typeof STATE_RECOMPUTING;
+    state: number;
     subs: Link | null;
     subsTail: Link | null;
-    type: typeof COMPUTED;
     value: T;
 }
 

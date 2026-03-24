@@ -1,8 +1,7 @@
 import {
-    COMPUTED,
     SIGNAL,
     STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
-    STATE_CHECK, STATE_DIRTY, STATE_IN_HEAP, STATE_NONE, STATE_NOTIFY_MASK, STATE_RECOMPUTING
+    STATE_CHECK, STATE_COMPUTED, STATE_DIRTY, STATE_IN_HEAP, STATE_NOTIFY_MASK, STATE_RECOMPUTING
 } from './constants';
 import { Computed, Link, Signal } from './types';
 import { isObject } from '@esportsplus/utilities';
@@ -206,7 +205,7 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
 
     observer = computed;
     computed.depsTail = null;
-    computed.state = STATE_RECOMPUTING;
+    computed.state = STATE_COMPUTED | STATE_RECOMPUTING;
 
     depth++;
     version++;
@@ -220,7 +219,7 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
 
     depth--;
     observer = o;
-    computed.state = STATE_NONE;
+    computed.state = STATE_COMPUTED;
 
     let depsTail = computed.depsTail as Link | null,
         remove = depsTail ? depsTail.nextDep : computed.deps;
@@ -323,8 +322,8 @@ function unlink(link: Link): Link | null {
     if (prevSub) {
         prevSub.nextSub = nextSub;
     }
-    else if ((dep.subs = nextSub) === null && dep.type === COMPUTED) {
-        dispose(dep);
+    else if ((dep.subs = nextSub) === null && (dep as Computed<unknown>).state & STATE_COMPUTED) {
+        dispose(dep as Computed<unknown>);
     }
 
     // Release link back to pool
@@ -342,8 +341,8 @@ function update<T>(computed: Computed<T>): void {
         for (let link = computed.deps; link; link = link.nextDep) {
             let dep = link.dep;
 
-            if (dep.type === COMPUTED) {
-                update(dep);
+            if ((dep as Computed<unknown>).state & STATE_COMPUTED) {
+                update(dep as Computed<unknown>);
 
                 if (computed.state & STATE_DIRTY) {
                     break;
@@ -356,7 +355,7 @@ function update<T>(computed: Computed<T>): void {
         recompute(computed, true);
     }
 
-    computed.state = STATE_NONE;
+    computed.state = STATE_COMPUTED;
 }
 
 
@@ -369,10 +368,9 @@ const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
             height: 0,
             nextHeap: undefined,
             prevHeap: null as any,
-            state: STATE_NONE,
+            state: STATE_COMPUTED,
             subs: null,
             subsTail: null,
-            type: COMPUTED,
             value: undefined as T,
         };
 
@@ -429,7 +427,7 @@ const effect = <T>(fn: Computed<T>['fn']) => {
 };
 
 const isComputed = (value: unknown): value is Computed<unknown> => {
-    return isObject(value) && value.type === COMPUTED;
+    return isObject(value) && !!((value as unknown as Computed<unknown>).state & STATE_COMPUTED);
 };
 
 const isSignal = (value: unknown): value is Signal<unknown> => {
@@ -462,14 +460,14 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
     if (observer) {
         link(node, observer);
 
-        if (node.type === COMPUTED) {
-            let height = node.height;
+        if ((node as Computed<unknown>).state & STATE_COMPUTED) {
+            let height = (node as Computed<T>).height;
 
             if (height >= observer.height) {
                 observer.height = height + 1;
             }
 
-            if (height >= heap_i || node.state & STATE_NOTIFY_MASK) {
+            if (height >= heap_i || (node as Computed<T>).state & STATE_NOTIFY_MASK) {
                 if (!notified) {
                     notified = true;
 
@@ -480,7 +478,7 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
                     }
                 }
 
-                update(node);
+                update(node as Computed<T>);
             }
         }
     }
@@ -501,7 +499,7 @@ const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
     root.disposables = 0;
 
     if (tracking) {
-        scope = self = { cleanup: null } as Computed<unknown>;
+        scope = self = { cleanup: null, state: STATE_COMPUTED } as Computed<unknown>;
         value = (fn as (dispose: VoidFunction) => T)(c = () => dispose(self!));
     }
     else {

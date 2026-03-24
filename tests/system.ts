@@ -575,6 +575,25 @@ describe('isComputed', () => {
         expect(isComputed(1)).toBe(false);
         expect(isComputed(null)).toBe(false);
     });
+
+    it('returns false for objects with state field but no STATE_COMPUTED bit', () => {
+        expect(isComputed({ state: 0 })).toBe(false);
+        expect(isComputed({ state: 1 })).toBe(false);
+    });
+});
+
+describe('computed object size', () => {
+    it('does not have a type field', () => {
+        let c = computed(() => 42);
+
+        expect('type' in c).toBe(false);
+    });
+
+    it('has fewer own properties than 14 (old size)', () => {
+        let c = computed(() => 42);
+
+        expect(Object.keys(c).length).toBeLessThan(14);
+    });
 });
 
 
