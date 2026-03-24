@@ -981,7 +981,7 @@ describe('edge cases', () => {
             }
         }));
 
-        // Dispose to return links to pool (capped at 1000)
+        // Dispose to return links to pool
         stops[0]();
         stops.length = 0;
 

@@ -11,8 +11,7 @@ let depth = 0,
     heap: (Computed<unknown> | undefined)[] = new Array(64),
     heap_i = 0,
     heap_n = 0,
-    linkPool: Link[] = [],
-    linkPoolMax = 1000,
+    linkPoolHead: Link | null = null,
     microtask = queueMicrotask,
     notified = false,
     observer: Computed<unknown> | null = null,
@@ -137,11 +136,12 @@ function link<T>(dep: Signal<T> | Computed<T>, sub: Computed<T>) {
         return;
     }
 
-    let pooled = linkPool.pop(),
+    let pooled = linkPoolHead,
         newLink =
             sub.depsTail =
                 dep.subsTail = pooled
-                    ? (pooled.dep = dep,
+                    ? (linkPoolHead = pooled.nextDep,
+                       pooled.dep = dep,
                        pooled.sub = sub,
                        pooled.nextDep = nextDep,
                        pooled.prevSub = prevSub,
@@ -326,12 +326,10 @@ function unlink(link: Link): Link | null {
         dispose(dep as Computed<unknown>);
     }
 
-    // Release link back to pool
-    if (linkPool.length < linkPoolMax) {
-        link.dep = link.sub = null as any;
-        link.nextDep = link.nextSub = link.prevSub = null;
-        linkPool.push(link);
-    }
+    link.dep = link.sub = null as any;
+    link.nextSub = link.prevSub = null;
+    link.nextDep = linkPoolHead;
+    linkPoolHead = link;
 
     return nextDep;
 }
