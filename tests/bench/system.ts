@@ -1,5 +1,5 @@
 import { bench, describe } from 'vitest';
-import { computed, dispose, effect, read, root, signal, write } from '~/system';
+import { computed, dispose, effect, onCleanup, read, root, signal, write } from '~/system';
 
 
 describe('signal', () => {
@@ -225,6 +225,93 @@ describe('memory', () => {
             computed(() => read(s));
 
             dispose();
+        });
+    });
+});
+
+
+describe('effect stress', () => {
+    bench('create + dispose 1000 effects (pool recycling)', () => {
+        for (let i = 0; i < 1000; i++) {
+            let stop = effect(() => {});
+
+            stop();
+        }
+    });
+});
+
+
+describe('deep propagation', () => {
+    bench('deep chain (50 computeds)', () => {
+        let s = signal(0),
+            chain: ReturnType<typeof computed>[] = [],
+            i = 0;
+
+        chain[0] = computed(() => read(s) + 1);
+
+        for (let j = 1; j < 50; j++) {
+            let prev = chain[j - 1];
+
+            chain[j] = computed(() => read(prev) + 1);
+        }
+
+        effect(() => {
+            read(chain[49]);
+        });
+
+        write(s, ++i);
+    });
+});
+
+
+describe('stabilization', () => {
+    bench('write during stabilization (reschedule path)', () => {
+        let a = signal(0),
+            b = signal(0),
+            i = 0;
+
+        effect(() => {
+            let val = read(a);
+
+            if (val > 0) {
+                write(b, val * 10);
+            }
+        });
+
+        effect(() => {
+            read(b);
+        });
+
+        write(a, ++i);
+    });
+});
+
+
+describe('root', () => {
+    bench('root scope creation + disposal', () => {
+        root((dispose) => {
+            dispose();
+        });
+    });
+});
+
+
+describe('onCleanup', () => {
+    bench('register 1 cleanup', () => {
+        root(() => {
+            effect(() => {
+                onCleanup(() => {});
+            });
+        });
+    });
+
+    bench('register 10 cleanups', () => {
+        root(() => {
+            effect(() => {
+                for (let i = 0; i < 10; i++) {
+                    onCleanup(() => {});
+                }
+            });
         });
     });
 });

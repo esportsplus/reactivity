@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { computed, effect, onCleanup, read, root, signal, write } from '~/system';
+import { SIGNAL } from '~/constants';
 import { ReactiveObject, isReactiveObject } from '~/reactive/object';
 import reactive from '~/reactive/index';
 import { ReactiveArray } from '~/reactive/array';
@@ -106,6 +107,215 @@ describe('ReactiveObject', () => {
             }) as any;
 
             obj.dispose();
+        });
+    });
+
+
+    describe('async computed', () => {
+        it('initial value undefined, resolves to correct value', async () => {
+            let s = signal(42),
+                obj = new ReactiveObject({
+                    data: () => Promise.resolve(read(s))
+                }) as any;
+
+            expect(obj.data).toBeUndefined();
+
+            await new Promise((r) => setTimeout(r, 10));
+
+            expect(obj.data).toBe(42);
+        });
+
+        it('updates when dependency changes — new promise resolves', async () => {
+            let s = signal('hello'),
+                obj = new ReactiveObject({
+                    data: () => Promise.resolve(read(s))
+                }) as any;
+
+            await new Promise((r) => setTimeout(r, 10));
+
+            expect(obj.data).toBe('hello');
+
+            write(s, 'world');
+            await new Promise((r) => setTimeout(r, 10));
+
+            expect(obj.data).toBe('world');
+        });
+
+        it('race condition — rapid changes, only latest promise writes', async () => {
+            let s = signal(1),
+                resolvers: ((v: number) => void)[] = [],
+                obj = new ReactiveObject({
+                    data: () => new Promise<number>((resolve) => {
+                        resolvers.push(resolve);
+                        read(s);
+                    })
+                }) as any;
+
+            expect(obj.data).toBeUndefined();
+
+            // Trigger second computation
+            write(s, 2);
+            await Promise.resolve();
+            await Promise.resolve();
+
+            // Trigger third computation
+            write(s, 3);
+            await Promise.resolve();
+            await Promise.resolve();
+
+            // Resolve first promise (stale — should be ignored)
+            resolvers[0](100);
+            await Promise.resolve();
+
+            expect(obj.data).toBeUndefined();
+
+            // Resolve second promise (stale — should be ignored)
+            resolvers[1](200);
+            await Promise.resolve();
+
+            expect(obj.data).toBeUndefined();
+
+            // Resolve latest promise — should write
+            resolvers[2](300);
+            await Promise.resolve();
+
+            expect(obj.data).toBe(300);
+        });
+
+        it('dispose prevents new computations but in-flight resolves still write', async () => {
+            let s = signal(1),
+                resolver: ((v: number) => void) | null = null,
+                obj = new ReactiveObject({
+                    data: () => new Promise<number>((resolve) => {
+                        resolver = resolve;
+                        read(s);
+                    })
+                }) as any;
+
+            expect(obj.data).toBeUndefined();
+
+            obj.dispose();
+
+            // After dispose, dependency changes don't spawn new effects
+            write(s, 2);
+            await Promise.resolve();
+
+            // Resolve the original in-flight promise
+            resolver!(999);
+            await Promise.resolve();
+
+            // In-flight promise still wrote (version matched)
+            expect(obj.data).toBe(999);
+
+            // But no further computations occur from new dependency changes
+            write(s, 3);
+            await new Promise((r) => setTimeout(r, 10));
+
+            expect(obj.data).toBe(999);
+        });
+    });
+
+
+    describe('null/undefined properties', () => {
+        it('creates reactive signal for null property', async () => {
+            let obj = new ReactiveObject({ key: null }) as any,
+                values: (null | number)[] = [];
+
+            expect(obj.key).toBeNull();
+
+            effect(() => {
+                values.push(obj.key);
+            });
+
+            expect(values).toEqual([null]);
+
+            obj.key = 42;
+            await Promise.resolve();
+
+            expect(values).toEqual([null, 42]);
+        });
+
+        it('creates reactive signal for undefined property', async () => {
+            let obj = new ReactiveObject({ key: undefined }) as any,
+                values: (undefined | string)[] = [];
+
+            expect(obj.key).toBeUndefined();
+
+            effect(() => {
+                values.push(obj.key);
+            });
+
+            expect(values).toEqual([undefined]);
+
+            obj.key = 'hello';
+            await Promise.resolve();
+
+            expect(values).toEqual([undefined, 'hello']);
+        });
+    });
+
+
+    describe('enumeration', () => {
+        it('Object.keys includes all defined property names', () => {
+            let keys = Object.keys(new ReactiveObject({ a: 1, b: 'two', c: null }));
+
+            expect(keys).toContain('a');
+            expect(keys).toContain('b');
+            expect(keys).toContain('c');
+        });
+
+        it('for...in iterates all defined properties', () => {
+            let obj = new ReactiveObject({ x: 10, y: 20, z: 30 }),
+                keys: string[] = [];
+
+            for (let key in obj) {
+                keys.push(key);
+            }
+
+            expect(keys).toContain('x');
+            expect(keys).toContain('y');
+            expect(keys).toContain('z');
+        });
+    });
+
+
+    describe('[SIGNAL] protected method', () => {
+        it('subclass creates reactive field via [SIGNAL]', async () => {
+            class Counter extends ReactiveObject<Record<string, never>> {
+                private _count: ReturnType<typeof signal<number>>;
+
+                constructor(initial: number) {
+                    super(null);
+                    this._count = this[SIGNAL](initial);
+                }
+
+                get count() {
+                    return read(this._count);
+                }
+
+                set count(value: number) {
+                    write(this._count, value);
+                }
+            }
+
+            let counter = new Counter(0),
+                values: number[] = [];
+
+            effect(() => {
+                values.push(counter.count);
+            });
+
+            expect(values).toEqual([0]);
+
+            counter.count = 5;
+            await Promise.resolve();
+
+            expect(values).toEqual([0, 5]);
+
+            counter.count = 10;
+            await Promise.resolve();
+
+            expect(values).toEqual([0, 5, 10]);
         });
     });
 });

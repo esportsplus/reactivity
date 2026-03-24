@@ -149,6 +149,71 @@ describe('ReactiveArray events', () => {
 });
 
 
+describe('ReactiveArray dispose/clear', () => {
+    bench('dispose with 100 items', () => {
+        let items = [];
+
+        for (let i = 0; i < 100; i++) {
+            items.push(i);
+        }
+
+        let arr = new ReactiveArray(...items);
+
+        arr.dispose();
+    });
+
+    bench('clear with 100 items', () => {
+        let items = [];
+
+        for (let i = 0; i < 100; i++) {
+            items.push(i);
+        }
+
+        let arr = new ReactiveArray(...items);
+
+        arr.clear();
+    });
+});
+
+
+describe('ReactiveArray concat/unshift/shift/reverse', () => {
+    bench('concat 100 items', () => {
+        let arr = new ReactiveArray<number>(),
+            items = [];
+
+        for (let i = 0; i < 100; i++) {
+            items.push(i);
+        }
+
+        arr.concat(items);
+    });
+
+    bench('unshift 10 items', () => {
+        let arr = new ReactiveArray(1, 2, 3, 4, 5);
+
+        arr.unshift(10, 20, 30, 40, 50, 60, 70, 80, 90, 100);
+    });
+
+    bench('shift', () => {
+        let arr = new ReactiveArray(1, 2, 3, 4, 5);
+
+        arr.shift();
+    });
+
+    bench('reverse 100 items', () => {
+        let items = [];
+
+        for (let i = 0; i < 100; i++) {
+            items.push(i);
+        }
+
+        let arr = new ReactiveArray(...items);
+
+        arr.reverse();
+    });
+});
+
+
 describe('ReactiveArray reactive length', () => {
     bench('read $length in effect', () => {
         let arr = new ReactiveArray(1, 2, 3);

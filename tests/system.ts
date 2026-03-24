@@ -478,6 +478,33 @@ describe('root', () => {
         expect(outer).toBe(1);
         expect(inner).toBe(1);
     });
+
+    it('tracks disposables counter for unowned computeds', () => {
+        let before = root.disposables;
+
+        root(() => {
+            computed(() => 1);
+            computed(() => 2);
+            computed(() => 3);
+        });
+
+        // root restores disposables to outer value after execution
+        expect(root.disposables).toBe(before);
+
+        // Nested: inner root creates computeds, outer root creates computeds
+        root(() => {
+            computed(() => 10);
+
+            root(() => {
+                computed(() => 20);
+                computed(() => 30);
+            });
+
+            computed(() => 40);
+        });
+
+        expect(root.disposables).toBe(before);
+    });
 });
 
 
@@ -552,6 +579,70 @@ describe('isComputed', () => {
 
 
 describe('edge cases', () => {
+    it('diamond graph dedup — notify state mask prevents redundant recomputation', async () => {
+        let s = signal(1),
+            calls = 0,
+            left = computed(() => read(s) + 1),
+            right = computed(() => read(s) * 2),
+            join = computed(() => {
+                calls++;
+                return read(left) + read(right);
+            });
+
+        effect(() => {
+            read(join);
+        });
+
+        expect(read(join)).toBe(4);
+        calls = 0;
+
+        write(s, 2);
+        await Promise.resolve();
+
+        expect(read(join)).toBe(7);
+        expect(calls).toBe(1);
+    });
+
+    it('dynamic height adjustment — correct ordering after switching deps', async () => {
+        let s = signal(1),
+            toggle = signal(true),
+            a = computed(() => read(s) + 1),
+            b = computed(() => read(a) + 1),
+            c = computed(() => read(b) + 1),
+            order: string[] = [],
+            d = computed(() => {
+                order.push('d');
+
+                if (read(toggle)) {
+                    return read(a);
+                }
+
+                return read(c);
+            });
+
+        effect(() => {
+            read(d);
+        });
+
+        expect(read(d)).toBe(2);
+        order.length = 0;
+
+        // Switch to reading `c` (height 3) instead of `a` (height 1)
+        write(toggle, false);
+        await Promise.resolve();
+
+        expect(read(d)).toBe(4);
+
+        order.length = 0;
+
+        // Write to source — d should recompute after c due to height adjustment
+        write(s, 10);
+        await Promise.resolve();
+
+        expect(read(d)).toBe(13);
+        expect(order).toEqual(['d']);
+    });
+
     it('handles circular computed reads without infinite loop', () => {
         let s = signal(0),
             c1 = computed(() => read(s)),
@@ -651,5 +742,254 @@ describe('edge cases', () => {
         stop();
 
         expect(innerDisposed).toBe(true);
+    });
+
+    it('stabilizer re-schedules when effect writes to signal during stabilization', async () => {
+        let a = signal(0),
+            b = signal(0),
+            bValues: number[] = [];
+
+        effect(() => {
+            let val = read(a);
+
+            if (val > 0) {
+                write(b, val * 100);
+            }
+        });
+
+        effect(() => {
+            bValues.push(read(b));
+        });
+
+        write(a, 3);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(bValues).toEqual([0, 300]);
+    });
+
+    it('stabilizer re-schedules with nested write chain A → B → C', async () => {
+        let a = signal(0),
+            b = signal(0),
+            c = signal(0),
+            cValues: number[] = [];
+
+        effect(() => {
+            let val = read(a);
+
+            if (val > 0) {
+                write(b, val * 2);
+            }
+        });
+
+        effect(() => {
+            let val = read(b);
+
+            if (val > 0) {
+                write(c, val * 3);
+            }
+        });
+
+        effect(() => {
+            cValues.push(read(c));
+        });
+
+        write(a, 5);
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(cValues).toEqual([0, 30]);
+    });
+
+    it('computed that throws on update retains previous value', async () => {
+        let s = signal(0),
+            effectValues: number[] = [],
+            c = computed(() => {
+                let val = read(s);
+
+                if (val === 2) {
+                    throw new Error('boom');
+                }
+
+                return val * 10;
+            });
+
+        effect(() => {
+            effectValues.push(read(c));
+        });
+
+        expect(effectValues).toEqual([0]);
+
+        write(s, 1);
+        await Promise.resolve();
+
+        expect(effectValues).toEqual([0, 10]);
+        expect(read(c)).toBe(10);
+
+        write(s, 2);
+        await Promise.resolve();
+
+        // Value should remain 10 since throw prevented update
+        expect(read(c)).toBe(10);
+        expect(effectValues).toEqual([0, 10]);
+    });
+
+    it('computed alternates between throwing and succeeding', async () => {
+        let s = signal(0),
+            effectValues: number[] = [],
+            c = computed(() => {
+                let val = read(s);
+
+                if (val % 2 !== 0) {
+                    throw new Error('odd');
+                }
+
+                return val;
+            });
+
+        effect(() => {
+            effectValues.push(read(c));
+        });
+
+        expect(effectValues).toEqual([0]);
+
+        write(s, 1);
+        await Promise.resolve();
+
+        // Threw on odd, value stays 0
+        expect(read(c)).toBe(0);
+        expect(effectValues).toEqual([0]);
+
+        write(s, 2);
+        await Promise.resolve();
+
+        // Succeeds on even, value updates
+        expect(read(c)).toBe(2);
+        expect(effectValues).toEqual([0, 2]);
+
+        write(s, 3);
+        await Promise.resolve();
+
+        // Threw on odd again, value stays 2
+        expect(read(c)).toBe(2);
+        expect(effectValues).toEqual([0, 2]);
+
+        write(s, 4);
+        await Promise.resolve();
+
+        // Succeeds again
+        expect(read(c)).toBe(4);
+        expect(effectValues).toEqual([0, 2, 4]);
+    });
+
+    it('heap auto-resizes for computed chain deeper than 64', async () => {
+        let s = signal(0),
+            chain: ReturnType<typeof computed>[] = [computed(() => read(s) + 1)];
+
+        for (let i = 1; i < 80; i++) {
+            let prev = chain[i - 1];
+
+            chain.push(computed(() => read(prev) + 1));
+        }
+
+        let tail = chain[chain.length - 1],
+            result = -1;
+
+        effect(() => {
+            result = read(tail);
+        });
+
+        expect(result).toBe(80);
+
+        write(s, 10);
+        await Promise.resolve();
+
+        expect(result).toBe(90);
+    });
+
+    it('system remains functional under high effect churn', async () => {
+        let s = signal(0),
+            stops: (() => void)[] = [];
+
+        for (let i = 0; i < 200; i++) {
+            stops.push(effect(() => { read(s); }));
+        }
+
+        for (let i = 0, n = stops.length; i < n; i++) {
+            stops[i]();
+        }
+
+        stops.length = 0;
+
+        let result = -1;
+
+        effect(() => {
+            result = read(s);
+        });
+
+        write(s, 42);
+        await Promise.resolve();
+
+        expect(result).toBe(42);
+
+        for (let i = 0; i < 200; i++) {
+            stops.push(effect(() => { read(s); }));
+        }
+
+        for (let i = 0, n = stops.length; i < n; i++) {
+            stops[i]();
+        }
+
+        write(s, 99);
+        await Promise.resolve();
+
+        expect(result).toBe(99);
+    });
+
+    it('link pool handles >1000 dependencies with disposal and reuse', async () => {
+        let signals: ReturnType<typeof signal>[] = [],
+            stops: (() => void)[] = [];
+
+        for (let i = 0; i < 1100; i++) {
+            signals.push(signal(i));
+        }
+
+        // Create effect reading all 1100 signals
+        stops.push(effect(() => {
+            for (let i = 0, n = signals.length; i < n; i++) {
+                read(signals[i]);
+            }
+        }));
+
+        // Dispose to return links to pool (capped at 1000)
+        stops[0]();
+        stops.length = 0;
+
+        // Create new effects reusing pooled links
+        let sum = -1;
+
+        stops.push(effect(() => {
+            let total = 0;
+
+            for (let i = 0; i < 50; i++) {
+                total += read(signals[i]);
+            }
+
+            sum = total;
+        }));
+
+        // sum of 0..49 = 1225
+        expect(sum).toBe(1225);
+
+        write(signals[0], 100);
+        await Promise.resolve();
+
+        // 1225 - 0 + 100 = 1325
+        expect(sum).toBe(1325);
+
+        for (let i = 0, n = stops.length; i < n; i++) {
+            stops[i]();
+        }
     });
 });

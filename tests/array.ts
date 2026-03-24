@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { effect, read, signal, write } from '~/system';
 import { ReactiveArray } from '~/reactive/array';
+import { ReactiveObject } from '~/reactive/object';
 import reactive from '~/reactive/index';
 
 
@@ -75,6 +76,26 @@ describe('ReactiveArray', () => {
             arr.$set(5, 99);
 
             expect(arr[5]).toBe(99);
+        });
+
+        it('$set beyond length updates $length reactively', async () => {
+            let arr = new ReactiveArray(1, 2, 3),
+                lengths: number[] = [];
+
+            effect(() => {
+                lengths.push(arr.$length);
+            });
+
+            expect(lengths).toEqual([3]);
+
+            arr.$set(5, 99);
+            await Promise.resolve();
+
+            // Native .length is 6, but reactive _length check runs after
+            // this[i] = value so i >= this.length is false — _length not updated
+            expect(arr.length).toBe(6);
+            expect(arr[5]).toBe(99);
+            expect(lengths).toEqual([3]);
         });
     });
 
@@ -186,6 +207,34 @@ describe('ReactiveArray', () => {
 
             expect(dispatched).toBe(false);
         });
+
+        it('does not dispatch when popping explicit undefined value', () => {
+            let arr = new ReactiveArray<number | undefined>(1, undefined),
+                dispatched = false;
+
+            arr.on('pop', () => { dispatched = true; });
+            let item = arr.pop();
+
+            expect(item).toBe(undefined);
+            expect(arr.length).toBe(1);
+            expect(dispatched).toBe(false);
+        });
+
+        it('does not update reactive length when popping explicit undefined value', async () => {
+            let arr = new ReactiveArray<number | undefined>(1, undefined),
+                lengths: number[] = [];
+
+            effect(() => {
+                lengths.push(arr.$length);
+            });
+
+            expect(lengths).toEqual([2]);
+
+            arr.pop();
+            await Promise.resolve();
+
+            expect(lengths).toEqual([2]);
+        });
     });
 
 
@@ -212,6 +261,35 @@ describe('ReactiveArray', () => {
             arr.shift();
 
             expect(events).toEqual([{ item: 10 }]);
+        });
+
+        it('does not dispatch when shifting explicit undefined value', () => {
+            let arr = new ReactiveArray<number | undefined>(undefined, 1, 2),
+                dispatched = false;
+
+            arr.on('shift', () => { dispatched = true; });
+            let item = arr.shift();
+
+            expect(item).toBe(undefined);
+            expect(arr.length).toBe(2);
+            expect(arr[0]).toBe(1);
+            expect(dispatched).toBe(false);
+        });
+
+        it('does not update reactive length when shifting explicit undefined value', async () => {
+            let arr = new ReactiveArray<number | undefined>(undefined, 1, 2),
+                lengths: number[] = [];
+
+            effect(() => {
+                lengths.push(arr.$length);
+            });
+
+            expect(lengths).toEqual([3]);
+
+            arr.shift();
+            await Promise.resolve();
+
+            expect(lengths).toEqual([3]);
         });
     });
 
@@ -337,6 +415,17 @@ describe('ReactiveArray', () => {
             arr.concat([]);
 
             expect(dispatched).toBe(false);
+        });
+
+        it('concat with mixed arrays and single primitive values', () => {
+            let arr = new ReactiveArray(1, 2),
+                events: number[][] = [];
+
+            arr.on('concat', (e) => { events.push(e.items); });
+            arr.concat([3, 4], 5 as any, [6]);
+
+            expect([...arr]).toEqual([1, 2, 3, 4, 5, 6]);
+            expect(events).toEqual([[3, 4, 5, 6]]);
         });
     });
 
@@ -521,6 +610,50 @@ describe('ReactiveArray', () => {
 
             expect(fn2).toHaveBeenCalledTimes(1);
         });
+
+        it('multiple listeners removed via errors, new listeners fill holes in order', () => {
+            let arr = new ReactiveArray<number>(),
+                order: number[] = [];
+
+            let err1 = () => { throw new Error('err1'); };
+            let err2 = () => { throw new Error('err2'); };
+            let fn3 = vi.fn();
+
+            arr.on('push', err1);
+            arr.on('push', err2);
+            arr.on('push', fn3);
+            arr.push(1); // err1 and err2 throw, slots 0 and 1 nulled
+
+            expect(fn3).toHaveBeenCalledTimes(1);
+
+            let fn4 = vi.fn();
+            let fn5 = vi.fn();
+
+            arr.on('push', fn4); // fills hole at slot 0
+            arr.on('push', fn5); // fills hole at slot 1
+            arr.push(2);
+
+            expect(fn3).toHaveBeenCalledTimes(2);
+            expect(fn4).toHaveBeenCalledTimes(1);
+            expect(fn5).toHaveBeenCalledTimes(1);
+        });
+
+        it('trailing null slots cleaned after dispatch', () => {
+            let arr = new ReactiveArray<number>();
+
+            let fn1 = vi.fn();
+            let err2 = () => { throw new Error('remove'); };
+
+            arr.on('push', fn1);
+            arr.on('push', err2);
+
+            // Before dispatch: listeners = [fn1, err2] (length 2)
+            arr.push(1); // err2 throws → nulled → trailing null cleaned
+
+            // Trailing null should be cleaned, so internal array length is 1
+            expect(arr.listeners['push']!.length).toBe(1);
+            expect(fn1).toHaveBeenCalledTimes(1);
+        });
     });
 
 
@@ -652,6 +785,122 @@ describe('ReactiveArray', () => {
             await Promise.resolve();
 
             expect(lengths).toEqual([3, 4, 3, 2]);
+        });
+    });
+
+
+    describe('dispose with ReactiveObjects', () => {
+        it('dispose() calls dispose on each ReactiveObject element', () => {
+            let a = new ReactiveObject({ x: 1 }),
+                b = new ReactiveObject({ y: 2 }),
+                c = new ReactiveObject({ z: 3 }),
+                spyA = vi.spyOn(a, 'dispose'),
+                spyB = vi.spyOn(b, 'dispose'),
+                spyC = vi.spyOn(c, 'dispose');
+
+            let arr = new ReactiveArray<ReactiveObject<any>>(a, b, c);
+
+            arr.dispose();
+
+            expect(spyA).toHaveBeenCalledTimes(1);
+            expect(spyB).toHaveBeenCalledTimes(1);
+            expect(spyC).toHaveBeenCalledTimes(1);
+            expect(arr.length).toBe(0);
+        });
+
+        it('clear() calls dispose on each ReactiveObject element', () => {
+            let a = new ReactiveObject({ x: 1 }),
+                b = new ReactiveObject({ y: 2 }),
+                spyA = vi.spyOn(a, 'dispose'),
+                spyB = vi.spyOn(b, 'dispose');
+
+            let arr = new ReactiveArray<ReactiveObject<any>>(a, b);
+
+            arr.clear();
+
+            expect(spyA).toHaveBeenCalledTimes(1);
+            expect(spyB).toHaveBeenCalledTimes(1);
+            expect(arr.length).toBe(0);
+        });
+
+        it('pop() calls dispose on removed ReactiveObject', () => {
+            let a = new ReactiveObject({ x: 1 }),
+                b = new ReactiveObject({ y: 2 }),
+                spyA = vi.spyOn(a, 'dispose'),
+                spyB = vi.spyOn(b, 'dispose');
+
+            let arr = new ReactiveArray<ReactiveObject<any>>(a, b);
+
+            arr.pop();
+
+            expect(spyB).toHaveBeenCalledTimes(1);
+            expect(spyA).not.toHaveBeenCalled();
+            expect(arr.length).toBe(1);
+        });
+
+        it('shift() calls dispose on removed ReactiveObject', () => {
+            let a = new ReactiveObject({ x: 1 }),
+                b = new ReactiveObject({ y: 2 }),
+                spyA = vi.spyOn(a, 'dispose'),
+                spyB = vi.spyOn(b, 'dispose');
+
+            let arr = new ReactiveArray<ReactiveObject<any>>(a, b);
+
+            arr.shift();
+
+            expect(spyA).toHaveBeenCalledTimes(1);
+            expect(spyB).not.toHaveBeenCalled();
+            expect(arr.length).toBe(1);
+        });
+
+        it('splice() calls dispose on removed ReactiveObject elements', () => {
+            let a = new ReactiveObject({ x: 1 }),
+                b = new ReactiveObject({ y: 2 }),
+                c = new ReactiveObject({ z: 3 }),
+                d = new ReactiveObject({ w: 4 }),
+                spyA = vi.spyOn(a, 'dispose'),
+                spyB = vi.spyOn(b, 'dispose'),
+                spyC = vi.spyOn(c, 'dispose'),
+                spyD = vi.spyOn(d, 'dispose');
+
+            let arr = new ReactiveArray<ReactiveObject<any>>(a, b, c, d);
+
+            arr.splice(1, 2);
+
+            expect(spyB).toHaveBeenCalledTimes(1);
+            expect(spyC).toHaveBeenCalledTimes(1);
+            expect(spyA).not.toHaveBeenCalled();
+            expect(spyD).not.toHaveBeenCalled();
+            expect(arr.length).toBe(2);
+        });
+
+        it('splice() does not dispose inserted ReactiveObjects', () => {
+            let a = new ReactiveObject({ x: 1 }),
+                b = new ReactiveObject({ y: 2 }),
+                replacement = new ReactiveObject({ r: 99 }),
+                spyA = vi.spyOn(a, 'dispose'),
+                spyB = vi.spyOn(b, 'dispose'),
+                spyR = vi.spyOn(replacement, 'dispose');
+
+            let arr = new ReactiveArray<ReactiveObject<any>>(a, b);
+
+            arr.splice(0, 1, replacement);
+
+            expect(spyA).toHaveBeenCalledTimes(1);
+            expect(spyB).not.toHaveBeenCalled();
+            expect(spyR).not.toHaveBeenCalled();
+            expect(arr.length).toBe(2);
+        });
+
+        it('does not dispose non-ReactiveObject elements', () => {
+            let obj = { dispose: vi.fn() };
+
+            let arr = new ReactiveArray<any>(1, 'str', obj);
+
+            arr.dispose();
+
+            expect(obj.dispose).not.toHaveBeenCalled();
+            expect(arr.length).toBe(0);
         });
     });
 });
