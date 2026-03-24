@@ -72,28 +72,28 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
             let node: Computed<ReturnType<T>> | Signal<ReturnType<T> | undefined> = computed(value);
 
             if (isPromise(node.value)) {
-                let factory = node,
-                    version = 0;
-
-                node = signal<ReturnType<T> | undefined>(undefined);
+                let factory = node as Computed<ReturnType<T>>,
+                    out = signal<ReturnType<T> | undefined>(undefined),
+                    v = 0;
 
                 (this.disposers ??= []).push(
                     effect(() => {
-                        let id = ++version;
+                        let id = ++v;
 
-                        (read(factory) as Promise<ReturnType<T>>).then((v) => {
-                            if (id !== version) {
+                        (read(factory) as Promise<ReturnType<T>>).then((resolved) => {
+                            if (id !== v) {
                                 return;
                             }
 
-                            write(node as Signal<typeof v>, v);
+                            write(out as Signal<typeof resolved>, resolved);
                         });
                     })
-                )
+                );
+
+                return out;
             }
-            else {
-                (this.disposers ??= []).push(() => dispose(node as Computed<ReturnType<T>>));
-            }
+
+            (this.disposers ??= []).push(() => dispose(node as Computed<ReturnType<T>>));
 
             return node;
         });

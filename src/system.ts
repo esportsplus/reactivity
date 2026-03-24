@@ -357,6 +357,24 @@ function update<T>(computed: Computed<T>): void {
 }
 
 
+const asyncComputed = <T>(fn: Computed<Promise<T>>['fn']): Signal<T | undefined> => {
+    let factory = computed(fn),
+        node = signal<T | undefined>(undefined),
+        v = 0;
+
+    onCleanup(effect(() => {
+        let id = ++v;
+
+        (read(factory) as Promise<T>).then((value) => {
+            if (id === v) {
+                write(node, value);
+            }
+        }, () => {});
+    }));
+
+    return node;
+};
+
 const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
     let self: Computed<T> = {
             cleanup: null,
@@ -549,7 +567,7 @@ const write = <T>(signal: Signal<T>, value: T) => {
 
 
 export {
-    computed,
+    asyncComputed, computed,
     dispose,
     effect,
     isComputed, isSignal,
