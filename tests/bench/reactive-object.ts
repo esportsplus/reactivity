@@ -1,6 +1,4 @@
 import { bench, describe } from 'vitest';
-import { computed, dispose, effect, read, root, signal, write } from '~/system';
-import { ReactiveArray } from '~/reactive/array';
 import { ReactiveObject } from '~/reactive/object';
 
 
@@ -14,6 +12,13 @@ describe('ReactiveObject creation', () => {
             a: 1,
             b: 2,
             sum: () => 0
+        });
+    });
+
+    bench('create with async computed property', () => {
+        new ReactiveObject({
+            value: 1,
+            async: () => Promise.resolve(0)
         });
     });
 });

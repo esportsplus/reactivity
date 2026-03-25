@@ -1,5 +1,5 @@
 import { bench, describe } from 'vitest';
-import { computed, dispose, effect, onCleanup, read, root, signal, write } from '~/system';
+import { asyncComputed, computed, dispose, effect, onCleanup, read, root, signal, write } from '~/system';
 
 
 describe('signal', () => {
@@ -72,6 +72,19 @@ describe('computed', () => {
             c = computed(() => read(a) + read(b));
 
         read(c);
+    });
+});
+
+
+describe('asyncComputed', () => {
+    bench('create asyncComputed', () => {
+        asyncComputed(() => Promise.resolve(0));
+    });
+
+    bench('create asyncComputed from signal', () => {
+        let s = signal(0);
+
+        asyncComputed(() => Promise.resolve(read(s)));
     });
 });
 
@@ -261,6 +274,26 @@ describe('deep propagation', () => {
 
         write(s, ++i);
     });
+
+    bench('deep chain (100 computeds)', () => {
+        let s = signal(0),
+            chain: ReturnType<typeof computed>[] = [],
+            i = 0;
+
+        chain[0] = computed(() => read(s) + 1);
+
+        for (let j = 1; j < 100; j++) {
+            let prev = chain[j - 1];
+
+            chain[j] = computed(() => read(prev) + 1);
+        }
+
+        effect(() => {
+            read(chain[99]);
+        });
+
+        write(s, ++i);
+    });
 });
 
 
@@ -280,6 +313,27 @@ describe('stabilization', () => {
 
         effect(() => {
             read(b);
+        });
+
+        write(a, ++i);
+    });
+
+    bench('read computed during stabilization', () => {
+        let a = signal(0),
+            b = signal(0),
+            c = computed(() => read(b) * 2),
+            i = 0;
+
+        effect(() => {
+            let val = read(a);
+
+            if (val > 0) {
+                write(b, val * 10);
+            }
+        });
+
+        effect(() => {
+            read(c);
         });
 
         write(a, ++i);

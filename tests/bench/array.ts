@@ -102,6 +102,18 @@ describe('ReactiveArray sort', () => {
 
         arr.sort((a, b) => a - b);
     });
+
+    bench('sort 1000 items', () => {
+        let items = [];
+
+        for (let i = 1000; i > 0; i--) {
+            items.push(i);
+        }
+
+        let arr = new ReactiveArray(...items);
+
+        arr.sort((a, b) => a - b);
+    });
 });
 
 
