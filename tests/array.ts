@@ -321,6 +321,26 @@ describe('ReactiveArray', () => {
 
             expect(events).toEqual([[1, 2]]);
         });
+
+        it('no-op for empty unshift', async () => {
+            let arr = new ReactiveArray(1, 2),
+                dispatched = false,
+                lengths: number[] = [];
+
+            arr.on('unshift', () => { dispatched = true; });
+
+            effect(() => { lengths.push(arr.$length); });
+
+            expect(lengths).toEqual([2]);
+
+            let result = arr.unshift();
+
+            await Promise.resolve();
+
+            expect(result).toBe(2);
+            expect(dispatched).toBe(false);
+            expect(lengths).toEqual([2]);
+        });
     });
 
 

@@ -309,6 +309,10 @@ class ReactiveArray<T> extends Array<T> {
     }
 
     unshift(...items: T[]) {
+        if (!items.length) {
+            return this.length;
+        }
+
         let length = super.unshift(...items);
 
         write(this._length, length);
