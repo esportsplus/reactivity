@@ -282,8 +282,6 @@ Symbol constants for type identification:
 
 | Method | Description |
 |--------|-------------|
-| `$length` | Reactive length getter/setter. Reads track dependencies; setting truncates the array |
-| `$set(index, value)` | Sets an item at index reactively |
 | `clear()` | Removes all items, disposes nested reactive objects, and dispatches `clear` event |
 | `concat(...items)` | Appends items **in place** (mutating, returns `this`). Unlike `Array.prototype.concat` |
 | `dispatch(event, value?)` | Manually dispatches an event to registered listeners |
