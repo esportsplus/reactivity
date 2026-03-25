@@ -135,7 +135,7 @@ The library requires a build-time transformer to convert `reactive()` calls into
 ```typescript
 // vite.config.ts
 import { defineConfig } from 'vite';
-import reactivity from '@esportsplus/reactivity/plugins/vite';
+import reactivity from '@esportsplus/reactivity/compiler/vite';
 
 export default defineConfig({
     plugins: [
@@ -153,7 +153,7 @@ For direct TypeScript compilation using `ttsc` or `ts-patch`:
 {
     "compilerOptions": {
         "plugins": [
-            { "transform": "@esportsplus/reactivity/plugins/tsc" }
+            { "transform": "@esportsplus/reactivity/compiler/tsc" }
         ]
     }
 }
@@ -221,9 +221,9 @@ let user = new ReactiveObject_1();
 | `reactive(() => expr)` | Creates a computed value (compile-time only) |
 | `reactive({...})` | Creates a reactive object with signals and computeds |
 | `reactive([...])` | Creates a reactive array |
-| `effect(fn)` | Runs a function that re-executes when dependencies change |
-| `root(fn)` | Creates an untracked scope for effects |
-| `onCleanup(fn)` | Registers a cleanup function for the current effect |
+| `effect(fn)` | Runs a function that re-executes when dependencies change. Returns a dispose function |
+| `root(fn)` | Creates an untracked scope. If `fn` accepts an argument, a dispose function is provided |
+| `onCleanup(fn)` | Registers a cleanup function for the current effect/computed |
 
 ### Low-Level Functions
 
@@ -235,6 +235,7 @@ These are typically only used by the transformer output:
 | `computed(fn)` | Creates a raw computed |
 | `read(node)` | Reads a signal or computed value |
 | `write(signal, value)` | Sets a signal value |
+| `asyncComputed(fn)` | Creates a signal that resolves an async computed. Initial value is `undefined` |
 | `dispose(computed)` | Disposes a computed and its dependencies |
 
 ### Type Guards
@@ -271,7 +272,9 @@ Symbol constants for type identification:
 |------|-------------|
 | `Signal<T>` | Signal node type |
 | `Computed<T>` | Computed node type |
+| `Link` | Dependency graph link between nodes |
 | `Reactive<T>` | Utility type for inferring reactive object/array types |
+| `TransformResult` | Compiler transform output metadata |
 
 ## ReactiveArray
 
@@ -279,14 +282,16 @@ Symbol constants for type identification:
 
 | Method | Description |
 |--------|-------------|
-| `$length()` | Returns the reactive length (tracks reads) |
+| `$length` | Reactive length getter/setter. Reads track dependencies; setting truncates the array |
 | `$set(index, value)` | Sets an item at index reactively |
-| `clear()` | Removes all items and disposes nested reactive objects |
-| `dispose()` | Disposes all nested reactive objects |
-| `on(event, listener)` | Subscribes to an array event |
+| `clear()` | Removes all items, disposes nested reactive objects, and dispatches `clear` event |
+| `concat(...items)` | Appends items **in place** (mutating, returns `this`). Unlike `Array.prototype.concat` |
+| `dispatch(event, value?)` | Manually dispatches an event to registered listeners |
+| `dispose()` | Disposes all nested reactive objects and empties the array |
+| `on(event, listener)` | Subscribes to an array event. Deduplicates by reference |
 | `once(event, listener)` | Subscribes to an event once |
 
-All standard array methods (`push`, `pop`, `shift`, `unshift`, `splice`, `sort`, `reverse`, `concat`) are supported and trigger corresponding events.
+All standard array methods (`push`, `pop`, `shift`, `unshift`, `splice`, `sort`, `reverse`) are overridden and trigger corresponding events. Empty calls to `push`, `unshift`, and `concat` are no-ops.
 
 ### Events
 
