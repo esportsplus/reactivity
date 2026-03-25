@@ -97,6 +97,35 @@ describe('ReactiveArray', () => {
             expect(arr[5]).toBe(99);
             expect(lengths).toEqual([3]);
         });
+
+        it('$set creates sparse array without updating reactive $length', async () => {
+            let arr = new ReactiveArray<number>(),
+                lengths: number[] = [];
+
+            effect(() => {
+                lengths.push(arr.$length);
+            });
+
+            expect(lengths).toEqual([0]);
+
+            arr.$set(100, 42);
+            await Promise.resolve();
+
+            // Value is set at index 100
+            expect(arr[100]).toBe(42);
+
+            // Native length becomes 101 via Array behavior
+            expect(arr.length).toBe(101);
+
+            // Reactive $length NOT updated: this[100] = value sets native .length
+            // to 101 before the check, so 100 >= 101 is false
+            expect(lengths).toEqual([0]);
+
+            // Intermediate indices are empty (sparse)
+            expect(arr[0]).toBe(undefined);
+            expect(arr[50]).toBe(undefined);
+            expect(arr[99]).toBe(undefined);
+        });
     });
 
 
@@ -389,6 +418,32 @@ describe('ReactiveArray', () => {
 
             expect(dispatched).toBe(false);
         });
+
+        it('splice with start beyond array length removes nothing', () => {
+            let arr = new ReactiveArray(1, 2, 3),
+                dispatched = false;
+
+            arr.on('splice', () => { dispatched = true; });
+
+            let removed = arr.splice(100, 1);
+
+            expect([...removed]).toEqual([]);
+            expect([...arr]).toEqual([1, 2, 3]);
+            expect(dispatched).toBe(false);
+        });
+
+        it('splice with negative start removes from end', () => {
+            let arr = new ReactiveArray(1, 2, 3, 4, 5),
+                events: { start: number; deleteCount: number; items: number[] }[] = [];
+
+            arr.on('splice', (e) => { events.push(e); });
+
+            let removed = arr.splice(-2, 1);
+
+            expect([...removed]).toEqual([4]);
+            expect([...arr]).toEqual([1, 2, 3, 5]);
+            expect(events).toEqual([{ start: -2, deleteCount: 1, items: [] }]);
+        });
     });
 
 
@@ -512,6 +567,20 @@ describe('ReactiveArray', () => {
             arr.sort((a, b) => a - b);
 
             expect([...arr]).toEqual([1, 2, 2]);
+        });
+
+        it('sort preserves object references', () => {
+            let a = { id: 3 },
+                b = { id: 1 },
+                c = { id: 2 },
+                arr = new ReactiveArray(a, b, c);
+
+            arr.sort((x, y) => x.id - y.id);
+
+            // Sorted order: b(1), c(2), a(3) — same object references
+            expect(arr[0]).toBe(b);
+            expect(arr[1]).toBe(c);
+            expect(arr[2]).toBe(a);
         });
     });
 
@@ -673,6 +742,37 @@ describe('ReactiveArray', () => {
             // Trailing null should be cleaned, so internal array length is 1
             expect(arr.listeners['push']!.length).toBe(1);
             expect(fn1).toHaveBeenCalledTimes(1);
+        });
+
+        it('on() inserts after trailing nulls cleaned from dispatch', () => {
+            let arr = new ReactiveArray<number>(),
+                fn1 = vi.fn(),
+                fn2 = () => { throw new Error('err2'); },
+                fn3 = () => { throw new Error('err3'); };
+
+            arr.on('push', fn1);
+            arr.on('push', fn2);
+            arr.on('push', fn3);
+
+            // Dispatch: fn2 and fn3 throw → nulled → trailing nulls cleaned
+            // listeners = [fn1, null, null] → cleanup → [fn1]
+            arr.push(1);
+
+            expect(fn1).toHaveBeenCalledTimes(1);
+            expect(arr.listeners['push']!.length).toBe(1);
+
+            // Register fn4 — should append at index 1 (no holes left)
+            let fn4 = vi.fn();
+
+            arr.on('push', fn4);
+
+            expect(arr.listeners['push']!.length).toBe(2);
+
+            // Both fn1 and fn4 called on next push
+            arr.push(2);
+
+            expect(fn1).toHaveBeenCalledTimes(2);
+            expect(fn4).toHaveBeenCalledTimes(1);
         });
     });
 
