@@ -160,6 +160,50 @@ describe('asyncComputed', () => {
         expect(read(node)).toBe(1);
     });
 
+    it('nested asyncComputed — B depends on A', async () => {
+        let s = signal(5),
+            nodeA!: ReturnType<typeof asyncComputed<number>>,
+            nodeB!: ReturnType<typeof asyncComputed<number>>;
+
+        root(() => {
+            nodeA = asyncComputed(() => Promise.resolve(read(s) * 2));
+
+            nodeB = asyncComputed(() => {
+                let a = read(nodeA);
+
+                if (a === undefined) {
+                    return Promise.resolve(0);
+                }
+
+                return Promise.resolve(a + 100);
+            });
+        });
+
+        // Initially both undefined
+        expect(read(nodeA)).toBeUndefined();
+        expect(read(nodeB)).toBeUndefined();
+
+        // Wait for A to resolve
+        await new Promise((r) => setTimeout(r, 10));
+
+        expect(read(nodeA)).toBe(10);
+
+        // Wait for B to react to A's resolved value
+        await new Promise((r) => setTimeout(r, 10));
+
+        expect(read(nodeB)).toBe(110);
+
+        // Update source signal — A and B should both update
+        write(s, 20);
+        await new Promise((r) => setTimeout(r, 20));
+
+        expect(read(nodeA)).toBe(40);
+
+        await new Promise((r) => setTimeout(r, 10));
+
+        expect(read(nodeB)).toBe(140);
+    });
+
     it('rejected promise does not crash and retains previous value', async () => {
         let node!: ReturnType<typeof asyncComputed<number>>,
             s = signal(1);

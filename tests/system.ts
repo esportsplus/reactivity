@@ -423,6 +423,27 @@ describe('onCleanup', () => {
         expect(returned).toBe(fn);
         expect(fn).not.toHaveBeenCalled();
     });
+
+    it('throwing cleanup skips subsequent cleanups in same array', () => {
+        let called: number[] = [],
+            c = computed((onCleanup) => {
+            onCleanup(() => { called.push(1); });
+            onCleanup(() => { called.push(2); throw new Error('cleanup boom'); });
+            onCleanup(() => { called.push(3); });
+            return 42;
+        });
+
+        expect(called).toEqual([]);
+
+        // dispose() calls cleanup() synchronously — no try/catch wraps it
+        // cleanup iterates the array: index 0 (push 1), index 1 (push 2, throws)
+        // index 2 (push 3) is never reached because no try/catch in cleanup()
+        expect(() => dispose(c)).toThrow('cleanup boom');
+
+        expect(called).toContain(1);
+        expect(called).toContain(2);
+        expect(called).not.toContain(3);
+    });
 });
 
 
@@ -964,6 +985,135 @@ describe('edge cases', () => {
         await Promise.resolve();
 
         expect(result).toBe(99);
+    });
+
+    it('write during stabilization triggers reschedule and computed sees updated value', async () => {
+        let s1 = signal(1),
+            s2 = signal(0),
+            c = computed(() => read(s2) * 10),
+            cValues: number[] = [];
+
+        // Effect 1: writes to s2 when s1 changes — triggers during stabilization
+        effect(() => {
+            let val = read(s1);
+
+            if (val > 1) {
+                write(s2, val);
+            }
+        });
+
+        // Effect 2: reads computed c which depends on s2
+        effect(() => {
+            cValues.push(read(c));
+        });
+
+        expect(cValues).toEqual([0]);
+
+        // Write s1 → effect1 runs during stabilization → writes s2=5
+        // → reschedule → c recomputes with s2=5 → effect2 sees 50
+        write(s1, 5);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(cValues).toEqual([0, 50]);
+    });
+
+    it('diamond with write during stabilization propagates through both branches', async () => {
+        let source = signal(1),
+            trigger = signal(0),
+            left = computed(() => read(source) + 1),
+            right = computed(() => read(source) * 2),
+            join = computed(() => read(left) + read(right)),
+            joinValues: number[] = [];
+
+        // Effect that writes source during stabilization
+        effect(() => {
+            let val = read(trigger);
+
+            if (val > 0) {
+                write(source, val);
+            }
+        });
+
+        // Effect that reads the diamond join
+        effect(() => {
+            joinValues.push(read(join));
+        });
+
+        // Initial: source=1, left=2, right=2, join=4
+        expect(joinValues).toEqual([4]);
+
+        // trigger=10 → effect writes source=10 → reschedule
+        // left=11, right=20, join=31
+        write(trigger, 10);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(joinValues).toEqual([4, 31]);
+    });
+
+    it('disposed computed does not prevent new computed from reading same signal', async () => {
+        let s = signal(10),
+            c1 = computed(() => read(s) * 2),
+            c2Values: number[] = [];
+
+        expect(read(c1)).toBe(20);
+
+        dispose(c1);
+
+        // After dispose, c1 retains its last computed value
+        expect(c1.value).toBe(20);
+
+        // New computed can read the same signal
+        let c2 = computed(() => read(s) + 5);
+
+        expect(read(c2)).toBe(15);
+
+        // Subscribe with an effect so c2 reacts to changes
+        effect(() => {
+            c2Values.push(read(c2));
+        });
+
+        expect(c2Values).toEqual([15]);
+
+        // Signal still propagates to new computed
+        write(s, 20);
+        await Promise.resolve();
+
+        expect(c2Values).toEqual([15, 25]);
+
+        // Disposed computed value is stale — not updated
+        expect(c1.value).toBe(20);
+    });
+
+    it('disposed computed retains last value and does not recompute', async () => {
+        let s = signal(1),
+            calls = 0,
+            c = computed(() => {
+                calls++;
+                return read(s) * 3;
+            }),
+            result = -1;
+
+        // Subscribe so it's in the heap
+        effect(() => {
+            result = read(c);
+        });
+
+        expect(result).toBe(3);
+        expect(calls).toBe(1);
+
+        dispose(c);
+
+        // After disposal, value is retained
+        expect(c.value).toBe(3);
+
+        write(s, 10);
+        await Promise.resolve();
+
+        // Not recomputed after dispose
+        expect(calls).toBe(1);
+        expect(c.value).toBe(3);
     });
 
     it('link pool handles >1000 dependencies with disposal and reuse', async () => {
