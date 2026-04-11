@@ -84,9 +84,11 @@ class ReactiveArray<T> extends Array<T> {
             return;
         }
 
+        let length = this.length;
+
         this[i] = value;
 
-        if (i >= this.length) {
+        if (i >= length) {
             write(this._length, i + 1);
         }
 

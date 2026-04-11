@@ -91,14 +91,12 @@ describe('ReactiveArray', () => {
             arr.$set(5, 99);
             await Promise.resolve();
 
-            // Native .length is 6, but reactive _length check runs after
-            // this[i] = value so i >= this.length is false — _length not updated
             expect(arr.length).toBe(6);
             expect(arr[5]).toBe(99);
-            expect(lengths).toEqual([3]);
+            expect(lengths).toEqual([3, 6]);
         });
 
-        it('$set creates sparse array without updating reactive $length', async () => {
+        it('$set creates sparse array and updates reactive $length', async () => {
             let arr = new ReactiveArray<number>(),
                 lengths: number[] = [];
 
@@ -117,14 +115,40 @@ describe('ReactiveArray', () => {
             // Native length becomes 101 via Array behavior
             expect(arr.length).toBe(101);
 
-            // Reactive $length NOT updated: this[100] = value sets native .length
-            // to 101 before the check, so 100 >= 101 is false
-            expect(lengths).toEqual([0]);
+            // Reactive $length updated correctly
+            expect(lengths).toEqual([0, 101]);
 
             // Intermediate indices are empty (sparse)
             expect(arr[0]).toBe(undefined);
             expect(arr[50]).toBe(undefined);
             expect(arr[99]).toBe(undefined);
+        });
+
+        it('$set with negative index does not affect length', () => {
+            let arr = new ReactiveArray(1, 2, 3);
+
+            arr.$set(-1 as any, 42);
+
+            expect(arr.length).toBe(3);
+            expect(arr.$length).toBe(3);
+            expect((arr as any)[-1]).toBe(42);
+        });
+
+        it('$set at large index updates $length', async () => {
+            let arr = new ReactiveArray(1, 2, 3),
+                lengths: number[] = [];
+
+            effect(() => {
+                lengths.push(arr.$length);
+            });
+
+            expect(lengths).toEqual([3]);
+
+            arr.$set(10000, 99);
+            await Promise.resolve();
+
+            expect(arr.length).toBe(10001);
+            expect(lengths).toEqual([3, 10001]);
         });
     });
 
