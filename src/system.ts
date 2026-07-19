@@ -1,4 +1,5 @@
 import {
+    PACKAGE_NAME,
     SIGNAL,
     STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
     STATE_CHECK, STATE_COMPUTED, STATE_DIRTY, STATE_EFFECT, STATE_ERROR, STATE_IN_HEAP, STATE_NOTIFY_MASK, STATE_RECOMPUTING
@@ -26,18 +27,33 @@ function cleanup<T>(computed: Computed<T>): void {
         return;
     }
 
-    let value = computed.cleanup;
+    let errors: unknown[] = [],
+        value = computed.cleanup;
+
+    computed.cleanup = null;
 
     if (typeof value === 'function') {
-        value();
+        try {
+            value();
+        }
+        catch (e) {
+            errors.push(e);
+        }
     }
     else {
         for (let i = 0, n = value.length; i < n; i++) {
-            value[i]();
+            try {
+                value[i]();
+            }
+            catch (e) {
+                errors.push(e);
+            }
         }
     }
 
-    computed.cleanup = null;
+    if (errors.length) {
+        throw errors.length === 1 ? errors[0] : new AggregateError(errors, `${PACKAGE_NAME}: cleanup produced multiple errors`);
+    }
 }
 
 function deleteFromHeap<T>(computed: Computed<T>) {
@@ -212,7 +228,15 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
     }
 
     if (computed.cleanup) {
-        cleanup(computed);
+        // A failing PREVIOUS generation's teardown must not poison this recompute or the stabilize pass
+        try {
+            cleanup(computed);
+        }
+        catch (e) {
+            microtask(() => {
+                throw e;
+            });
+        }
     }
 
     let err: unknown,

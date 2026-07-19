@@ -424,7 +424,7 @@ describe('onCleanup', () => {
         expect(fn).not.toHaveBeenCalled();
     });
 
-    it('throwing cleanup skips subsequent cleanups in same array', () => {
+    it('throwing cleanup still runs subsequent cleanups and rethrows to the dispose caller', () => {
         let called: number[] = [],
             c = computed((onCleanup) => {
             onCleanup(() => { called.push(1); });
@@ -435,14 +435,89 @@ describe('onCleanup', () => {
 
         expect(called).toEqual([]);
 
-        // dispose() calls cleanup() synchronously — no try/catch wraps it
-        // cleanup iterates the array: index 0 (push 1), index 1 (push 2, throws)
-        // index 2 (push 3) is never reached because no try/catch in cleanup()
         expect(() => dispose(c)).toThrow('cleanup boom');
 
-        expect(called).toContain(1);
-        expect(called).toContain(2);
-        expect(called).not.toContain(3);
+        // Every disposer ran despite the throw
+        expect(called).toEqual([1, 2, 3]);
+        expect(c.cleanup).toBe(null);
+    });
+
+    it('single throwing cleanup rethrows the exact error', () => {
+        let error = new Error('solo boom'),
+            c = computed((onCleanup) => {
+                onCleanup(() => { throw error; });
+                return 1;
+            });
+
+        try {
+            dispose(c);
+            expect.unreachable();
+        }
+        catch (e) {
+            expect(e).toBe(error);
+        }
+    });
+
+    it('multiple throwing cleanups aggregate into AggregateError with all captured', () => {
+        let called: number[] = [],
+            c = computed((onCleanup) => {
+                onCleanup(() => { called.push(1); throw new Error('first'); });
+                onCleanup(() => { called.push(2); throw new Error('second'); });
+                onCleanup(() => { called.push(3); });
+                return 1;
+            });
+
+        try {
+            dispose(c);
+            expect.unreachable();
+        }
+        catch (e) {
+            expect(e).toBeInstanceOf(AggregateError);
+            expect((e as AggregateError).errors.map((x) => (x as Error).message)).toEqual(['first', 'second']);
+        }
+
+        expect(called).toEqual([1, 2, 3]);
+        expect(c.cleanup).toBe(null);
+    });
+
+    it('throwing cleanup during recompute does not abort the stabilize pass', async () => {
+        let s = signal(0),
+            captured: unknown[] = [],
+            listeners = process.listeners('uncaughtException'),
+            otherValues: number[] = [],
+            values: number[] = [];
+
+        effect(() => {
+            values.push(read(s));
+            onCleanup(() => { throw new Error('teardown boom'); });
+        });
+
+        effect(() => {
+            otherValues.push(read(s));
+        });
+
+        process.removeAllListeners('uncaughtException');
+        process.on('uncaughtException', (e) => { captured.push(e); });
+
+        try {
+            write(s, 1);
+            await new Promise((r) => setTimeout(r, 0));
+        }
+        finally {
+            process.removeAllListeners('uncaughtException');
+
+            for (let i = 0, n = listeners.length; i < n; i++) {
+                process.on('uncaughtException', listeners[i]);
+            }
+        }
+
+        // Both effects re-ran — the pass survived the teardown failure
+        expect(values).toEqual([0, 1]);
+        expect(otherValues).toEqual([0, 1]);
+
+        // And the teardown error surfaced as an uncaught microtask exception
+        expect(captured.length).toBe(1);
+        expect((captured[0] as Error).message).toBe('teardown boom');
     });
 });
 
