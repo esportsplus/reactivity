@@ -7,6 +7,7 @@ interface Computed<T> {
     cleanup: VoidFunction | VoidFunction[] | null;
     deps: Link | null;
     depsTail: Link | null;
+    disposal: VoidFunction | null;
     error: unknown;
     fn: (onCleanup: (fn: VoidFunction) => typeof fn) => T;
     height: number;

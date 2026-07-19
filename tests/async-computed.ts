@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asyncComputed, effect, read, root, signal, write } from '~/system';
+import { asyncComputed, dispose, effect, isComputed, isSignal, read, root, signal, write } from '~/system';
 
 
 describe('asyncComputed', () => {
@@ -8,6 +8,15 @@ describe('asyncComputed', () => {
             let node = asyncComputed(() => Promise.resolve(42));
 
             expect(read(node)).toBeUndefined();
+        });
+    });
+
+    it('returns a computed, not a signal', () => {
+        root(() => {
+            let node = asyncComputed(() => Promise.resolve(42));
+
+            expect(isComputed(node)).toBe(true);
+            expect(isSignal(node)).toBe(false);
         });
     });
 
@@ -77,9 +86,9 @@ describe('asyncComputed', () => {
 
         expect(read(node)).toBeUndefined();
 
-        // Resolve latest
+        // Resolve latest — value lands after the stabilize microtask
         resolvers[2](300);
-        await Promise.resolve();
+        await new Promise((r) => setTimeout(r, 0));
 
         expect(read(node)).toBe(300);
     });
@@ -204,7 +213,7 @@ describe('asyncComputed', () => {
         expect(read(nodeB)).toBe(140);
     });
 
-    it('rejected promise does not crash and retains previous value', async () => {
+    it('rejected promise rethrows at read and recovers on the next resolve', async () => {
         let node!: ReturnType<typeof asyncComputed<number>>,
             s = signal(1);
 
@@ -227,13 +236,38 @@ describe('asyncComputed', () => {
         write(s, 2);
         await new Promise((r) => setTimeout(r, 10));
 
-        // Value should remain 1 after rejection
-        expect(read(node)).toBe(1);
+        expect(() => read(node)).toThrow('fail');
 
         write(s, 3);
         await new Promise((r) => setTimeout(r, 10));
 
-        // Resumes after non-rejected promise
+        // Recovers after a non-rejected promise
         expect(read(node)).toBe(3);
+    });
+
+    it('disposing the returned computed stops the polling effect and the factory', async () => {
+        let calls = 0,
+            s = signal(1);
+
+        // Created OUTSIDE any root — ownership rides the returned computed alone
+        let node = asyncComputed(() => {
+            calls++;
+
+            return Promise.resolve(read(s));
+        });
+
+        await new Promise((r) => setTimeout(r, 10));
+
+        expect(read(node)).toBe(1);
+        expect(calls).toBe(1);
+
+        dispose(node);
+
+        write(s, 2);
+        await new Promise((r) => setTimeout(r, 10));
+
+        // No further dispatches or writes land after dispose
+        expect(calls).toBe(1);
+        expect(read(node)).toBe(1);
     });
 });

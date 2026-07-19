@@ -381,22 +381,43 @@ function update<T>(computed: Computed<T>): void {
 }
 
 
-const asyncComputed = <T>(fn: Computed<Promise<T>>['fn']): Signal<T | undefined> => {
-    let factory = computed(fn),
+const asyncComputed = <T>(fn: Computed<Promise<T>>['fn']): Computed<T | undefined> => {
+    let error = signal<unknown>(undefined),
+        factory = computed(fn),
         node = signal<T | undefined>(undefined),
         v = 0;
 
-    onCleanup(effect(() => {
+    let stop = effect(() => {
         let id = ++v;
 
-        (read(factory) as Promise<T>).then((value) => {
-            if (id === v) {
-                write(node, value);
+        (read(factory) as Promise<T>).then(
+            (value) => {
+                if (id === v) {
+                    write(error, undefined);
+                    write(node, value);
+                }
+            },
+            (e) => {
+                if (id === v) {
+                    write(error, e === undefined ? new Error('reactivity: asyncComputed rejected with undefined') : e);
+                }
             }
-        }, () => {});
-    }));
+        );
+    });
 
-    return node;
+    let wrapper = computed(() => {
+        let e = read(error);
+
+        if (e !== undefined) {
+            throw e;
+        }
+
+        return read(node);
+    });
+
+    wrapper.disposal = stop;
+
+    return wrapper;
 };
 
 const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
@@ -404,6 +425,7 @@ const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
             cleanup: null,
             deps: null,
             depsTail: null,
+            disposal: null,
             error: null,
             fn: fn,
             height: 0,
@@ -456,6 +478,13 @@ const dispose = <T>(computed: Computed<T>) => {
 
     if (computed.cleanup) {
         cleanup(computed);
+    }
+
+    if (computed.disposal) {
+        let d = computed.disposal;
+
+        computed.disposal = null;
+        d();
     }
 };
 
