@@ -1,7 +1,7 @@
 import {
     SIGNAL,
     STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
-    STATE_CHECK, STATE_COMPUTED, STATE_DIRTY, STATE_IN_HEAP, STATE_NOTIFY_MASK, STATE_RECOMPUTING
+    STATE_CHECK, STATE_COMPUTED, STATE_DIRTY, STATE_EFFECT, STATE_ERROR, STATE_IN_HEAP, STATE_NOTIFY_MASK, STATE_RECOMPUTING
 } from './constants';
 import { Computed, Link, Signal } from './types';
 import { isObject } from '@esportsplus/utilities';
@@ -186,6 +186,21 @@ function notify<T>(computed: Computed<T>, newState: number) {
     }
 }
 
+function propagate<T>(computed: Computed<T>) {
+    for (let c = computed.subs; c; c = c.nextSub) {
+        let s = c.sub,
+            state = s.state;
+
+        if (state & STATE_CHECK) {
+            s.state = state | STATE_DIRTY;
+        }
+
+        insertIntoHeap(s);
+    }
+
+    schedule();
+}
+
 function recompute<T>(computed: Computed<T>, del: boolean) {
     if (del) {
         deleteFromHeap(computed);
@@ -199,13 +214,16 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
         cleanup(computed);
     }
 
-    let o = observer,
+    let err: unknown,
+        flags = computed.state & STATE_EFFECT,
+        hadError = computed.state & STATE_ERROR,
+        o = observer,
         ok = true,
         value;
 
     observer = computed;
     computed.depsTail = null;
-    computed.state = STATE_COMPUTED | STATE_RECOMPUTING;
+    computed.state = STATE_COMPUTED | STATE_RECOMPUTING | flags;
 
     depth++;
     version++;
@@ -215,11 +233,12 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
     }
     catch (e) {
         ok = false;
+        err = e;
     }
 
     depth--;
     observer = o;
-    computed.state = STATE_COMPUTED;
+    computed.state = STATE_COMPUTED | flags;
 
     let depsTail = computed.depsTail as Link | null,
         remove = depsTail ? depsTail.nextDep : computed.deps;
@@ -238,21 +257,26 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
         }
     }
 
-    if (ok && value !== computed.value) {
-        computed.value = value as T;
+    if (ok) {
+        computed.error = null;
 
-        for (let c = computed.subs; c; c = c.nextSub) {
-            let s = c.sub,
-                state = s.state;
-
-            if (state & STATE_CHECK) {
-                s.state = state | STATE_DIRTY;
-            }
-
-            insertIntoHeap(s);
+        if (value !== computed.value || hadError) {
+            computed.value = value as T;
+            propagate(computed);
         }
+    }
+    else {
+        computed.error = err;
+        computed.state |= STATE_ERROR;
 
-        schedule();
+        if (flags) {
+            microtask(() => {
+                throw err;
+            });
+        }
+        else {
+            propagate(computed);
+        }
     }
 }
 
@@ -353,7 +377,7 @@ function update<T>(computed: Computed<T>): void {
         recompute(computed, true);
     }
 
-    computed.state = STATE_COMPUTED;
+    computed.state &= ~STATE_NOTIFY_MASK;
 }
 
 
@@ -380,6 +404,7 @@ const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
             cleanup: null,
             deps: null,
             depsTail: null,
+            error: null,
             fn: fn,
             height: 0,
             nextHeap: undefined,
@@ -434,8 +459,30 @@ const dispose = <T>(computed: Computed<T>) => {
     }
 };
 
-const effect = <T>(fn: Computed<T>['fn']) => {
-    let c = computed(fn);
+const effect = <T>(fn: Computed<T>['fn'], onError?: (e: unknown) => void) => {
+    let c = computed<T | undefined>(
+            onError
+                ? (o) => {
+                    try {
+                        return fn(o);
+                    }
+                    catch (e) {
+                        onError(e);
+                    }
+                }
+                : fn
+        );
+
+    c.state |= STATE_EFFECT;
+
+    // The creation run precedes the EFFECT tag, so its failure bypasses recompute's rethrow arm.
+    if (c.state & STATE_ERROR) {
+        let err = c.error;
+
+        microtask(() => {
+            throw err;
+        });
+    }
 
     return () => {
         dispose(c);
@@ -497,6 +544,10 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
                 update(node as Computed<T>);
             }
         }
+    }
+
+    if ((node as Computed<T>).state & STATE_ERROR) {
+        throw (node as Computed<T>).error;
     }
 
     return node.value;

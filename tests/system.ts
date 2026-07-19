@@ -842,8 +842,9 @@ describe('edge cases', () => {
         expect(cValues).toEqual([0, 30]);
     });
 
-    it('computed that throws on update retains previous value', async () => {
+    it('computed that throws on update caches the error and rethrows at read', async () => {
         let s = signal(0),
+            effectErrors: unknown[] = [],
             effectValues: number[] = [],
             c = computed(() => {
                 let val = read(s);
@@ -855,9 +856,14 @@ describe('edge cases', () => {
                 return val * 10;
             });
 
-        effect(() => {
-            effectValues.push(read(c));
-        });
+        effect(
+            () => {
+                effectValues.push(read(c));
+            },
+            (e) => {
+                effectErrors.push(e);
+            }
+        );
 
         expect(effectValues).toEqual([0]);
 
@@ -870,13 +876,16 @@ describe('edge cases', () => {
         write(s, 2);
         await Promise.resolve();
 
-        // Value should remain 10 since throw prevented update
-        expect(read(c)).toBe(10);
+        // Error propagates to the subscribed effect and rethrows at read
+        expect(() => read(c)).toThrow('boom');
+        expect(effectErrors.length).toBe(1);
+        expect((effectErrors[0] as Error).message).toBe('boom');
         expect(effectValues).toEqual([0, 10]);
     });
 
     it('computed alternates between throwing and succeeding', async () => {
         let s = signal(0),
+            effectErrors: unknown[] = [],
             effectValues: number[] = [],
             c = computed(() => {
                 let val = read(s);
@@ -888,31 +897,38 @@ describe('edge cases', () => {
                 return val;
             });
 
-        effect(() => {
-            effectValues.push(read(c));
-        });
+        effect(
+            () => {
+                effectValues.push(read(c));
+            },
+            (e) => {
+                effectErrors.push(e);
+            }
+        );
 
         expect(effectValues).toEqual([0]);
 
         write(s, 1);
         await Promise.resolve();
 
-        // Threw on odd, value stays 0
-        expect(read(c)).toBe(0);
+        // Threw on odd, error cached and rethrown at read
+        expect(() => read(c)).toThrow('odd');
+        expect(effectErrors.length).toBe(1);
         expect(effectValues).toEqual([0]);
 
         write(s, 2);
         await Promise.resolve();
 
-        // Succeeds on even, value updates
+        // Succeeds on even, error cleared, value updates
         expect(read(c)).toBe(2);
         expect(effectValues).toEqual([0, 2]);
 
         write(s, 3);
         await Promise.resolve();
 
-        // Threw on odd again, value stays 2
-        expect(read(c)).toBe(2);
+        // Threw on odd again — the error caches on the Nth failure too
+        expect(() => read(c)).toThrow('odd');
+        expect(effectErrors.length).toBe(2);
         expect(effectValues).toEqual([0, 2]);
 
         write(s, 4);
