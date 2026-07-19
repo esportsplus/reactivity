@@ -4,7 +4,7 @@ import {
     STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
     STATE_CHECK, STATE_COMPUTED, STATE_DIRTY, STATE_EFFECT, STATE_ERROR, STATE_IN_HEAP, STATE_NOTIFY_MASK, STATE_RECOMPUTING
 } from './constants';
-import { Computed, Link, Signal } from './types';
+import { Computed, Link, SelectorSignal, Signal } from './types';
 import { isObject } from '@esportsplus/utilities';
 
 
@@ -414,8 +414,19 @@ function unlink(link: Link): Link | null {
     if (prevSub) {
         prevSub.nextSub = nextSub;
     }
-    else if ((dep.subs = nextSub) === null && (dep as Computed<unknown>).state & STATE_COMPUTED) {
-        dispose(dep as Computed<unknown>);
+    else if ((dep.subs = nextSub) === null) {
+        if ((dep as Computed<unknown>).state & STATE_COMPUTED) {
+            dispose(dep as Computed<unknown>);
+        }
+        else if ((dep as SelectorSignal<unknown>).parent !== undefined) {
+            let parent = (dep as SelectorSignal<unknown>).parent;
+
+            parent.keys!.delete((dep as SelectorSignal<unknown>).key);
+
+            if (parent.keys!.size === 0) {
+                parent.keys = null;
+            }
+        }
     }
 
     link.dep = link.sub = null as any;
@@ -719,6 +730,7 @@ root.disposables = 0;
 
 const signal = <T>(value: T): Signal<T> => {
     return {
+        keys: null,
         nextPending: null,
         rv: 0,
         subs: null,
@@ -728,13 +740,58 @@ const signal = <T>(value: T): Signal<T> => {
     };
 };
 
+// SameValueZero (Map) key lookup: NaN matches itself, ±0 collapse — slightly wider than === for those.
+// Object keys compare by reference and must be stable. The initial snapshot below uses ===.
+signal.is = <T>(node: Signal<T>, key: T): boolean => {
+    if (!observer) {
+        return node.value === key;
+    }
+
+    let keys = (node.keys ??= new Map()),
+        entry = keys.get(key);
+
+    if (entry === undefined) {
+        keys.set(key, entry = {
+            key,
+            keys: null,
+            nextPending: null,
+            parent: node,
+            rv: 0,
+            subs: null,
+            subsTail: null,
+            type: SIGNAL,
+            value: node.value === key
+        });
+    }
+
+    return read(entry);
+};
+
 const write = <T>(signal: Signal<T>, value: T) => {
-    if (signal.value === value) {
+    let prev = signal.value;
+
+    if (prev === value) {
         return;
     }
 
     signal.value = value;
     writes++;
+
+    // Per-key fan-out: only the leaving (prev) and entering (value) entries flip — O(2), key-count independent.
+    // Runs before the subs === null exit: a parent may carry per-key subscribers yet zero direct subs.
+    if (signal.keys !== null) {
+        let entry = signal.keys.get(prev);
+
+        if (entry !== undefined) {
+            write(entry, false);
+        }
+
+        entry = signal.keys.get(value);
+
+        if (entry !== undefined) {
+            write(entry, true);
+        }
+    }
 
     if (signal.subs === null) {
         return;

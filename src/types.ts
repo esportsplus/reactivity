@@ -44,7 +44,13 @@ type Reactive<T> = T extends (...args: unknown[]) => Promise<infer R>
                 ? { [K in keyof T]: T[K] extends (infer U)[] ? Reactive<U[]> : T[K]; } & { dispose: VoidFunction }
                 : T;
 
+type SelectorSignal<T> = Signal<boolean> & {
+    key: T;
+    parent: Signal<T>;
+};
+
 type Signal<T> = {
+    keys: Map<T, SelectorSignal<T>> | null;
     nextPending: Signal<unknown> | null;
     rv: number;
     subs: Link | null;
@@ -64,6 +70,7 @@ export type {
     Computed,
     Link,
     Reactive,
+    SelectorSignal,
     Signal,
     TransformResult
 };
