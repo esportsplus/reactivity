@@ -685,10 +685,109 @@ describe('computed object size', () => {
         expect('type' in c).toBe(false);
     });
 
-    it('has fewer own properties than 14 (old size)', () => {
+    it('has no more own properties than 15 (13 slimmed + gv + rv)', () => {
         let c = computed(() => 42);
 
-        expect(Object.keys(c).length).toBeLessThan(14);
+        expect(Object.keys(c).length).toBeLessThanOrEqual(15);
+    });
+});
+
+describe('globalVersion fast path', () => {
+    it('a computed pulled by two tracked readers in one settle runs its fn at most once with correct values', async () => {
+        let cRuns = 0,
+            s = signal(0),
+            seen1: number[] = [],
+            seen2: number[] = [];
+
+        let c = computed(() => {
+                cRuns++;
+
+                return read(s) + 1;
+            });
+
+        effect(() => {
+            if (read(s) > 0) {
+                seen1.push(read(c));
+            }
+        });
+
+        effect(() => {
+            if (read(s) > 0) {
+                seen2.push(read(c));
+            }
+        });
+
+        cRuns = 0;
+
+        write(s, 1);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(cRuns).toBe(1);
+        expect(seen1[seen1.length - 1]).toBe(2);
+        expect(seen2[seen2.length - 1]).toBe(2);
+    });
+
+    it('write during recompute leaves the racing node validating normally (no stale skip)', async () => {
+        let s = signal(0),
+            t = signal(0);
+
+        let c = computed(() => {
+                let v = read(s);
+
+                if (v > 0) {
+                    write(t, v * 10);
+                }
+
+                return v;
+            });
+
+        let d = computed(() => read(t) + read(c));
+
+        effect(() => {
+            read(d);
+        });
+
+        write(s, 2);
+        await Promise.resolve();
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(read(t)).toBe(20);
+        expect(read(c)).toBe(2);
+        expect(read(d)).toBe(22);
+    });
+
+    it('a fresh signal write invalidates the fast path (no stale skip across a settle boundary)', async () => {
+        let cRuns = 0,
+            s = signal(1),
+            seen: number[] = [];
+
+        let c = computed(() => {
+                cRuns++;
+
+                return read(s) * 2;
+            });
+
+        effect(() => {
+            seen.push(read(c));
+        });
+
+        expect(seen[seen.length - 1]).toBe(2);
+
+        write(s, 5);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(read(c)).toBe(10);
+        expect(seen[seen.length - 1]).toBe(10);
+
+        write(s, 7);
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(read(c)).toBe(14);
+        expect(seen[seen.length - 1]).toBe(14);
     });
 });
 

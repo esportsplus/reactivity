@@ -10,9 +10,11 @@ interface Computed<T> {
     disposal: VoidFunction | null;
     error: unknown;
     fn: (onCleanup: (fn: VoidFunction) => typeof fn) => T;
+    gv: number;
     height: number;
     nextHeap: Computed<unknown> | undefined;
     prevHeap: Computed<unknown>;
+    rv: number;
     state: number;
     subs: Link | null;
     subsTail: Link | null;
@@ -43,6 +45,8 @@ type Reactive<T> = T extends (...args: unknown[]) => Promise<infer R>
                 : T;
 
 type Signal<T> = {
+    nextPending: Signal<unknown> | null;
+    rv: number;
     subs: Link | null;
     subsTail: Link | null;
     type: typeof SIGNAL;

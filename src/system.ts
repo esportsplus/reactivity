@@ -17,9 +17,11 @@ let asyncMeta = new WeakMap<Computed<unknown>, { factory: Computed<unknown>; pen
     microtask = queueMicrotask,
     notified = false,
     observer: Computed<unknown> | null = null,
+    pendingHead: Signal<unknown> | null = null,
     scope: Computed<unknown> | null = null,
     stabilizer = STABILIZER_IDLE,
-    version = 0;
+    version = 0,
+    writes = 0;
 
 
 function cleanup<T>(computed: Computed<T>): void {
@@ -89,6 +91,26 @@ function deleteFromHeap<T>(computed: Computed<T>) {
     computed.prevHeap = computed;
 }
 
+// Reconstructs main's eager write() fan-out in one batched pass: N writes to one signal
+// queue it once, so each subscriber is heap-inserted once. Self-linked nextPending marks the tail.
+function drainPending() {
+    let node = pendingHead;
+
+    pendingHead = null;
+
+    while (node !== null) {
+        let next = node.nextPending === node ? null : node.nextPending;
+
+        node.nextPending = null;
+
+        for (let link: Link | null = node.subs; link; link = link.nextSub) {
+            insertIntoHeap(link.sub);
+        }
+
+        node = next;
+    }
+}
+
 function insertIntoHeap<T>(computed: Computed<T>) {
     let state = computed.state;
 
@@ -124,9 +146,15 @@ function insertIntoHeap<T>(computed: Computed<T>) {
 
 // https://github.com/stackblitz/alien-signals/blob/v2.0.3/src/system.ts#L52
 function link<T>(dep: Signal<T> | Computed<T>, sub: Computed<T>) {
+    // rv === version proves this dep already linked to the current observer during this run
+    if (dep.rv === version) {
+        return;
+    }
+
     let prevDep = sub.depsTail;
 
     if (prevDep && prevDep.dep === dep) {
+        dep.rv = version;
         return;
     }
 
@@ -136,6 +164,7 @@ function link<T>(dep: Signal<T> | Computed<T>, sub: Computed<T>) {
         nextDep = prevDep ? prevDep.nextDep : sub.deps;
 
         if (nextDep && nextDep.dep === dep) {
+            dep.rv = version;
             nextDep.version = version;
             sub.depsTail = nextDep;
             return;
@@ -150,8 +179,11 @@ function link<T>(dep: Signal<T> | Computed<T>, sub: Computed<T>) {
         prevSub.version === version &&
         prevSub.sub === sub
     ) {
+        dep.rv = version;
         return;
     }
+
+    dep.rv = version;
 
     let pooled = linkPoolHead,
         newLink =
@@ -244,7 +276,8 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
         hadError = computed.state & STATE_ERROR,
         o = observer,
         ok = true,
-        value;
+        value,
+        w = writes;
 
     observer = computed;
     computed.depsTail = null;
@@ -262,8 +295,12 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
     }
 
     depth--;
+    // Fresh version so rv/link stamps from this run (incl. nested creations) go stale — false negatives only
+    version++;
     observer = o;
     computed.state = STATE_COMPUTED | flags;
+    // Entry snapshot, not current writes: a node whose fn wrote mid-run must stay gv < writes and validate normally
+    computed.gv = w;
 
     let depsTail = computed.depsTail as Link | null,
         remove = depsTail ? depsTail.nextDep : computed.deps;
@@ -326,6 +363,12 @@ function stabilize() {
     stabilizer = STABILIZER_RUNNING;
 
     for (heap_i = 0; heap_i <= heap_n; heap_i++) {
+        // Drain before scanning each height so writes emitted by a lower level's recompute
+        // land their subscribers in this same pass, matching main's eager same-pass pickup
+        if (pendingHead !== null) {
+            drainPending();
+        }
+
         let computed = heap[heap_i];
 
         heap[heap_i] = undefined;
@@ -384,6 +427,14 @@ function unlink(link: Link): Link | null {
 }
 
 function update<T>(computed: Computed<T>): void {
+    let w = writes;
+
+    // gv === writes proves no write landed anywhere since this node last validated — O(1) clean-graph exit
+    if (computed.gv === w) {
+        computed.state &= ~STATE_NOTIFY_MASK;
+        return;
+    }
+
     if (computed.state & STATE_CHECK) {
         for (let link = computed.deps; link; link = link.nextDep) {
             let dep = link.dep;
@@ -400,6 +451,9 @@ function update<T>(computed: Computed<T>): void {
 
     if (computed.state & STATE_DIRTY) {
         recompute(computed, true);
+    }
+    else {
+        computed.gv = w;
     }
 
     computed.state &= ~STATE_NOTIFY_MASK;
@@ -461,9 +515,11 @@ const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
             disposal: null,
             error: null,
             fn: fn,
+            gv: 0,
             height: 0,
             nextHeap: undefined,
             prevHeap: null as any,
+            rv: 0,
             state: STATE_COMPUTED,
             subs: null,
             subsTail: null,
@@ -592,6 +648,12 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
         link(node, observer);
 
         if ((node as Computed<unknown>).state & STATE_COMPUTED) {
+            // Invariant 1: a tracked mid-cycle read must see pending writes — drain so the heap
+            // and this node's notify bits reflect them before the broadcast condition is read
+            if (pendingHead !== null) {
+                drainPending();
+            }
+
             let height = (node as Computed<T>).height;
 
             if (height >= observer.height) {
@@ -657,6 +719,8 @@ root.disposables = 0;
 
 const signal = <T>(value: T): Signal<T> => {
     return {
+        nextPending: null,
+        rv: 0,
         subs: null,
         subsTail: null,
         type: SIGNAL,
@@ -670,6 +734,7 @@ const write = <T>(signal: Signal<T>, value: T) => {
     }
 
     signal.value = value;
+    writes++;
 
     if (signal.subs === null) {
         return;
@@ -677,8 +742,10 @@ const write = <T>(signal: Signal<T>, value: T) => {
 
     notified = false;
 
-    for (let link: Link | null = signal.subs; link; link = link.nextSub) {
-        insertIntoHeap(link.sub);
+    // O(1) deferred mark: queue the signal (self-link = tail) unless already queued; fan-out defers to drain
+    if (signal.nextPending === null) {
+        signal.nextPending = pendingHead ?? signal;
+        pendingHead = signal;
     }
 
     schedule();
