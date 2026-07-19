@@ -153,6 +153,10 @@ describe('ReactiveObject', () => {
 
             expect(obj.data).toBeUndefined();
 
+            // Creation dispatches twice: the async-detection probe [0] (disposed), then
+            // asyncComputed's factory [1]
+            expect(resolvers.length).toBe(2);
+
             // Trigger second computation
             write(s, 2);
             await Promise.resolve();
@@ -163,26 +167,26 @@ describe('ReactiveObject', () => {
             await Promise.resolve();
             await Promise.resolve();
 
-            // Resolve first promise (stale — should be ignored)
-            resolvers[0](100);
+            // Resolve probe + first two computations (stale — all ignored)
+            resolvers[0](50);
+            resolvers[1](100);
             await Promise.resolve();
 
             expect(obj.data).toBeUndefined();
 
-            // Resolve second promise (stale — should be ignored)
-            resolvers[1](200);
+            resolvers[2](200);
             await Promise.resolve();
 
             expect(obj.data).toBeUndefined();
 
-            // Resolve latest promise — should write
-            resolvers[2](300);
-            await Promise.resolve();
+            // Resolve latest promise — lands after the stabilize microtask
+            resolvers[3](300);
+            await new Promise((r) => setTimeout(r, 0));
 
             expect(obj.data).toBe(300);
         });
 
-        it('dispose prevents new computations but in-flight resolves still write', async () => {
+        it('dispose stops in-flight resolves from landing', async () => {
             let s = signal(1),
                 resolver: ((v: number) => void) | null = null,
                 obj = new ReactiveObject({
@@ -200,18 +204,17 @@ describe('ReactiveObject', () => {
             write(s, 2);
             await Promise.resolve();
 
-            // Resolve the original in-flight promise
+            // Resolve the original in-flight promise — teardown is permanent, nothing lands
             resolver!(999);
             await Promise.resolve();
 
-            // In-flight promise still wrote (version matched)
-            expect(obj.data).toBe(999);
+            expect(obj.data).toBeUndefined();
 
-            // But no further computations occur from new dependency changes
+            // And no further computations occur from new dependency changes
             write(s, 3);
             await new Promise((r) => setTimeout(r, 10));
 
-            expect(obj.data).toBe(999);
+            expect(obj.data).toBeUndefined();
         });
     });
 

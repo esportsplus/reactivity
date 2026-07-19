@@ -1,6 +1,6 @@
 import { defineProperty, isArray, isPromise } from '@esportsplus/utilities';
-import { computed, dispose, effect, read, root, signal, write } from '~/system';
-import { Computed, Signal } from '~/types';
+import { asyncComputed, computed, dispose, read, root, signal, write } from '~/system';
+import { Computed } from '~/types';
 import { COMPUTED, REACTIVE_ARRAY, REACTIVE_OBJECT, SIGNAL } from '~/constants';
 import { ReactiveArray } from './array';
 
@@ -69,31 +69,19 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
 
     protected [COMPUTED]<T extends Computed<ReturnType<T>>['fn']>(value: T) {
         return root(() => {
-            let node: Computed<ReturnType<T>> | Signal<ReturnType<T> | undefined> = computed(value);
+            let node: Computed<ReturnType<T>> | Computed<Awaited<ReturnType<T>> | undefined> = computed(value);
 
             if (isPromise(node.value)) {
-                let factory = node as Computed<ReturnType<T>>,
-                    out = signal<ReturnType<T> | undefined>(undefined),
-                    v = 0;
+                // The probe's dispatch is a duplicate — dispose aborts it; asyncComputed's wrapper owns the surfaced settle.
+                (node.value as Promise<unknown>).catch(() => {});
+                dispose(node as Computed<ReturnType<T>>);
 
-                (this.disposers ??= []).push(
-                    effect(() => {
-                        let id = ++v;
-
-                        (read(factory) as Promise<ReturnType<T>>).then((resolved) => {
-                            if (id !== v) {
-                                return;
-                            }
-
-                            write(out as Signal<typeof resolved>, resolved);
-                        });
-                    })
-                );
-
-                return out;
+                node = asyncComputed<Awaited<ReturnType<T>>>(value as unknown as Computed<Promise<Awaited<ReturnType<T>>>>['fn']);
             }
 
-            (this.disposers ??= []).push(() => dispose(node as Computed<ReturnType<T>>));
+            let self = node;
+
+            (this.disposers ??= []).push(() => dispose(self));
 
             return node;
         });

@@ -7,7 +7,8 @@ import { Computed, Link, Signal } from './types';
 import { isObject } from '@esportsplus/utilities';
 
 
-let depth = 0,
+let asyncMeta = new WeakMap<Computed<unknown>, { factory: Computed<unknown>; pending: Signal<boolean> }>(),
+    depth = 0,
     heap: (Computed<unknown> | undefined)[] = new Array(64),
     heap_i = 0,
     heap_n = 0,
@@ -385,21 +386,27 @@ const asyncComputed = <T>(fn: Computed<Promise<T>>['fn']): Computed<T | undefine
     let error = signal<unknown>(undefined),
         factory = computed(fn),
         node = signal<T | undefined>(undefined),
+        pending = signal(false),
         v = 0;
 
     let stop = effect(() => {
         let id = ++v;
 
+        write(pending, true);
+
+        // Heap membership (a write's eager insert) marks a pending re-run the notify mask alone misses.
         (read(factory) as Promise<T>).then(
             (value) => {
-                if (id === v) {
+                if (id === v && !(factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
                     write(error, undefined);
                     write(node, value);
+                    write(pending, false);
                 }
             },
             (e) => {
-                if (id === v) {
+                if (id === v && !(factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
                     write(error, e === undefined ? new Error('reactivity: asyncComputed rejected with undefined') : e);
+                    write(pending, false);
                 }
             }
         );
@@ -414,6 +421,8 @@ const asyncComputed = <T>(fn: Computed<Promise<T>>['fn']): Computed<T | undefine
 
         return read(node);
     });
+
+    asyncMeta.set(wrapper as Computed<unknown>, { factory: factory as Computed<unknown>, pending });
 
     wrapper.disposal = stop;
 
@@ -520,6 +529,12 @@ const effect = <T>(fn: Computed<T>['fn'], onError?: (e: unknown) => void) => {
 
 const isComputed = (value: unknown): value is Computed<unknown> => {
     return isObject(value) && !!((value as unknown as Computed<unknown>).state & STATE_COMPUTED);
+};
+
+const isPending = (node: Computed<unknown>): boolean => {
+    let meta = asyncMeta.get(node);
+
+    return meta ? read(meta.pending) : false;
 };
 
 const isSignal = (value: unknown): value is Signal<unknown> => {
@@ -650,7 +665,7 @@ export {
     asyncComputed, computed,
     dispose,
     effect,
-    isComputed, isSignal,
+    isComputed, isPending, isSignal,
     onCleanup,
     read, root,
     signal,

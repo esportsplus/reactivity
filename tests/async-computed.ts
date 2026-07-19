@@ -93,6 +93,38 @@ describe('asyncComputed', () => {
         expect(read(node)).toBe(300);
     });
 
+    it('dirty-gap: a rejection settling after a re-dirty is dropped', async () => {
+        let node!: ReturnType<typeof asyncComputed<number>>,
+            rejecters: ((e: Error) => void)[] = [],
+            resolvers: ((v: number) => void)[] = [],
+            s = signal(1);
+
+        root(() => {
+            node = asyncComputed(() => {
+                read(s);
+
+                return new Promise<number>((resolve, reject) => {
+                    rejecters.push(reject);
+                    resolvers.push(resolve);
+                });
+            });
+        });
+
+        // Queue the rejection FIRST, then dirty the factory — it settles in the gap
+        rejecters[0](new Error('gap rejection'));
+        write(s, 2);
+
+        await new Promise((r) => setTimeout(r, 0));
+
+        // Dropped: the wrapper is not poisoned by the superseded rejection
+        expect(read(node)).toBeUndefined();
+
+        resolvers[1](7);
+        await new Promise((r) => setTimeout(r, 0));
+
+        expect(read(node)).toBe(7);
+    });
+
     it('onCleanup works for abort controller', async () => {
         let aborted = false,
             s = signal(1);
