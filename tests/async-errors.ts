@@ -1,14 +1,15 @@
 import { describe, expect, it } from 'vitest';
-import { asyncComputed, read, root, signal, write } from '~/system';
+import { computed, read, root, signal, write } from '~/system';
+import type { Computed } from '~/system';
 
 
 describe('asyncComputed error propagation', () => {
     it('rejection rethrows at read and a later success clears it', async () => {
-        let node!: ReturnType<typeof asyncComputed<number>>,
+        let node!: Computed<number | undefined>,
             s = signal(1);
 
         root(() => {
-            node = asyncComputed(() => {
+            node = computed(() => {
                 let v = read(s);
 
                 if (v === 2) {
@@ -36,13 +37,13 @@ describe('asyncComputed error propagation', () => {
     });
 
     it('latest-wins: a stale rejection is discarded', async () => {
-        let node!: ReturnType<typeof asyncComputed<number>>,
+        let node!: Computed<number | undefined>,
             rejecters: ((e: Error) => void)[] = [],
             resolvers: ((v: number) => void)[] = [],
             s = signal(1);
 
         root(() => {
-            node = asyncComputed(() => {
+            node = computed(() => {
                 read(s);
 
                 return new Promise<number>((resolve, reject) => {
@@ -72,12 +73,12 @@ describe('asyncComputed error propagation', () => {
     });
 
     it('stale-while-revalidate keeps the prior value readable during a refetch', async () => {
-        let node!: ReturnType<typeof asyncComputed<number>>,
+        let node!: Computed<number | undefined>,
             resolvers: ((v: number) => void)[] = [],
             s = signal(1);
 
         root(() => {
-            node = asyncComputed(() => {
+            node = computed(() => {
                 read(s);
 
                 return new Promise<number>((resolve) => {
@@ -106,14 +107,14 @@ describe('asyncComputed error propagation', () => {
     });
 
     it('undefined rejection reason surfaces as a real Error', async () => {
-        let node!: ReturnType<typeof asyncComputed<number>>;
+        let node!: Computed<number | undefined>;
 
         root(() => {
-            node = asyncComputed(() => Promise.reject(undefined));
+            node = computed(() => Promise.reject(undefined));
         });
 
         await new Promise((r) => setTimeout(r, 10));
 
-        expect(() => read(node)).toThrow('reactivity: asyncComputed rejected with undefined');
+        expect(() => read(node)).toThrow('reactivity: async computed rejected with undefined');
     });
 });

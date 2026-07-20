@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { asyncComputed, dispose, effect, isComputed, isSignal, read, root, signal, write } from '~/system';
+import { computed, dispose, effect, isComputed, isSignal, read, root, signal, write } from '~/system';
+import type { Computed } from '~/system';
 
 
 describe('asyncComputed', () => {
     it('initial value is undefined', () => {
         root(() => {
-            let node = asyncComputed(() => Promise.resolve(42));
+            let node = computed(() => Promise.resolve(42));
 
             expect(read(node)).toBeUndefined();
         });
@@ -13,7 +14,7 @@ describe('asyncComputed', () => {
 
     it('returns a computed, not a signal', () => {
         root(() => {
-            let node = asyncComputed(() => Promise.resolve(42));
+            let node = computed(() => Promise.resolve(42));
 
             expect(isComputed(node)).toBe(true);
             expect(isSignal(node)).toBe(false);
@@ -21,10 +22,10 @@ describe('asyncComputed', () => {
     });
 
     it('resolves to correct value', async () => {
-        let node!: ReturnType<typeof asyncComputed<number>>;
+        let node!: Computed<number | undefined>;
 
         root(() => {
-            node = asyncComputed(() => Promise.resolve(42));
+            node = computed(() => Promise.resolve(42));
         });
 
         await new Promise((r) => setTimeout(r, 10));
@@ -33,11 +34,11 @@ describe('asyncComputed', () => {
     });
 
     it('updates when dependency changes', async () => {
-        let node!: ReturnType<typeof asyncComputed<string>>,
+        let node!: Computed<string | undefined>,
             s = signal('hello');
 
         root(() => {
-            node = asyncComputed(() => Promise.resolve(read(s)));
+            node = computed(() => Promise.resolve(read(s)));
         });
 
         await new Promise((r) => setTimeout(r, 10));
@@ -51,12 +52,12 @@ describe('asyncComputed', () => {
     });
 
     it('race condition — rapid changes, only latest promise writes', async () => {
-        let node!: ReturnType<typeof asyncComputed<number>>,
+        let node!: Computed<number | undefined>,
             resolvers: ((v: number) => void)[] = [],
             s = signal(1);
 
         root(() => {
-            node = asyncComputed(() => {
+            node = computed(() => {
                 read(s);
                 return new Promise<number>((resolve) => {
                     resolvers.push(resolve);
@@ -94,13 +95,13 @@ describe('asyncComputed', () => {
     });
 
     it('dirty-gap: a rejection settling after a re-dirty is dropped', async () => {
-        let node!: ReturnType<typeof asyncComputed<number>>,
+        let node!: Computed<number | undefined>,
             rejecters: ((e: Error) => void)[] = [],
             resolvers: ((v: number) => void)[] = [],
             s = signal(1);
 
         root(() => {
-            node = asyncComputed(() => {
+            node = computed(() => {
                 read(s);
 
                 return new Promise<number>((resolve, reject) => {
@@ -130,7 +131,7 @@ describe('asyncComputed', () => {
             s = signal(1);
 
         root(() => {
-            asyncComputed((onCleanup) => {
+            computed((onCleanup) => {
                 let controller = new AbortController();
 
                 controller.signal.addEventListener('abort', () => {
@@ -154,12 +155,12 @@ describe('asyncComputed', () => {
     });
 
     it('effect tracks async computed', async () => {
-        let node!: ReturnType<typeof asyncComputed<number>>,
+        let node!: Computed<number | undefined>,
             s = signal(10),
             values: (number | undefined)[] = [];
 
         root(() => {
-            node = asyncComputed(() => Promise.resolve(read(s)));
+            node = computed(() => Promise.resolve(read(s)));
 
             effect(() => {
                 values.push(read(node));
@@ -179,14 +180,14 @@ describe('asyncComputed', () => {
     });
 
     it('dispose stops updates', async () => {
-        let node!: ReturnType<typeof asyncComputed<number>>,
+        let node!: Computed<number | undefined>,
             s = signal(1);
 
         let disposeRoot!: VoidFunction;
 
         root((dispose) => {
             disposeRoot = dispose;
-            node = asyncComputed(() => Promise.resolve(read(s)));
+            node = computed(() => Promise.resolve(read(s)));
         });
 
         await new Promise((r) => setTimeout(r, 10));
@@ -203,13 +204,13 @@ describe('asyncComputed', () => {
 
     it('nested asyncComputed — B depends on A', async () => {
         let s = signal(5),
-            nodeA!: ReturnType<typeof asyncComputed<number>>,
-            nodeB!: ReturnType<typeof asyncComputed<number>>;
+            nodeA!: Computed<number | undefined>,
+            nodeB!: Computed<number | undefined>;
 
         root(() => {
-            nodeA = asyncComputed(() => Promise.resolve(read(s) * 2));
+            nodeA = computed(() => Promise.resolve(read(s) * 2));
 
-            nodeB = asyncComputed(() => {
+            nodeB = computed(() => {
                 let a = read(nodeA);
 
                 if (a === undefined) {
@@ -246,11 +247,11 @@ describe('asyncComputed', () => {
     });
 
     it('rejected promise rethrows at read and recovers on the next resolve', async () => {
-        let node!: ReturnType<typeof asyncComputed<number>>,
+        let node!: Computed<number | undefined>,
             s = signal(1);
 
         root(() => {
-            node = asyncComputed(() => {
+            node = computed(() => {
                 let v = read(s);
 
                 if (v === 2) {
@@ -282,7 +283,7 @@ describe('asyncComputed', () => {
             s = signal(1);
 
         // Created OUTSIDE any root — ownership rides the returned computed alone
-        let node = asyncComputed(() => {
+        let node = computed(() => {
             calls++;
 
             return Promise.resolve(read(s));

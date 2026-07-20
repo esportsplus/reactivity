@@ -1,5 +1,5 @@
 import { bench, describe } from 'vitest';
-import { asyncComputed, computed, dispose, effect, onCleanup, read, root, signal, write } from '~/system';
+import { computed, dispose, effect, onCleanup, read, root, signal, write } from '~/system';
 
 
 describe('signal', () => {
@@ -78,13 +78,13 @@ describe('computed', () => {
 
 describe('asyncComputed', () => {
     bench('create asyncComputed', () => {
-        asyncComputed(() => Promise.resolve(0));
+        computed(() => Promise.resolve(0));
     });
 
     bench('create asyncComputed from signal', () => {
         let s = signal(0);
 
-        asyncComputed(() => Promise.resolve(read(s)));
+        computed(() => Promise.resolve(read(s)));
     });
 });
 

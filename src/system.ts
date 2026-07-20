@@ -16,8 +16,19 @@ type Walk = {
     prev: Walk | null;
 };
 
+// A fn returning a Promise/AsyncIterable yields a settled value node; a plain fn yields its value.
+type Settled<T> =
+    T extends Promise<infer U> ? Awaited<U> | undefined :
+    T extends AsyncIterable<infer U> ? U | undefined :
+    T;
 
-let asyncMeta = new WeakMap<Computed<unknown>, { factory: Computed<unknown>; pending: Signal<boolean> }>(),
+interface ComputedFactory {
+    <T>(fn: Computed<T>['fn'], equals?: ((a: Settled<T>, b: Settled<T>) => boolean) | null): Computed<Settled<T>>;
+    invalidate: <T>(node: Computed<T>) => void;
+}
+
+
+let asyncMeta = new WeakMap<Computed<unknown>, { factory: Computed<unknown> }>(),
     depth = 0,
     disposeHead: Walk | null = null,
     draining = false,
@@ -31,7 +42,6 @@ let asyncMeta = new WeakMap<Computed<unknown>, { factory: Computed<unknown>; pen
     pendingHead: Signal<unknown> | null = null,
     scope: Computed<unknown> | null = null,
     stabilizer = STABILIZER_IDLE,
-    unobservers = new WeakMap<Signal<unknown> | Computed<unknown>, VoidFunction[]>(),
     version = 0,
     walkPoolHead: Walk | null = null,
     writes = 0;
@@ -514,30 +524,15 @@ function unlink(link: Link): Link | null {
     }
     else if ((dep.subs = nextSub) === null) {
         if ((dep as Computed<unknown>).state & STATE_COMPUTED) {
-            // Enqueued: its unobservers fire in the drain, after disposal, preserving per-node order.
             dispose(dep as Computed<unknown>);
         }
-        else {
-            if ((dep as SelectorSignal<unknown>).parent !== undefined) {
-                let parent = (dep as SelectorSignal<unknown>).parent;
+        else if ((dep as SelectorSignal<unknown>).parent !== undefined) {
+            let parent = (dep as SelectorSignal<unknown>).parent;
 
-                parent.keys!.delete((dep as SelectorSignal<unknown>).key);
+            parent.keys!.delete((dep as SelectorSignal<unknown>).key);
 
-                if (parent.keys!.size === 0) {
-                    parent.keys = null;
-                }
-            }
-
-            // Signals/selector entries never enqueue: fire inline (registration survives re-subscribe).
-            let fns = unobservers.get(dep);
-
-            if (fns !== undefined) {
-                // Snapshot: a callback may unregister itself (or a sibling) mid-fire.
-                fns = fns.slice();
-
-                for (let i = 0, n = fns.length; i < n; i++) {
-                    fns[i]();
-                }
+            if (parent.keys!.size === 0) {
+                parent.keys = null;
             }
         }
     }
@@ -623,22 +618,20 @@ function update<T>(root: Computed<T>): void {
 }
 
 
-const asyncComputed = <T>(fn: Computed<Promise<T> | AsyncIterable<T> | T>['fn']): Computed<T | undefined> => {
+// Drives an async factory — a computed whose fn returns a Promise or AsyncIterable — into a settled
+// wrapper: the polling effect awaits each dispatch and writes the value/error signals the wrapper
+// reads. `id` plus the dirty-gap guard enforce latest-wins across re-dispatches.
+function makeAsync<T>(factory: Computed<Promise<T> | AsyncIterable<T> | T>, equals: ((a: unknown, b: unknown) => boolean) | null): Computed<T | undefined> {
     let error = signal<unknown>(undefined),
-        factory = computed(fn),
         node = signal<T | undefined>(undefined),
-        pending = signal(false),
         v = 0;
 
     let stop = effect(() => {
         let id = ++v;
 
-        write(pending, true);
-
         let fail = (e: unknown) => {
             if (id === v && !(factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
-                write(error, e === undefined ? new Error('reactivity: asyncComputed rejected with undefined') : e);
-                write(pending, false);
+                write(error, e === undefined ? new Error('reactivity: async computed rejected with undefined') : e);
             }
         };
 
@@ -651,7 +644,6 @@ const asyncComputed = <T>(fn: Computed<Promise<T> | AsyncIterable<T> | T>['fn'])
                     if (id === v && !(factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
                         write(error, undefined);
                         write(node, value);
-                        write(pending, false);
                     }
                 },
                 fail
@@ -669,10 +661,7 @@ const asyncComputed = <T>(fn: Computed<Promise<T> | AsyncIterable<T> | T>['fn'])
                     return;
                 }
 
-                if (r.done) {
-                    write(pending, false);
-                }
-                else {
+                if (!r.done) {
                     write(error, undefined);
                     write(node, r.value);
                     it.next().then(step, fail);
@@ -684,11 +673,10 @@ const asyncComputed = <T>(fn: Computed<Promise<T> | AsyncIterable<T> | T>['fn'])
         else {
             write(error, undefined);
             write(node, result as T);
-            write(pending, false);
         }
     });
 
-    let wrapper = computed(() => {
+    let wrapper = makeComputed<T | undefined>(() => {
         let e = read(error);
 
         if (e !== undefined) {
@@ -698,12 +686,12 @@ const asyncComputed = <T>(fn: Computed<Promise<T> | AsyncIterable<T> | T>['fn'])
         return read(node);
     });
 
-    asyncMeta.set(wrapper as Computed<unknown>, { factory: factory as Computed<unknown>, pending });
-
+    wrapper.equals = equals;
+    asyncMeta.set(wrapper as Computed<unknown>, { factory: factory as Computed<unknown> });
     wrapper.disposal = stop;
 
     return wrapper;
-};
+}
 
 // Reuses the same recompute-nesting counter schedule() consults, so writes inside fn defer
 // scheduling until fn returns; pair with flush() for a synchronous transaction.
@@ -722,13 +710,13 @@ const batch = <T>(fn: () => T): T => {
     }
 };
 
-const computed = <T>(fn: Computed<T>['fn'], equals: ((a: T, b: T) => boolean) | null = null): Computed<T> => {
+function makeComputed<T>(fn: Computed<T>['fn']): Computed<T> {
     let self: Computed<T> = {
             cleanup: null,
             deps: null,
             depsTail: null,
             disposal: null,
-            equals: equals as ((a: unknown, b: unknown) => boolean) | null,
+            equals: null,
             error: null,
             fn: fn,
             gv: 0,
@@ -768,13 +756,27 @@ const computed = <T>(fn: Computed<T>['fn'], equals: ((a: T, b: T) => boolean) | 
     }
 
     return self;
-};
+}
+
+// A fn returning a Promise or AsyncIterable transparently becomes an async computed: the first run is
+// the probe, reused as the factory (no duplicate dispatch). A plain fn returns the node directly.
+const computed = (<T>(fn: Computed<T>['fn'], equals: ((a: unknown, b: unknown) => boolean) | null = null): Computed<unknown> => {
+    let self = makeComputed(fn),
+        value = self.value as unknown;
+
+    if (isPromise(value) || (value != null && typeof (value as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === 'function')) {
+        return makeAsync(self as Computed<Promise<unknown> | AsyncIterable<unknown>>, equals);
+    }
+
+    self.equals = equals;
+
+    return self;
+}) as ComputedFactory;
 
 // Teardown runs as an iterative LIFO drain, not recursion: a recursive dispose→unlink→dispose cascade
 // overflows the call stack on deep chains. A dispose issued while a drain runs enqueues and returns,
-// so the running drain picks it up. Field-nulling plus the unobservers delete keep the drain
-// exactly-once, so a double dispose stays a no-op. The try/finally guarantees `draining` resets even
-// if a cleanup/disposal callback throws.
+// so the running drain picks it up. Field-nulling keeps the drain exactly-once, so a double dispose
+// stays a no-op. The try/finally guarantees `draining` resets even if a cleanup/disposal callback throws.
 const dispose = <T>(computed: Computed<T>): void => {
     // A dispose issued mid-drain only enqueues; the running drain picks it up, so the first node is
     // processed inline (no worklist node) and the pool is touched only for re-entrant deep cascades.
@@ -811,18 +813,6 @@ const dispose = <T>(computed: Computed<T>): void => {
                 d();
             }
 
-            let fns = unobservers.get(node);
-
-            if (fns !== undefined) {
-                unobservers.delete(node);
-
-                fns = fns.slice();
-
-                for (let i = 0, n = fns.length; i < n; i++) {
-                    fns[i]();
-                }
-            }
-
             if (disposeHead === null) {
                 break;
             }
@@ -837,7 +827,7 @@ const dispose = <T>(computed: Computed<T>): void => {
 };
 
 const effect = <T>(fn: Computed<T>['fn'], onError?: (e: unknown) => void) => {
-    let c = computed<T | undefined>(
+    let c = makeComputed<T | undefined>(
             onError
                 ? (o) => {
                     try {
@@ -894,14 +884,10 @@ const invalidate = <T>(computed: Computed<T>): void => {
     schedule();
 };
 
+computed.invalidate = invalidate;
+
 const isComputed = (value: unknown): value is Computed<unknown> => {
     return isObject(value) && !!((value as unknown as Computed<unknown>).state & STATE_COMPUTED);
-};
-
-const isPending = (node: Computed<unknown>): boolean => {
-    let meta = asyncMeta.get(node);
-
-    return meta ? read(meta.pending) : false;
 };
 
 const isSignal = (value: unknown): value is Signal<unknown> => {
@@ -928,27 +914,6 @@ const onCleanup = (fn: VoidFunction): typeof fn => {
     }
 
     return fn;
-};
-
-// Last-subscriber lifecycle hook: fn fires when node's subscriber count drops to zero (in unlink's
-// zero-subs branch, AFTER a computed's auto-dispose). Returns an unregister function.
-const onUnobserved = <T>(node: Signal<T> | Computed<T>, fn: VoidFunction): VoidFunction => {
-    let key = node as Signal<unknown> | Computed<unknown>,
-        fns = unobservers.get(key);
-
-    if (fns === undefined) {
-        unobservers.set(key, fns = []);
-    }
-
-    fns.push(fn);
-
-    return () => {
-        let i = fns.indexOf(fn);
-
-        if (i !== -1) {
-            fns.splice(i, 1);
-        }
-    };
 };
 
 const read = <T>(node: Signal<T> | Computed<T>): T => {
@@ -995,50 +960,6 @@ const peek = <T>(node: Signal<T> | Computed<T>): T => {
     }
 
     return node.value;
-};
-
-// Settle predicate: fn returning undefined means "not ready yet, keep waiting" (asyncComputed
-// nodes hold undefined pre-first-settle, so `() => read(wrapper)` composes naturally); the first
-// non-undefined value resolves the promise, a throw rejects it.
-const resolve = <T>(fn: () => T): Promise<T> => {
-    return new Promise((res, rej) => {
-        let settled = false,
-            stop: VoidFunction | null = null;
-
-        let finish = (run: VoidFunction) => {
-            settled = true;
-            run();
-
-            queueMicrotask(() => {
-                if (stop !== null) {
-                    let s = stop;
-
-                    stop = null;
-                    s();
-                }
-            });
-        };
-
-        stop = effect(() => {
-            if (settled) {
-                return;
-            }
-
-            let value;
-
-            try {
-                value = fn();
-            }
-            catch (e) {
-                finish(() => rej(e));
-                return;
-            }
-
-            if (value !== undefined) {
-                finish(() => res(value as T));
-            }
-        });
-    });
 };
 
 const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
@@ -1172,18 +1093,15 @@ const write = <T>(signal: Signal<T>, value: T) => {
 
 
 export {
-    asyncComputed,
     batch,
     computed,
     dispose,
     effect,
     flush,
-    invalidate,
-    isComputed, isPending, isSignal,
+    isComputed, isSignal,
     onCleanup,
-    onUnobserved,
     peek,
-    read, resolve, root,
+    read, root,
     signal,
     untrack,
     write

@@ -153,9 +153,8 @@ describe('ReactiveObject', () => {
 
             expect(obj.data).toBeUndefined();
 
-            // Creation dispatches twice: the async-detection probe [0] (disposed), then
-            // asyncComputed's factory [1]
-            expect(resolvers.length).toBe(2);
+            // Creation dispatches once: the probe is reused as the factory (no separate probe dispatch).
+            expect(resolvers.length).toBe(1);
 
             // Trigger second computation
             write(s, 2);
@@ -167,20 +166,18 @@ describe('ReactiveObject', () => {
             await Promise.resolve();
             await Promise.resolve();
 
-            // Resolve probe + first two computations (stale — all ignored)
+            // [0] creation, [1] after write(2), [2] after write(3) — the latest
+            expect(resolvers.length).toBe(3);
+
+            // Resolve the stale computations — all ignored
             resolvers[0](50);
             resolvers[1](100);
             await Promise.resolve();
 
             expect(obj.data).toBeUndefined();
 
-            resolvers[2](200);
-            await Promise.resolve();
-
-            expect(obj.data).toBeUndefined();
-
             // Resolve latest promise — lands after the stabilize microtask
-            resolvers[3](300);
+            resolvers[2](300);
             await new Promise((r) => setTimeout(r, 0));
 
             expect(obj.data).toBe(300);

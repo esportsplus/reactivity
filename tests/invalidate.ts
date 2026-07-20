@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { asyncComputed, computed, effect, flush, invalidate, peek, read, signal, write } from '~/system';
+import { computed, effect, flush, peek, read, signal, write } from '~/system';
 
 
 describe('invalidate()', () => {
@@ -19,7 +19,7 @@ describe('invalidate()', () => {
 
         expect(runs).toBe(1);
 
-        invalidate(c);
+        computed.invalidate(c);
         flush();
 
         expect(runs).toBe(2);
@@ -49,12 +49,12 @@ describe('invalidate()', () => {
             read(changing);
         });
 
-        invalidate(stable);
+        computed.invalidate(stable);
         flush();
 
         expect(stableRuns).toBe(1);
 
-        invalidate(changing);
+        computed.invalidate(changing);
         flush();
 
         expect(changingRuns).toBe(2);
@@ -63,7 +63,7 @@ describe('invalidate()', () => {
     it('re-dispatches an asyncComputed factory (refetch via the asyncMeta redirect)', async () => {
         let fetches = 0;
 
-        let node = asyncComputed(() => {
+        let node = computed(() => {
             fetches++;
 
             return Promise.resolve(fetches);
@@ -78,7 +78,7 @@ describe('invalidate()', () => {
         expect(fetches).toBe(1);
         expect(read(node)).toBe(1);
 
-        invalidate(node);
+        computed.invalidate(node);
         await new Promise((r) => setTimeout(r, 0));
 
         expect(fetches).toBe(2);
@@ -105,7 +105,7 @@ describe('invalidate()', () => {
         expect(sideRuns).toBe(1);
         expect(keeperRuns).toBe(1);
 
-        invalidate(c);
+        computed.invalidate(c);
         flush();
 
         expect(sideRuns).toBe(2);
@@ -134,7 +134,7 @@ describe('invalidate()', () => {
         // Fully settled: c carries the current gv stamp. Without writes++ inside invalidate,
         // this synchronous pull would exit through the fast path and skip the re-run. peek()
         // forces the pull unconditionally (read() outside an observer returns the cached value).
-        invalidate(c);
+        computed.invalidate(c);
 
         expect(peek(c)).toBe(2);
         expect(runs).toBe(3);

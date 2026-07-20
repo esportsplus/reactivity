@@ -1,5 +1,5 @@
-import { defineProperty, isArray, isPromise } from '@esportsplus/utilities';
-import { asyncComputed, computed, dispose, read, root, signal, write } from '~/system';
+import { defineProperty, isArray } from '@esportsplus/utilities';
+import { computed, dispose, read, root, signal, write } from '~/system';
 import { Computed } from '~/types';
 import { COMPUTED, REACTIVE_ARRAY, REACTIVE_OBJECT, SIGNAL } from '~/constants';
 import { ReactiveArray } from './array';
@@ -69,19 +69,9 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
 
     protected [COMPUTED]<T extends Computed<ReturnType<T>>['fn']>(value: T) {
         return root(() => {
-            let node: Computed<ReturnType<T>> | Computed<Awaited<ReturnType<T>> | undefined> = computed(value);
+            let node = computed(value);
 
-            if (isPromise(node.value)) {
-                // The probe's dispatch is a duplicate — dispose aborts it; asyncComputed's wrapper owns the surfaced settle.
-                (node.value as Promise<unknown>).catch(() => {});
-                dispose(node as Computed<ReturnType<T>>);
-
-                node = asyncComputed<Awaited<ReturnType<T>>>(value as unknown as Computed<Promise<Awaited<ReturnType<T>>>>['fn']);
-            }
-
-            let self = node;
-
-            (this.disposers ??= []).push(() => dispose(self));
+            (this.disposers ??= []).push(() => dispose(node));
 
             return node;
         });
