@@ -39,7 +39,6 @@
         "agent:test": "tsc --noEmit && vitest run",
         "bench": "vitest bench --run",
         "build": "tsc",
-        "build:test": "pnpm build && vite build --config test/vite.config.ts",
         "test": "vitest run",
         "-": "-",
         "prepare": "pnpm build",

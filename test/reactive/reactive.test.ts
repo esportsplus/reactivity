@@ -4,7 +4,7 @@ import { SIGNAL } from '~/constants';
 import { ReactiveObject, isReactiveObject } from '~/reactive/object';
 import reactive from '~/reactive/index';
 import { ReactiveArray } from '~/reactive/array';
-import { tick, waitFor } from './lib/wait-for';
+import { tick, waitFor } from '../lib/wait-for';
 
 
 describe('ReactiveObject', () => {
