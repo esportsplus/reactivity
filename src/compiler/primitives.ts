@@ -1,5 +1,5 @@
-import type { ReplacementIntent } from '@esportsplus/typescript/compiler';
 import { ts } from '@esportsplus/typescript';
+import type { ReplacementIntent } from '@esportsplus/typescript/compiler';
 import { NAMESPACE, TYPES } from './constants';
 import type { Bindings } from './types';
 

@@ -1,8 +1,9 @@
-import type { ImportIntent, ReplacementIntent, TransformContext } from '@esportsplus/typescript/compiler';
 import { ts } from '@esportsplus/typescript';
 import { imports } from '@esportsplus/typescript/compiler';
+import type { ImportIntent, ReplacementIntent, TransformContext } from '@esportsplus/typescript/compiler';
 import { ENTRYPOINT, NAMESPACE, PACKAGE_NAME } from './constants';
 import type { Bindings } from './types';
+
 import array from './array';
 import object from './object';
 import primitives from './primitives';
