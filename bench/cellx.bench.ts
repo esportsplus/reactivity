@@ -1,5 +1,5 @@
 import { bench, describe } from 'vitest';
-import { assert, framework, ReactiveComputed } from '../lib/reactive-adapter';
+import { assert, framework, ReactiveComputed } from './lib/reactive-adapter';
 
 
 // Ported from milomg/js-reactivity-benchmark packages/core/src/benches/cellxBench.ts (MIT)

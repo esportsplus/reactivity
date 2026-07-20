@@ -1,5 +1,5 @@
 import { bench, describe } from 'vitest';
-import { assert, framework, ReactiveComputed } from '../lib/reactive-adapter';
+import { assert, framework, ReactiveComputed } from './lib/reactive-adapter';
 
 
 // Dynamic-graph workloads: dependency SETS change between runs (branch on a control

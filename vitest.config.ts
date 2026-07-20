@@ -11,7 +11,7 @@ export default defineConfig({
     },
     test: {
         benchmark: {
-            include: ['tests/bench/**/*.ts']
+            include: ['bench/**/*.bench.ts']
         },
         include: ['test/**/*.test.ts']
     }

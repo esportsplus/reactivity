@@ -1,10 +1,10 @@
 import { bench, describe } from 'vitest';
-import { assert, framework } from '../lib/reactive-adapter';
+import { assert, framework } from './lib/reactive-adapter';
 
 
 // Ported from milomg/js-reactivity-benchmark packages/core/src/benches/kairo/molBench.ts (MIT)
 
-const numbers = Array.from({ length: 5 }, (_, i) => i);
+let numbers = Array.from({ length: 5 }, (_, i) => i);
 
 
 function fib(n: number): number {
