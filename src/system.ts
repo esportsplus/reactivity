@@ -412,7 +412,7 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
         computed.error = null;
 
         // A value comparator can't compare a missing prior value (and would fault dereferencing
-        // undefined), so any recompute whose PREVIOUS value was undefined falls back to === — not
+        // undefined), so a recompute whose PREVIOUS value was undefined falls back to === — not
         // only the first run.
         let changed = computed.equals === null || computed.value === undefined
             ? value !== computed.value
@@ -526,7 +526,7 @@ function unlink(link: Link): Link | null {
         }
     }
 
-    link.dep = link.sub = null as any;
+    link.dep = link.sub = null as unknown as Computed<unknown>;
     link.nextSub = link.prevSub = null;
     link.nextDep = linkPoolHead;
     linkPoolHead = link;
@@ -691,7 +691,7 @@ function makeComputed<T>(fn: Computed<T>['fn'], eager: boolean = false): Compute
             gv: 0,
             height: 0,
             nextHeap: undefined,
-            prevHeap: null as any,
+            prevHeap: null as unknown as Computed<unknown>,
             rv: 0,
             state: STATE_COMPUTED,
             subs: null,
