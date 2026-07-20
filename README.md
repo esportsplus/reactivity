@@ -221,22 +221,27 @@ let user = new ReactiveObject_1();
 | `reactive(() => expr)` | Creates a computed value (compile-time only) |
 | `reactive({...})` | Creates a reactive object with signals and computeds |
 | `reactive([...])` | Creates a reactive array |
-| `effect(fn)` | Runs a function that re-executes when dependencies change. Returns a dispose function |
+| `effect(fn, onError?)` | Runs a function that re-executes when dependencies change. Returns a dispose function. Optional `onError` receives thrown or rejected errors |
 | `root(fn)` | Creates an untracked scope. If `fn` accepts an argument, a dispose function is provided |
 | `onCleanup(fn)` | Registers a cleanup function for the current effect/computed |
 
 ### Low-Level Functions
 
-These are typically only used by the transformer output:
+These operate directly on signal/computed nodes — the transformer emits them, and they can be called by hand:
 
 | Function | Description |
 |----------|-------------|
-| `signal(value)` | Creates a raw signal |
-| `computed(fn)` | Creates a raw computed |
-| `read(node)` | Reads a signal or computed value |
+| `signal(value, equals?)` | Creates a raw signal. Optional `equals` comparator suppresses writes it deems equal (default `===`) |
+| `computed(fn, equals?)` | Creates a raw computed. A `fn` returning a `Promise` or `AsyncIterable` becomes an async computed automatically (initial value `undefined`, unwrapped to `Settled<T>`). Optional `equals` comparator |
+| `read(node)` | Reads a signal or computed value, subscribing the current scope |
 | `write(signal, value)` | Sets a signal value |
-| `asyncComputed(fn)` | Creates a signal that resolves an async computed. Initial value is `undefined` |
+| `peek(node)` | Reads a signal/computed's current value **without** subscribing (returns an up-to-date value even for a dirty computed) |
+| `untrack(fn)` | Runs `fn` without tracking dependencies; returns `fn`'s result |
+| `batch(fn)` | Groups writes so dependent effects defer until `fn` returns; pair with `flush()` for a synchronous transaction |
+| `flush()` | Synchronously settles all pending computed/effect updates |
 | `dispose(computed)` | Disposes a computed and its dependencies |
+| `computed.invalidate(computed)` | Forces re-derivation of a computed on next read (re-dispatches an async computed's promise for a refetch) |
+| `signal.selector(signal, key)` | Per-key selector: within a tracking scope, subscribes to whether `signal`'s value equals `key`, so only key-matching observers re-run on write (O(1) fan-out) |
 
 ### Type Guards
 
@@ -272,6 +277,8 @@ Symbol constants for type identification:
 |------|-------------|
 | `Signal<T>` | Signal node type |
 | `Computed<T>` | Computed node type |
+| `Settled<T>` | Resolved value type of a computed (unwraps `Promise<T>`/`AsyncIterable<T>` to `T`) |
+| `SelectorSignal<T>` | Signal variant backing `signal.selector` per-key subscriptions |
 | `Link` | Dependency graph link between nodes |
 | `Reactive<T>` | Utility type for inferring reactive object/array types |
 | `TransformResult` | Compiler transform output metadata |
