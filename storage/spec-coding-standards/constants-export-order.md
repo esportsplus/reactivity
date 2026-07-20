@@ -19,7 +19,11 @@ src/constants.ts:41 lists `PACKAGE_NAME` after the `REACTIVE_ARRAY, REACTIVE_OBJ
 The barrel export statement only — zero behavior change.
 
 ## Design
-Exact recipe: in the `export { ... }` block (lines 38-45), move the `PACKAGE_NAME,` line above the `REACTIVE_ARRAY, REACTIVE_OBJECT,` line. Final block:
+Prior-design defect: it pinned validation on `pnpm exec tsc` / `pnpm exec vitest` without stating the environment precondition — the engine's ephemeral worktree ships without `node_modules`, so `pnpm exec` fell back to a broken global shim (`MODULE_NOT_FOUND: @esportsplus/typescript/bin/tsc`) and a byte-perfect edit still returned FAIL; the edit itself was never wrong.
+
+Step 1 — environment precondition, run before anything else: `pnpm install --frozen-lockfile` in the worktree root. This is dependency installation only, not a file edit: `node_modules/` is untracked, `--frozen-lockfile` guarantees `pnpm-lock.yaml` is not modified, and the `prepare` hook's `tsc` build writes only the gitignored `build/` directory — `git status --short` stays empty afterward (verified in this worktree; install completes in ~3s).
+
+Step 2 — the edit. The target state is ALREADY COMMITTED at e7558f2 (`refactor(constants): [constants-export-order] alphabetize export block`). If the `export { ... }` block in src/constants.ts (lines 38-45) already matches the block below byte-for-byte, make NO edit and go to step 3. Otherwise set it to exactly:
 ```ts
 export {
     COMPUTED,
@@ -31,6 +35,8 @@ export {
 };
 ```
 No declaration moves; nothing else in the file changes.
+
+Step 3 — validate with the item's Checks exactly as written; after step 1 all three resolve and all three are verified green in this worktree: layout regex PASS, `pnpm exec tsc --noEmit` PASS, `pnpm exec vitest run tests/system.ts tests/reactive.ts` PASS (107/107 tests).
 
 ## Acceptance
 `tsc --noEmit` green; 0 regressions in tests/system.ts and tests/reactive.ts, run scoped; export block matches the pinned layout.
