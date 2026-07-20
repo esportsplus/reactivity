@@ -8,12 +8,14 @@ const ENTRYPOINT_REGEX = /\breactive\b/;
 const NAMESPACE = uid('reactivity');
 
 
-const enum TYPES {
-    Array,
-    Computed,
-    Object,
-    Signal
-}
+const TYPES = {
+    Array: 0,
+    Computed: 1,
+    Object: 2,
+    Signal: 3
+} as const;
+
+type TYPES = typeof TYPES[keyof typeof TYPES];
 
 
 export { ENTRYPOINT, ENTRYPOINT_REGEX, NAMESPACE, TYPES };
