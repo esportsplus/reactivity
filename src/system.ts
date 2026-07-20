@@ -518,6 +518,23 @@ const asyncComputed = <T>(fn: Computed<Promise<T>>['fn']): Computed<T | undefine
     return wrapper;
 };
 
+// Reuses the same recompute-nesting counter schedule() consults, so writes inside fn defer
+// scheduling until fn returns; pair with flush() for a synchronous transaction.
+const batch = <T>(fn: () => T): T => {
+    depth++;
+
+    try {
+        return fn();
+    }
+    finally {
+        depth--;
+
+        if (!depth) {
+            schedule();
+        }
+    }
+};
+
 const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
     let self: Computed<T> = {
             cleanup: null,
@@ -616,6 +633,17 @@ const effect = <T>(fn: Computed<T>['fn'], onError?: (e: unknown) => void) => {
     return () => {
         dispose(c);
     };
+};
+
+// RUNNING/RESCHEDULE means a pass is already draining (or a flush is already in this call chain);
+// re-entering stabilize here would corrupt heap_i, so this is a deliberate no-op.
+// Loops (not a single call): a write during a pass can target a height stabilize()'s current
+// pass already scanned past, which only flips stabilizer to RESCHEDULE for the *next* microtask
+// rather than draining in-pass — looping here is what actually settles that tail synchronously.
+const flush = (): void => {
+    while (stabilizer === STABILIZER_SCHEDULED) {
+        stabilize();
+    }
 };
 
 const isComputed = (value: unknown): value is Computed<unknown> => {
@@ -810,9 +838,12 @@ const write = <T>(signal: Signal<T>, value: T) => {
 
 
 export {
-    asyncComputed, computed,
+    asyncComputed,
+    batch,
+    computed,
     dispose,
     effect,
+    flush,
     isComputed, isPending, isSignal,
     onCleanup,
     read, root,
