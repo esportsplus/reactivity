@@ -342,8 +342,15 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
     if (ok) {
         computed.error = null;
 
-        if (value !== computed.value || hadError) {
-            computed.value = value as T;
+        // Comparator needs a real prior value: the initial/undefined value falls back to ===
+        // (the first recompute has no subscribers yet, so `changed` is moot there anyway).
+        let changed = computed.equals === null || computed.value === undefined
+            ? value !== computed.value
+            : !computed.equals(computed.value, value);
+
+        computed.value = value as T;
+
+        if (changed || hadError) {
             propagate(computed);
         }
     }
@@ -590,12 +597,13 @@ const batch = <T>(fn: () => T): T => {
     }
 };
 
-const computed = <T>(fn: Computed<T>['fn']): Computed<T> => {
+const computed = <T>(fn: Computed<T>['fn'], equals: ((a: T, b: T) => boolean) | null = null): Computed<T> => {
     let self: Computed<T> = {
             cleanup: null,
             deps: null,
             depsTail: null,
             disposal: null,
+            equals: equals as ((a: unknown, b: unknown) => boolean) | null,
             error: null,
             fn: fn,
             gv: 0,
@@ -861,8 +869,9 @@ const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
 
 root.disposables = 0;
 
-const signal = <T>(value: T): Signal<T> => {
+const signal = <T>(value: T, equals: ((a: T, b: T) => boolean) | null = null): Signal<T> => {
     return {
+        equals: equals as ((a: unknown, b: unknown) => boolean) | null,
         keys: null,
         nextPending: null,
         rv: 0,
@@ -885,6 +894,7 @@ signal.is = <T>(node: Signal<T>, key: T): boolean => {
 
     if (entry === undefined) {
         keys.set(key, entry = {
+            equals: null,
             key,
             keys: null,
             nextPending: null,
@@ -916,7 +926,7 @@ const untrack = <T>(fn: () => T): T => {
 const write = <T>(signal: Signal<T>, value: T) => {
     let prev = signal.value;
 
-    if (prev === value) {
+    if (signal.equals === null ? prev === value : signal.equals(prev, value)) {
         return;
     }
 

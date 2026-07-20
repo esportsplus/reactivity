@@ -8,6 +8,7 @@ interface Computed<T> {
     deps: Link | null;
     depsTail: Link | null;
     disposal: VoidFunction | null;
+    equals: ((a: unknown, b: unknown) => boolean) | null;
     error: unknown;
     fn: (onCleanup: (fn: VoidFunction) => typeof fn) => T;
     gv: number;
@@ -50,6 +51,7 @@ type SelectorSignal<T> = Signal<boolean> & {
 };
 
 type Signal<T> = {
+    equals: ((a: unknown, b: unknown) => boolean) | null;
     keys: Map<T, SelectorSignal<T>> | null;
     nextPending: Signal<unknown> | null;
     rv: number;

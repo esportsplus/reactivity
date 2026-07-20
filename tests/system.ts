@@ -685,10 +685,10 @@ describe('computed object size', () => {
         expect('type' in c).toBe(false);
     });
 
-    it('has no more own properties than 15 (13 slimmed + gv + rv)', () => {
+    it('has no more own properties than 16 (14 slimmed + gv + rv)', () => {
         let c = computed(() => 42);
 
-        expect(Object.keys(c).length).toBeLessThanOrEqual(15);
+        expect(Object.keys(c).length).toBeLessThanOrEqual(16);
     });
 });
 
