@@ -4,7 +4,7 @@ import {
     STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
     STATE_CHECK, STATE_COMPUTED, STATE_DIRTY, STATE_EFFECT, STATE_ERROR, STATE_IN_HEAP, STATE_NOTIFY_MASK, STATE_RECOMPUTING
 } from './constants';
-import { Computed, Link, SelectorSignal, Signal } from './types';
+import { Computed, Link, SelectorSignal, Settled, Signal } from './types';
 import { isObject, isPromise } from '@esportsplus/utilities';
 
 
@@ -15,13 +15,6 @@ type Walk = {
     link: Link | null;
     prev: Walk | null;
 };
-
-// A fn returning a Promise/AsyncIterable yields a settled value node; a plain fn yields its value.
-type Settled<T> =
-    T extends Promise<infer U> ? Awaited<U> | undefined :
-    T extends AsyncIterable<infer U> ? U | undefined :
-    T;
-
 
 let asyncMeta = new WeakMap<Computed<unknown>, { factory: Computed<unknown> }>(),
     depth = 0,
@@ -418,8 +411,9 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
     if (ok) {
         computed.error = null;
 
-        // Comparator needs a real prior value: the initial/undefined value falls back to ===
-        // (the first recompute has no subscribers yet, so `changed` is moot there anyway).
+        // A value comparator can't compare a missing prior value (and would fault dereferencing
+        // undefined), so any recompute whose PREVIOUS value was undefined falls back to === — not
+        // only the first run.
         let changed = computed.equals === null || computed.value === undefined
             ? value !== computed.value
             : !computed.equals(computed.value, value);
@@ -766,7 +760,7 @@ const computed = <T>(fn: Computed<T>['fn'], equals: ((a: Settled<T>, b: Settled<
 };
 
 // Forces a re-derivation without the dummy-signal-dependency hack. writes++ FIRST so a gv-stamped
-// node cannot skip the forced re-run via update()'s clean-graph fast path; an asyncComputed wrapper
+// node cannot skip the forced re-run via update()'s clean-graph fast path; an async computed's wrapper
 // redirects to its factory so the promise re-dispatches (a refetch).
 computed.invalidate = <T>(c: Computed<T>): void => {
     let meta = asyncMeta.get(c);

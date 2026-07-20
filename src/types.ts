@@ -35,20 +35,24 @@ interface Link {
 // Instead we will use this as a shim.
 declare const READONLY: unique symbol;
 
-type Reactive<T> = T extends (...args: unknown[]) => Promise<infer R>
-    ? (R | undefined) & { readonly [READONLY]: true }
-    : T extends (...args: any[]) => infer R
-        ? R & { readonly [READONLY]: true }
-        : T extends (infer U)[]
-            ? U[] & Pick<ReactiveArray<U>, 'clear' | 'dispose' | 'on' | 'once'>
-            : T extends Record<PropertyKey, unknown>
-                ? { [K in keyof T]: T[K] extends (infer U)[] ? Reactive<U[]> : T[K]; } & { dispose: VoidFunction }
-                : T;
+type Reactive<T> = T extends (...args: any[]) => infer R
+    ? Settled<R> & { readonly [READONLY]: true }
+    : T extends (infer U)[]
+        ? U[] & Pick<ReactiveArray<U>, 'clear' | 'dispose' | 'on' | 'once'>
+        : T extends Record<PropertyKey, unknown>
+            ? { [K in keyof T]: T[K] extends (infer U)[] ? Reactive<U[]> : T[K]; } & { dispose: VoidFunction }
+            : T;
 
 type SelectorSignal<T> = Signal<boolean> & {
     key: T;
     parent: Signal<T>;
 };
+
+// A fn returning a Promise/AsyncIterable yields a settled value; a plain fn yields its value.
+type Settled<T> =
+    T extends Promise<infer U> ? Awaited<U> | undefined :
+    T extends AsyncIterable<infer U> ? U | undefined :
+    T;
 
 type Signal<T> = {
     equals: ((a: unknown, b: unknown) => boolean) | null;
@@ -73,6 +77,7 @@ export type {
     Link,
     Reactive,
     SelectorSignal,
+    Settled,
     Signal,
     TransformResult
 };
