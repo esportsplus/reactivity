@@ -235,6 +235,26 @@ function notify<T>(computed: Computed<T>, newState: number) {
     }
 }
 
+// Shared by read()'s tracked pull and peek()'s untracked pull. observer is nulled around update()
+// so a recompute triggered here tracks into the node's own scope, never the caller's.
+function pull<T>(node: Computed<T>): void {
+    if (!notified) {
+        notified = true;
+
+        for (let i = 0; i <= heap_n; i++) {
+            for (let computed = heap[i]; computed !== undefined; computed = computed.nextHeap) {
+                notify(computed, STATE_DIRTY);
+            }
+        }
+    }
+
+    let o = observer;
+
+    observer = null;
+    update(node);
+    observer = o;
+}
+
 function propagate<T>(computed: Computed<T>) {
     for (let c = computed.subs; c; c = c.nextSub) {
         let s = c.sub,
@@ -672,19 +692,25 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
             }
 
             if (height >= heap_i || (node as Computed<T>).state & STATE_NOTIFY_MASK) {
-                if (!notified) {
-                    notified = true;
-
-                    for (let i = 0; i <= heap_n; i++) {
-                        for (let computed = heap[i]; computed !== undefined; computed = computed.nextHeap) {
-                            notify(computed, STATE_DIRTY);
-                        }
-                    }
-                }
-
-                update(node as Computed<T>);
+                pull(node as Computed<T>);
             }
         }
+    }
+
+    if ((node as Computed<T>).state & STATE_ERROR) {
+        throw (node as Computed<T>).error;
+    }
+
+    return node.value;
+};
+
+const peek = <T>(node: Signal<T> | Computed<T>): T => {
+    if ((node as Computed<T>).state & STATE_COMPUTED) {
+        if (pendingHead !== null) {
+            drainPending();
+        }
+
+        pull(node as Computed<T>);
     }
 
     if ((node as Computed<T>).state & STATE_ERROR) {
@@ -767,6 +793,19 @@ signal.is = <T>(node: Signal<T>, key: T): boolean => {
     return read(entry);
 };
 
+const untrack = <T>(fn: () => T): T => {
+    let o = observer;
+
+    observer = null;
+
+    try {
+        return fn();
+    }
+    finally {
+        observer = o;
+    }
+};
+
 const write = <T>(signal: Signal<T>, value: T) => {
     let prev = signal.value;
 
@@ -815,8 +854,10 @@ export {
     effect,
     isComputed, isPending, isSignal,
     onCleanup,
+    peek,
     read, root,
     signal,
+    untrack,
     write
 };
 export type { Computed, Signal };
