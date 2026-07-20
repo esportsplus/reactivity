@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { computed, effect, onCleanup, read, signal, write } from '~/system';
 
-// signal.is(node, key) rides a Map for entry lookup — SameValueZero semantics: NaN keys match
+// signal.selector(node, key) rides a Map for entry lookup — SameValueZero semantics: NaN keys match
 // themselves and ±0 collapse, slightly wider than the settled === for those two cases. Object keys
 // compare by reference and MUST be stable (a re-allocated key object never matches). The initial
 // node.value === key snapshot uses ===.
@@ -9,14 +9,14 @@ import { computed, effect, onCleanup, read, signal, write } from '~/system';
 const settle = () => Promise.resolve().then(() => Promise.resolve());
 
 
-describe('signal.is per-key selector', () => {
+describe('signal.selector per-key selector', () => {
     it('re-runs on transitions into/out of the key, not on writes between other keys', async () => {
         let runs = 0,
             s = signal('a');
 
         effect(() => {
             runs++;
-            signal.is(s, 'b');
+            signal.selector(s, 'b');
         });
 
         runs = 0;
@@ -42,11 +42,11 @@ describe('signal.is per-key selector', () => {
         let s = signal('x'),
             tracked: boolean | null = null;
 
-        expect(signal.is(s, 'x')).toBe(true);
-        expect(signal.is(s, 'y')).toBe(false);
+        expect(signal.selector(s, 'x')).toBe(true);
+        expect(signal.selector(s, 'y')).toBe(false);
 
         effect(() => {
-            tracked = signal.is(s, 'x');
+            tracked = signal.selector(s, 'x');
         });
 
         expect(tracked).toBe(true);
@@ -57,13 +57,13 @@ describe('signal.is per-key selector', () => {
 
         expect(s.keys).toBe(null);
 
-        signal.is(s, 1);
+        signal.selector(s, 1);
         expect(s.keys).toBe(null);
 
         effect(() => {
-            signal.is(s, 1);
-            signal.is(s, 2);
-            signal.is(s, 1);
+            signal.selector(s, 1);
+            signal.selector(s, 2);
+            signal.selector(s, 1);
         });
 
         expect(s.keys).not.toBe(null);
@@ -73,10 +73,10 @@ describe('signal.is per-key selector', () => {
     it('evicts entries on last unsubscribe and nulls keys when the map empties', () => {
         let s = signal(0),
             stop1 = effect(() => {
-                signal.is(s, 1);
+                signal.selector(s, 1);
             }),
             stop2 = effect(() => {
-                signal.is(s, 2);
+                signal.selector(s, 2);
             });
 
         expect(s.keys!.size).toBe(2);
@@ -119,15 +119,15 @@ describe('signal.is per-key selector', () => {
 
         effect(() => {
             runs1++;
-            signal.is(s, 'a');
+            signal.selector(s, 'a');
         });
         effect(() => {
             runs2++;
-            signal.is(s, 'b');
+            signal.selector(s, 'b');
         });
         effect(() => {
             runs3++;
-            signal.is(s, 'c');
+            signal.selector(s, 'c');
         });
 
         runs1 = runs2 = runs3 = 0;
@@ -147,7 +147,7 @@ describe('signal.is per-key selector', () => {
 
         effect(() => {
             runs++;
-            observed.push(signal.is(s, NaN));
+            observed.push(signal.selector(s, NaN));
         });
 
         runs = 0;
@@ -169,7 +169,7 @@ describe('signal.is per-key selector', () => {
             s = signal<object>(k);
 
         effect(() => {
-            observed.push(signal.is(s, k));
+            observed.push(signal.selector(s, k));
         });
 
         expect(observed[0]).toBe(true);

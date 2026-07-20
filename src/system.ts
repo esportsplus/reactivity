@@ -22,11 +22,6 @@ type Settled<T> =
     T extends AsyncIterable<infer U> ? U | undefined :
     T;
 
-interface ComputedFactory {
-    <T>(fn: Computed<T>['fn'], equals?: ((a: Settled<T>, b: Settled<T>) => boolean) | null): Computed<Settled<T>>;
-    invalidate: <T>(node: Computed<T>) => void;
-}
-
 
 let asyncMeta = new WeakMap<Computed<unknown>, { factory: Computed<unknown> }>(),
     depth = 0,
@@ -621,22 +616,20 @@ function update<T>(root: Computed<T>): void {
 // Drives an async factory — a computed whose fn returns a Promise or AsyncIterable — into a settled
 // wrapper: the polling effect awaits each dispatch and writes the value/error signals the wrapper
 // reads. `id` plus the dirty-gap guard enforce latest-wins across re-dispatches.
-function makeAsync<T>(factory: Computed<Promise<T> | AsyncIterable<T> | T>, equals: ((a: unknown, b: unknown) => boolean) | null): Computed<T | undefined> {
+function makeAsyncComputed<T>(factory: Computed<Promise<T> | AsyncIterable<T> | T>): Computed<T | undefined> {
     let error = signal<unknown>(undefined),
         node = signal<T | undefined>(undefined),
         v = 0;
 
     let stop = effect(() => {
-        let id = ++v;
-
         let fail = (e: unknown) => {
-            if (id === v && !(factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
-                write(error, e === undefined ? new Error('reactivity: async computed rejected with undefined') : e);
-            }
-        };
-
-        // Heap membership (a write's eager insert) marks a pending re-run the notify mask alone misses.
-        let result = read(factory);
+                if (id === v && !(factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
+                    write(error, e === undefined ? new Error('reactivity: async computed rejected with undefined') : e);
+                }
+            },
+            id = ++v,
+            // Heap membership (a write's eager insert) marks a pending re-run the notify mask alone misses.
+            result = read(factory);
 
         if (isPromise(result)) {
             (result as Promise<T>).then(
@@ -677,38 +670,20 @@ function makeAsync<T>(factory: Computed<Promise<T> | AsyncIterable<T> | T>, equa
     });
 
     let wrapper = makeComputed<T | undefined>(() => {
-        let e = read(error);
+            let e = read(error);
 
-        if (e !== undefined) {
-            throw e;
-        }
+            if (e !== undefined) {
+                throw e;
+            }
 
-        return read(node);
-    });
+            return read(node);
+        });
 
-    wrapper.equals = equals;
     asyncMeta.set(wrapper as Computed<unknown>, { factory: factory as Computed<unknown> });
     wrapper.disposal = stop;
 
     return wrapper;
 }
-
-// Reuses the same recompute-nesting counter schedule() consults, so writes inside fn defer
-// scheduling until fn returns; pair with flush() for a synchronous transaction.
-const batch = <T>(fn: () => T): T => {
-    depth++;
-
-    try {
-        return fn();
-    }
-    finally {
-        depth--;
-
-        if (!depth) {
-            schedule();
-        }
-    }
-};
 
 function makeComputed<T>(fn: Computed<T>['fn']): Computed<T> {
     let self: Computed<T> = {
@@ -758,20 +733,54 @@ function makeComputed<T>(fn: Computed<T>['fn']): Computed<T> {
     return self;
 }
 
+// Reuses the same recompute-nesting counter schedule() consults, so writes inside fn defer
+// scheduling until fn returns; pair with flush() for a synchronous transaction.
+const batch = <T>(fn: () => T): T => {
+    depth++;
+
+    try {
+        return fn();
+    }
+    finally {
+        depth--;
+
+        if (!depth) {
+            schedule();
+        }
+    }
+};
+
 // A fn returning a Promise or AsyncIterable transparently becomes an async computed: the first run is
 // the probe, reused as the factory (no duplicate dispatch). A plain fn returns the node directly.
-const computed = (<T>(fn: Computed<T>['fn'], equals: ((a: unknown, b: unknown) => boolean) | null = null): Computed<unknown> => {
-    let self = makeComputed(fn),
-        value = self.value as unknown;
+const computed = <T>(fn: Computed<T>['fn'], equals: ((a: Settled<T>, b: Settled<T>) => boolean) | null = null): Computed<Settled<T>> => {
+    let self: Computed<unknown> = makeComputed(fn),
+        value = self.value;
 
     if (isPromise(value) || (value != null && typeof (value as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === 'function')) {
-        return makeAsync(self as Computed<Promise<unknown> | AsyncIterable<unknown>>, equals);
+        self = makeAsyncComputed(self as Computed<Promise<unknown> | AsyncIterable<unknown>>);
     }
 
-    self.equals = equals;
+    self.equals = equals as ((a: unknown, b: unknown) => boolean) | null;
 
-    return self;
-}) as ComputedFactory;
+    return self as Computed<Settled<T>>;
+};
+
+// Forces a re-derivation without the dummy-signal-dependency hack. writes++ FIRST so a gv-stamped
+// node cannot skip the forced re-run via update()'s clean-graph fast path; an asyncComputed wrapper
+// redirects to its factory so the promise re-dispatches (a refetch).
+computed.invalidate = <T>(c: Computed<T>): void => {
+    let meta = asyncMeta.get(c);
+
+    if (meta) {
+        computed.invalidate(meta.factory);
+        return;
+    }
+
+    writes++;
+    c.state |= STATE_DIRTY;
+    insertIntoHeap(c);
+    schedule();
+};
 
 // Teardown runs as an iterative LIFO drain, not recursion: a recursive dispose→unlink→dispose cascade
 // overflows the call stack on deep chains. A dispose issued while a drain runs enqueues and returns,
@@ -867,25 +876,6 @@ const flush = (): void => {
     }
 };
 
-// Forces a re-derivation without the dummy-signal-dependency hack. writes++ FIRST so a gv-stamped
-// node cannot skip the forced re-run via update()'s clean-graph fast path; an asyncComputed wrapper
-// redirects to its factory so the promise re-dispatches (a refetch).
-const invalidate = <T>(computed: Computed<T>): void => {
-    let meta = asyncMeta.get(computed as Computed<unknown>);
-
-    if (meta) {
-        invalidate(meta.factory as Computed<T>);
-        return;
-    }
-
-    writes++;
-    computed.state |= STATE_DIRTY;
-    insertIntoHeap(computed);
-    schedule();
-};
-
-computed.invalidate = invalidate;
-
 const isComputed = (value: unknown): value is Computed<unknown> => {
     return isObject(value) && !!((value as unknown as Computed<unknown>).state & STATE_COMPUTED);
 };
@@ -916,6 +906,22 @@ const onCleanup = (fn: VoidFunction): typeof fn => {
     return fn;
 };
 
+const peek = <T>(node: Signal<T> | Computed<T>): T => {
+    if ((node as Computed<T>).state & STATE_COMPUTED) {
+        if (pendingHead !== null) {
+            drainPending();
+        }
+
+        pull(node as Computed<T>);
+    }
+
+    if ((node as Computed<T>).state & STATE_ERROR) {
+        throw (node as Computed<T>).error;
+    }
+
+    return node.value;
+};
+
 const read = <T>(node: Signal<T> | Computed<T>): T => {
     if (observer) {
         link(node, observer);
@@ -937,22 +943,6 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
                 pull(node as Computed<T>);
             }
         }
-    }
-
-    if ((node as Computed<T>).state & STATE_ERROR) {
-        throw (node as Computed<T>).error;
-    }
-
-    return node.value;
-};
-
-const peek = <T>(node: Signal<T> | Computed<T>): T => {
-    if ((node as Computed<T>).state & STATE_COMPUTED) {
-        if (pendingHead !== null) {
-            drainPending();
-        }
-
-        pull(node as Computed<T>);
     }
 
     if ((node as Computed<T>).state & STATE_ERROR) {
@@ -1011,7 +1001,7 @@ const signal = <T>(value: T, equals: ((a: T, b: T) => boolean) | null = null): S
 
 // SameValueZero (Map) key lookup: NaN matches itself, ±0 collapse — slightly wider than === for those.
 // Object keys compare by reference and must be stable. The initial snapshot below uses ===.
-signal.is = <T>(node: Signal<T>, key: T): boolean => {
+signal.selector = <T>(node: Signal<T>, key: T): boolean => {
     if (!observer) {
         return node.value === key;
     }
