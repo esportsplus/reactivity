@@ -1,6 +1,6 @@
 import { isArray } from '@esportsplus/utilities';
-import { read, signal, write } from '~/system';
 import { REACTIVE_ARRAY } from '~/constants';
+import { read, signal, write } from '~/system';
 import type { Signal } from '~/types';
 import { isReactiveObject } from './object';
 
@@ -42,7 +42,9 @@ type Listener<V> = {
     (value: V): void;
 };
 
-type Listeners = Record<string, (Listener<any> | null)[]>;
+type AnyListener<T> = Listener<Events<T>[keyof Events<T>]>;
+
+type Listeners<T> = { [K in keyof Events<T>]?: (AnyListener<T> | null)[] };
 
 
 function dispose(value: unknown) {
@@ -55,25 +57,12 @@ function dispose(value: unknown) {
 class ReactiveArray<T> extends Array<T> {
     private _length: Signal<number>;
 
-    listeners: Listeners = {};
+    listeners: Listeners<T> = {};
 
 
     constructor(...items: T[]) {
         super(...items);
         this._length = signal(items.length);
-    }
-
-
-    get $length() {
-        return read(this._length);
-    }
-
-    set $length(value: number) {
-        if (value > this.length) {
-            throw Error(`@esportsplus/reactivity: cannot set length to a value larger than the current length, use splice instead.`);
-        }
-
-        this.splice(value, this.length);
     }
 
 
@@ -130,7 +119,7 @@ class ReactiveArray<T> extends Array<T> {
         return this;
     }
 
-    dispatch<K extends keyof Events<T>, V>(event: K, value?: V) {
+    dispatch<K extends keyof Events<T>>(event: K, value?: Events<T>[K]) {
         let listeners = this.listeners[event];
 
         if (!listeners) {
@@ -147,7 +136,7 @@ class ReactiveArray<T> extends Array<T> {
             }
 
             try {
-                listener(value);
+                listener(value as Events<T>[K]);
 
                 if (listener.once !== undefined) {
                     dirty = true;
@@ -176,10 +165,11 @@ class ReactiveArray<T> extends Array<T> {
     }
 
     on<K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) {
-        let listeners = this.listeners[event];
+        let entry = listener as AnyListener<T>,
+            listeners = this.listeners[event];
 
         if (listeners === undefined) {
-            this.listeners[event] = [listener];
+            this.listeners[event] = [entry];
         }
         else {
             let hole = listeners.length;
@@ -187,7 +177,7 @@ class ReactiveArray<T> extends Array<T> {
             for (let i = 0, n = hole; i < n; i++) {
                 let l = listeners[i];
 
-                if (l === listener) {
+                if (l === entry) {
                     return;
                 }
                 else if (l === null && hole === n) {
@@ -195,7 +185,7 @@ class ReactiveArray<T> extends Array<T> {
                 }
             }
 
-            listeners[hole] = listener;
+            listeners[hole] = entry;
 
             while (listeners.length && listeners[listeners.length - 1] === null) {
                 listeners.pop();
@@ -264,7 +254,7 @@ class ReactiveArray<T> extends Array<T> {
 
         super.sort(fn);
 
-        let buckets = new Map<any, number[]>(),
+        let buckets = new Map<T, number[]>(),
             order = new Array(n);
 
         for (let i = 0; i < n; i++) {
@@ -321,6 +311,19 @@ class ReactiveArray<T> extends Array<T> {
         this.dispatch('unshift', { items });
 
         return length;
+    }
+
+
+    get $length() {
+        return read(this._length);
+    }
+
+    set $length(value: number) {
+        if (value > this.length) {
+            throw Error(`@esportsplus/reactivity: cannot set length to a value larger than the current length, use splice instead.`);
+        }
+
+        this.splice(value, this.length);
     }
 }
 
