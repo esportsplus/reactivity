@@ -35,7 +35,7 @@ interface Link {
 // Instead we will use this as a shim.
 declare const READONLY: unique symbol;
 
-type Reactive<T> = T extends (...args: any[]) => infer R
+type Reactive<T> = T extends (...args: never[]) => infer R
     ? Settled<R> & { readonly [READONLY]: true }
     : T extends (infer U)[]
         ? U[] & Pick<ReactiveArray<U>, 'clear' | 'dispose' | 'on' | 'once'>
