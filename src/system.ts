@@ -5,7 +5,7 @@ import {
     STATE_CHECK, STATE_COMPUTED, STATE_DIRTY, STATE_EFFECT, STATE_ERROR, STATE_IN_HEAP, STATE_NOTIFY_MASK, STATE_RECOMPUTING
 } from './constants';
 import { Computed, Link, SelectorSignal, Signal } from './types';
-import { isObject } from '@esportsplus/utilities';
+import { isObject, isPromise } from '@esportsplus/utilities';
 
 
 let asyncMeta = new WeakMap<Computed<unknown>, { factory: Computed<unknown>; pending: Signal<boolean> }>(),
@@ -491,7 +491,7 @@ function update<T>(computed: Computed<T>): void {
 }
 
 
-const asyncComputed = <T>(fn: Computed<Promise<T>>['fn']): Computed<T | undefined> => {
+const asyncComputed = <T>(fn: Computed<Promise<T> | AsyncIterable<T> | T>['fn']): Computed<T | undefined> => {
     let error = signal<unknown>(undefined),
         factory = computed(fn),
         node = signal<T | undefined>(undefined),
@@ -503,22 +503,57 @@ const asyncComputed = <T>(fn: Computed<Promise<T>>['fn']): Computed<T | undefine
 
         write(pending, true);
 
-        // Heap membership (a write's eager insert) marks a pending re-run the notify mask alone misses.
-        (read(factory) as Promise<T>).then(
-            (value) => {
-                if (id === v && !(factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
-                    write(error, undefined);
-                    write(node, value);
-                    write(pending, false);
-                }
-            },
-            (e) => {
-                if (id === v && !(factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
-                    write(error, e === undefined ? new Error('reactivity: asyncComputed rejected with undefined') : e);
-                    write(pending, false);
-                }
+        let fail = (e: unknown) => {
+            if (id === v && !(factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
+                write(error, e === undefined ? new Error('reactivity: asyncComputed rejected with undefined') : e);
+                write(pending, false);
             }
-        );
+        };
+
+        // Heap membership (a write's eager insert) marks a pending re-run the notify mask alone misses.
+        let result = read(factory);
+
+        if (isPromise(result)) {
+            (result as Promise<T>).then(
+                (value) => {
+                    if (id === v && !(factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
+                        write(error, undefined);
+                        write(node, value);
+                        write(pending, false);
+                    }
+                },
+                fail
+            );
+        }
+        else if (result != null && typeof (result as AsyncIterable<T>)[Symbol.asyncIterator] === 'function') {
+            let it = (result as AsyncIterable<T>)[Symbol.asyncIterator]();
+
+            onCleanup(() => {
+                it.return?.();
+            });
+
+            let step = (r: IteratorResult<T>) => {
+                if (id !== v || (factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
+                    return;
+                }
+
+                if (r.done) {
+                    write(pending, false);
+                }
+                else {
+                    write(error, undefined);
+                    write(node, r.value);
+                    it.next().then(step, fail);
+                }
+            };
+
+            untrack(() => it.next()).then(step, fail);
+        }
+        else {
+            write(error, undefined);
+            write(node, result as T);
+            write(pending, false);
+        }
     });
 
     let wrapper = computed(() => {
@@ -748,6 +783,50 @@ const peek = <T>(node: Signal<T> | Computed<T>): T => {
     return node.value;
 };
 
+// Settle predicate: fn returning undefined means "not ready yet, keep waiting" (asyncComputed
+// nodes hold undefined pre-first-settle, so `() => read(wrapper)` composes naturally); the first
+// non-undefined value resolves the promise, a throw rejects it.
+const resolve = <T>(fn: () => T): Promise<T> => {
+    return new Promise((res, rej) => {
+        let settled = false,
+            stop: VoidFunction | null = null;
+
+        let finish = (run: VoidFunction) => {
+            settled = true;
+            run();
+
+            queueMicrotask(() => {
+                if (stop !== null) {
+                    let s = stop;
+
+                    stop = null;
+                    s();
+                }
+            });
+        };
+
+        stop = effect(() => {
+            if (settled) {
+                return;
+            }
+
+            let value;
+
+            try {
+                value = fn();
+            }
+            catch (e) {
+                finish(() => rej(e));
+                return;
+            }
+
+            if (value !== undefined) {
+                finish(() => res(value as T));
+            }
+        });
+    });
+};
+
 const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
     let c,
         d = root.disposables,
@@ -886,7 +965,7 @@ export {
     isComputed, isPending, isSignal,
     onCleanup,
     peek,
-    read, root,
+    read, resolve, root,
     signal,
     untrack,
     write
