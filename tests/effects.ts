@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { computed, effect, onCleanup, read, root, signal, write } from '~/system';
 import { ReactiveArray } from '~/reactive/array';
 import { ReactiveObject } from '~/reactive/object';
+import { waitFor } from './lib/wait-for';
 
 
 // These tests validate effect patterns from the compiler integration tests,
@@ -250,7 +251,7 @@ describe('effect patterns', () => {
             expect(preSeen).toEqual([0, 1]);
             expect(postSeen).toEqual([0]);
 
-            await new Promise((r) => setTimeout(r, 20));
+            await waitFor(() => postSeen.length === 2, 'after-await write lands (post=10)');
 
             // After-await write lands once the boundary settles
             expect(postSeen).toEqual([0, 10]);
@@ -262,7 +263,7 @@ describe('effect patterns', () => {
             expect(preSeen).toEqual([0, 1, 2]);
             expect(postSeen).toEqual([0, 10]);
 
-            await new Promise((r) => setTimeout(r, 20));
+            await waitFor(() => postSeen.length === 3, 'second after-await write lands (post=20)');
 
             expect(postSeen).toEqual([0, 10, 20]);
         });

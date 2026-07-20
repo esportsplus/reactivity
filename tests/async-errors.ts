@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computed, read, root, signal, write } from '~/system';
+import { tick, waitFor } from './lib/wait-for';
 import type { Computed } from '~/system';
 
 
@@ -20,18 +21,34 @@ describe('asyncComputed error propagation', () => {
             });
         });
 
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => read(node) === 1, 'node resolves to 1');
 
         expect(read(node)).toBe(1);
 
         write(s, 2);
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => {
+            try {
+                read(node);
+
+                return false;
+            }
+            catch (e) {
+                return (e as Error).message === 'fail';
+            }
+        }, 'node read throws fail');
 
         expect(() => read(node)).toThrow('fail');
         expect(() => read(node)).toThrow('fail');
 
         write(s, 3);
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => {
+            try {
+                return read(node) === 3;
+            }
+            catch {
+                return false;
+            }
+        }, 'node recovers to 3');
 
         expect(read(node)).toBe(3);
     });
@@ -61,13 +78,13 @@ describe('asyncComputed error propagation', () => {
 
         // Reject the first (superseded) dispatch — must be discarded
         rejecters[0](new Error('stale'));
-        await new Promise((r) => setTimeout(r, 0));
+        await tick();
 
         expect(read(node)).toBeUndefined();
 
         // The latest dispatch still lands
         resolvers[1](42);
-        await new Promise((r) => setTimeout(r, 0));
+        await waitFor(() => read(node) === 42, 'latest resolves to 42');
 
         expect(read(node)).toBe(42);
     });
@@ -88,7 +105,7 @@ describe('asyncComputed error propagation', () => {
         });
 
         resolvers[0](10);
-        await new Promise((r) => setTimeout(r, 0));
+        await waitFor(() => read(node) === 10, 'node resolves to 10');
 
         expect(read(node)).toBe(10);
 
@@ -101,7 +118,7 @@ describe('asyncComputed error propagation', () => {
         expect(read(node)).toBe(10);
 
         resolvers[1](20);
-        await new Promise((r) => setTimeout(r, 0));
+        await waitFor(() => read(node) === 20, 'node refetches to 20');
 
         expect(read(node)).toBe(20);
     });
@@ -113,7 +130,16 @@ describe('asyncComputed error propagation', () => {
             node = computed(() => Promise.reject(undefined));
         });
 
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => {
+            try {
+                read(node);
+
+                return false;
+            }
+            catch {
+                return true;
+            }
+        }, 'node read throws');
 
         expect(() => read(node)).toThrow('reactivity: async computed rejected with undefined');
     });

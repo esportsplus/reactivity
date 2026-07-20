@@ -4,6 +4,7 @@ import { SIGNAL } from '~/constants';
 import { ReactiveObject, isReactiveObject } from '~/reactive/object';
 import reactive from '~/reactive/index';
 import { ReactiveArray } from '~/reactive/array';
+import { tick, waitFor } from './lib/wait-for';
 
 
 describe('ReactiveObject', () => {
@@ -120,7 +121,7 @@ describe('ReactiveObject', () => {
 
             expect(obj.data).toBeUndefined();
 
-            await new Promise((r) => setTimeout(r, 10));
+            await waitFor(() => obj.data === 42, 'obj.data resolves to 42');
 
             expect(obj.data).toBe(42);
         });
@@ -131,12 +132,12 @@ describe('ReactiveObject', () => {
                     data: () => Promise.resolve(read(s))
                 }) as any;
 
-            await new Promise((r) => setTimeout(r, 10));
+            await waitFor(() => obj.data === 'hello', 'obj.data resolves to hello');
 
             expect(obj.data).toBe('hello');
 
             write(s, 'world');
-            await new Promise((r) => setTimeout(r, 10));
+            await waitFor(() => obj.data === 'world', 'obj.data updates to world');
 
             expect(obj.data).toBe('world');
         });
@@ -178,7 +179,7 @@ describe('ReactiveObject', () => {
 
             // Resolve latest promise — lands after the stabilize microtask
             resolvers[2](300);
-            await new Promise((r) => setTimeout(r, 0));
+            await waitFor(() => obj.data === 300, 'obj.data resolves to latest 300');
 
             expect(obj.data).toBe(300);
         });
@@ -209,7 +210,7 @@ describe('ReactiveObject', () => {
 
             // And no further computations occur from new dependency changes
             write(s, 3);
-            await new Promise((r) => setTimeout(r, 10));
+            await tick();
 
             expect(obj.data).toBeUndefined();
         });

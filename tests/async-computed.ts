@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computed, dispose, effect, isComputed, isSignal, read, root, signal, write } from '~/system';
+import { tick, waitFor } from './lib/wait-for';
 import type { Computed } from '~/system';
 
 
@@ -28,7 +29,7 @@ describe('asyncComputed', () => {
             node = computed(() => Promise.resolve(42));
         });
 
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => read(node) === 42, 'node resolves to 42');
 
         expect(read(node)).toBe(42);
     });
@@ -41,12 +42,12 @@ describe('asyncComputed', () => {
             node = computed(() => Promise.resolve(read(s)));
         });
 
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => read(node) === 'hello', 'node resolves to hello');
 
         expect(read(node)).toBe('hello');
 
         write(s, 'world');
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => read(node) === 'world', 'node updates to world');
 
         expect(read(node)).toBe('world');
     });
@@ -89,7 +90,7 @@ describe('asyncComputed', () => {
 
         // Resolve latest — value lands after the stabilize microtask
         resolvers[2](300);
-        await new Promise((r) => setTimeout(r, 0));
+        await waitFor(() => read(node) === 300, 'node resolves to latest 300');
 
         expect(read(node)).toBe(300);
     });
@@ -115,13 +116,13 @@ describe('asyncComputed', () => {
         rejecters[0](new Error('gap rejection'));
         write(s, 2);
 
-        await new Promise((r) => setTimeout(r, 0));
+        await tick();
 
         // Dropped: the wrapper is not poisoned by the superseded rejection
         expect(read(node)).toBeUndefined();
 
         resolvers[1](7);
-        await new Promise((r) => setTimeout(r, 0));
+        await waitFor(() => read(node) === 7, 'node resolves to 7');
 
         expect(read(node)).toBe(7);
     });
@@ -144,12 +145,12 @@ describe('asyncComputed', () => {
             });
         });
 
-        await new Promise((r) => setTimeout(r, 10));
+        await tick();
 
         expect(aborted).toBe(false);
 
         write(s, 2);
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => aborted === true, 'controller aborts on re-run');
 
         expect(aborted).toBe(true);
     });
@@ -169,12 +170,12 @@ describe('asyncComputed', () => {
 
         expect(values).toEqual([undefined]);
 
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => values.length === 2, 'effect observes resolved 10');
 
         expect(values).toEqual([undefined, 10]);
 
         write(s, 20);
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => values.length === 3, 'effect observes updated 20');
 
         expect(values).toEqual([undefined, 10, 20]);
     });
@@ -190,14 +191,14 @@ describe('asyncComputed', () => {
             node = computed(() => Promise.resolve(read(s)));
         });
 
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => read(node) === 1, 'node resolves to 1');
 
         expect(read(node)).toBe(1);
 
         disposeRoot();
 
         write(s, 2);
-        await new Promise((r) => setTimeout(r, 10));
+        await tick();
 
         expect(read(node)).toBe(1);
     });
@@ -226,22 +227,22 @@ describe('asyncComputed', () => {
         expect(read(nodeB)).toBeUndefined();
 
         // Wait for A to resolve
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => read(nodeA) === 10, 'nodeA resolves to 10');
 
         expect(read(nodeA)).toBe(10);
 
         // Wait for B to react to A's resolved value
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => read(nodeB) === 110, 'nodeB resolves to 110');
 
         expect(read(nodeB)).toBe(110);
 
         // Update source signal — A and B should both update
         write(s, 20);
-        await new Promise((r) => setTimeout(r, 20));
+        await waitFor(() => read(nodeA) === 40, 'nodeA updates to 40');
 
         expect(read(nodeA)).toBe(40);
 
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => read(nodeB) === 140, 'nodeB updates to 140');
 
         expect(read(nodeB)).toBe(140);
     });
@@ -262,17 +263,33 @@ describe('asyncComputed', () => {
             });
         });
 
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => read(node) === 1, 'node resolves to 1');
 
         expect(read(node)).toBe(1);
 
         write(s, 2);
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => {
+            try {
+                read(node);
+
+                return false;
+            }
+            catch (e) {
+                return (e as Error).message === 'fail';
+            }
+        }, 'node read throws fail');
 
         expect(() => read(node)).toThrow('fail');
 
         write(s, 3);
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => {
+            try {
+                return read(node) === 3;
+            }
+            catch {
+                return false;
+            }
+        }, 'node recovers to 3');
 
         // Recovers after a non-rejected promise
         expect(read(node)).toBe(3);
@@ -289,7 +306,7 @@ describe('asyncComputed', () => {
             return Promise.resolve(read(s));
         });
 
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => read(node) === 1, 'node resolves to 1');
 
         expect(read(node)).toBe(1);
         expect(calls).toBe(1);
@@ -297,7 +314,7 @@ describe('asyncComputed', () => {
         dispose(node);
 
         write(s, 2);
-        await new Promise((r) => setTimeout(r, 10));
+        await tick();
 
         // No further dispatches or writes land after dispose
         expect(calls).toBe(1);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computed, effect, read, signal, write } from '~/system';
+import { tick } from './lib/wait-for';
 
 
 async function captureUncaught(run: () => void | Promise<void>): Promise<unknown[]> {
@@ -15,7 +16,7 @@ async function captureUncaught(run: () => void | Promise<void>): Promise<unknown
 
     try {
         await run();
-        await new Promise((r) => setTimeout(r, 0));
+        await tick();
     }
     finally {
         process.removeListener('uncaughtException', capture);
@@ -160,9 +161,9 @@ describe('effect error contract', () => {
 
         let captured = await captureUncaught(async () => {
             write(s, 1);
-            await new Promise((r) => setTimeout(r, 0));
+            await tick();
             write(s, 2);
-            await new Promise((r) => setTimeout(r, 0));
+            await tick();
             write(s, 3);
         });
 

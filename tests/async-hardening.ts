@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computed, effect, read, root, signal, write } from '~/system';
+import { tick, waitFor } from './lib/wait-for';
 import type { Computed } from '~/system';
 
 
@@ -26,14 +27,14 @@ describe('asyncComputed dirty-gap guard', () => {
         resolvers[0](100);
         write(s, 2);
 
-        await new Promise((r) => setTimeout(r, 0));
+        await waitFor(() => resolvers.length === 2, 're-run dispatches a fresh promise');
 
         // The stale value never landed; the re-run dispatched a fresh promise
         expect(resolvers.length).toBe(2);
         expect(read(node)).toBeUndefined();
 
         resolvers[1](200);
-        await new Promise((r) => setTimeout(r, 0));
+        await waitFor(() => read(node) === 200, 'node resolves to 200');
 
         expect(read(node)).toBe(200);
     });
@@ -55,7 +56,7 @@ describe('asyncComputed outside root', () => {
             read(node);
         });
 
-        await new Promise((r) => setTimeout(r, 10));
+        await waitFor(() => read(node) === 1, 'node resolves to 1');
 
         expect(read(node)).toBe(1);
         expect(calls).toBe(1);
@@ -63,7 +64,7 @@ describe('asyncComputed outside root', () => {
         stop();
 
         write(s, 2);
-        await new Promise((r) => setTimeout(r, 10));
+        await tick();
 
         // Wrapper auto-disposed through unlink — effect and factory torn down, no new dispatch
         expect(calls).toBe(1);

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computed, effect, flush, peek, read, signal, write } from '~/system';
+import { waitFor } from './lib/wait-for';
 
 
 describe('invalidate()', () => {
@@ -73,13 +74,13 @@ describe('invalidate()', () => {
             read(node);
         });
 
-        await new Promise((r) => setTimeout(r, 0));
+        await waitFor(() => read(node) === 1, 'node resolves to 1');
 
         expect(fetches).toBe(1);
         expect(read(node)).toBe(1);
 
         computed.invalidate(node);
-        await new Promise((r) => setTimeout(r, 0));
+        await waitFor(() => read(node) === 2, 'node refetches to 2');
 
         expect(fetches).toBe(2);
         expect(read(node)).toBe(2);

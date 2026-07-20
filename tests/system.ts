@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { computed, dispose, effect, isComputed, isSignal, onCleanup, read, root, signal, write } from '~/system';
+import { waitFor } from './lib/wait-for';
 
 
 describe('signal', () => {
@@ -501,7 +502,7 @@ describe('onCleanup', () => {
 
         try {
             write(s, 1);
-            await new Promise((r) => setTimeout(r, 0));
+            await waitFor(() => captured.length === 1, 'teardown error surfaces as uncaught');
         }
         finally {
             process.removeAllListeners('uncaughtException');

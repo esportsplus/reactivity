@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { computed, effect, read, root, signal, write } from '~/system';
+import { tick } from './lib/wait-for';
 import type { Computed } from '~/system';
 
 
@@ -19,10 +20,6 @@ function gate(): { promise: Promise<void>; resolve: VoidFunction } {
     });
 
     return { promise, resolve: resolveFn };
-}
-
-function tick(): Promise<void> {
-    return new Promise((r) => setTimeout(r, 0));
 }
 
 
