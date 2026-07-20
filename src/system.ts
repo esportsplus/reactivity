@@ -20,6 +20,7 @@ let asyncMeta = new WeakMap<Computed<unknown>, { factory: Computed<unknown>; pen
     pendingHead: Signal<unknown> | null = null,
     scope: Computed<unknown> | null = null,
     stabilizer = STABILIZER_IDLE,
+    unobservers = new WeakMap<Signal<unknown> | Computed<unknown>, VoidFunction[]>(),
     version = 0,
     writes = 0;
 
@@ -454,6 +455,17 @@ function unlink(link: Link): Link | null {
                 parent.keys = null;
             }
         }
+
+        let fns = unobservers.get(dep);
+
+        if (fns !== undefined) {
+            // Snapshot: a callback may unregister itself (or a sibling) mid-fire.
+            fns = fns.slice();
+
+            for (let i = 0, n = fns.length; i < n; i++) {
+                fns[i]();
+            }
+        }
     }
 
     link.dep = link.sub = null as any;
@@ -762,6 +774,27 @@ const onCleanup = (fn: VoidFunction): typeof fn => {
     return fn;
 };
 
+// Last-subscriber lifecycle hook: fn fires when node's subscriber count drops to zero (in unlink's
+// zero-subs branch, AFTER a computed's auto-dispose). Returns an unregister function.
+const onUnobserved = <T>(node: Signal<T> | Computed<T>, fn: VoidFunction): VoidFunction => {
+    let key = node as Signal<unknown> | Computed<unknown>,
+        fns = unobservers.get(key);
+
+    if (fns === undefined) {
+        unobservers.set(key, fns = []);
+    }
+
+    fns.push(fn);
+
+    return () => {
+        let i = fns.indexOf(fn);
+
+        if (i !== -1) {
+            fns.splice(i, 1);
+        }
+    };
+};
+
 const read = <T>(node: Signal<T> | Computed<T>): T => {
     if (observer) {
         link(node, observer);
@@ -992,6 +1025,7 @@ export {
     invalidate,
     isComputed, isPending, isSignal,
     onCleanup,
+    onUnobserved,
     peek,
     read, resolve, root,
     signal,
