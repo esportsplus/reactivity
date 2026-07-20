@@ -1,7 +1,7 @@
 import { defineProperty, isArray } from '@esportsplus/utilities';
+import { COMPUTED, REACTIVE_ARRAY, REACTIVE_OBJECT, SIGNAL } from '~/constants';
 import { computed, dispose, read, root, signal, write } from '~/system';
 import { Computed } from '~/types';
-import { COMPUTED, REACTIVE_ARRAY, REACTIVE_OBJECT, SIGNAL } from '~/constants';
 import { ReactiveArray } from './array';
 
 
@@ -32,10 +32,7 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
                 continue;
             }
 
-            if (value == null || type !== 'object') {
-                // Skip isArray when possible
-            }
-            else if (isArray(value)) {
+            if (value != null && type === 'object' && isArray(value)) {
                 defineProperty(this, key, {
                     enumerable: true,
                     value: this[REACTIVE_ARRAY](value)
@@ -59,14 +56,6 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
     }
 
 
-    protected [REACTIVE_ARRAY]<U>(value: U[]): ReactiveArray<U> {
-        let node = new ReactiveArray(...value);
-
-        (this.disposers ??= []).push( () => node.dispose() );
-
-        return node;
-    }
-
     protected [COMPUTED]<T extends Computed<ReturnType<T>>['fn']>(value: T) {
         return root(() => {
             let node = computed(value);
@@ -75,6 +64,14 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
 
             return node;
         });
+    }
+
+    protected [REACTIVE_ARRAY]<U>(value: U[]): ReactiveArray<U> {
+        let node = new ReactiveArray(...value);
+
+        (this.disposers ??= []).push( () => node.dispose() );
+
+        return node;
     }
 
     protected [SIGNAL]<T>(value: T) {
@@ -99,8 +96,8 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
 Object.defineProperty(ReactiveObject.prototype, REACTIVE_OBJECT, { value: true });
 
 
-const isReactiveObject = (value: any): value is ReactiveObject<any> => {
-    return typeof value === 'object' && value !== null && value[REACTIVE_OBJECT] === true;
+const isReactiveObject = (value: unknown): value is ReactiveObject<Record<PropertyKey, unknown>> => {
+    return typeof value === 'object' && value !== null && (value as Record<PropertyKey, unknown>)[REACTIVE_OBJECT] === true;
 };
 
 
