@@ -8,8 +8,19 @@ import { Computed, Link, SelectorSignal, Signal } from './types';
 import { isObject, isPromise } from '@esportsplus/utilities';
 
 
+// Shared free-listed stack node for the iterative notify()/update()/dispose() walks: `link` carries
+// a notify sibling-continuation or an update dep-cursor; `computed` carries an update/dispose node.
+type Walk = {
+    computed: Computed<unknown> | null;
+    link: Link | null;
+    prev: Walk | null;
+};
+
+
 let asyncMeta = new WeakMap<Computed<unknown>, { factory: Computed<unknown>; pending: Signal<boolean> }>(),
     depth = 0,
+    disposeHead: Walk | null = null,
+    draining = false,
     heap: (Computed<unknown> | undefined)[] = new Array(64),
     heap_i = 0,
     heap_n = 0,
@@ -22,7 +33,35 @@ let asyncMeta = new WeakMap<Computed<unknown>, { factory: Computed<unknown>; pen
     stabilizer = STABILIZER_IDLE,
     unobservers = new WeakMap<Signal<unknown> | Computed<unknown>, VoidFunction[]>(),
     version = 0,
+    walkPoolHead: Walk | null = null,
     writes = 0;
+
+
+function walkPop(walk: Walk): Walk | null {
+    let prev = walk.prev;
+
+    walk.computed = null;
+    walk.link = null;
+    walk.prev = walkPoolHead;
+    walkPoolHead = walk;
+
+    return prev;
+}
+
+function walkPush(computed: Computed<unknown> | null, link: Link | null, prev: Walk | null): Walk {
+    let walk = walkPoolHead;
+
+    if (walk !== null) {
+        walkPoolHead = walk.prev;
+        walk.computed = computed;
+        walk.link = link;
+        walk.prev = prev;
+
+        return walk;
+    }
+
+    return { computed, link, prev };
+}
 
 
 function cleanup<T>(computed: Computed<T>): void {
@@ -222,6 +261,9 @@ function link<T>(dep: Signal<T> | Computed<T>, sub: Computed<T>) {
     }
 }
 
+// Iterative sub-tree walk over an explicit stack (call-stack recursion overflows on deep graphs).
+// Only the ROOT receives newState; every descendant receives STATE_CHECK. A node already CHECK/DIRTY
+// prunes the descent (the `< STATE_CHECK` guard).
 function notify<T>(computed: Computed<T>, newState: number) {
     let state = computed.state;
 
@@ -231,8 +273,36 @@ function notify<T>(computed: Computed<T>, newState: number) {
 
     computed.state = state | newState;
 
-    for (let link = computed.subs; link; link = link.nextSub) {
-        notify(link.sub, STATE_CHECK);
+    let link: Link | null = computed.subs,
+        stack: Walk | null = null;
+
+    for (;;) {
+        while (link !== null) {
+            let sub = link.sub,
+                subState = sub.state;
+
+            if ((subState & STATE_NOTIFY_MASK) < STATE_CHECK) {
+                sub.state = subState | STATE_CHECK;
+
+                if (sub.subs !== null) {
+                    if (link.nextSub !== null) {
+                        stack = walkPush(null, link.nextSub, stack);
+                    }
+
+                    link = sub.subs;
+                    continue;
+                }
+            }
+
+            link = link.nextSub;
+        }
+
+        if (stack === null) {
+            break;
+        }
+
+        link = stack.link;
+        stack = walkPop(stack);
     }
 }
 
@@ -444,26 +514,30 @@ function unlink(link: Link): Link | null {
     }
     else if ((dep.subs = nextSub) === null) {
         if ((dep as Computed<unknown>).state & STATE_COMPUTED) {
+            // Enqueued: its unobservers fire in the drain, after disposal, preserving per-node order.
             dispose(dep as Computed<unknown>);
         }
-        else if ((dep as SelectorSignal<unknown>).parent !== undefined) {
-            let parent = (dep as SelectorSignal<unknown>).parent;
+        else {
+            if ((dep as SelectorSignal<unknown>).parent !== undefined) {
+                let parent = (dep as SelectorSignal<unknown>).parent;
 
-            parent.keys!.delete((dep as SelectorSignal<unknown>).key);
+                parent.keys!.delete((dep as SelectorSignal<unknown>).key);
 
-            if (parent.keys!.size === 0) {
-                parent.keys = null;
+                if (parent.keys!.size === 0) {
+                    parent.keys = null;
+                }
             }
-        }
 
-        let fns = unobservers.get(dep);
+            // Signals/selector entries never enqueue: fire inline (registration survives re-subscribe).
+            let fns = unobservers.get(dep);
 
-        if (fns !== undefined) {
-            // Snapshot: a callback may unregister itself (or a sibling) mid-fire.
-            fns = fns.slice();
+            if (fns !== undefined) {
+                // Snapshot: a callback may unregister itself (or a sibling) mid-fire.
+                fns = fns.slice();
 
-            for (let i = 0, n = fns.length; i < n; i++) {
-                fns[i]();
+                for (let i = 0, n = fns.length; i < n; i++) {
+                    fns[i]();
+                }
             }
         }
     }
@@ -476,37 +550,76 @@ function unlink(link: Link): Link | null {
     return nextDep;
 }
 
-function update<T>(computed: Computed<T>): void {
-    let w = writes;
+// Iterative CHECK-pull over an explicit frame stack (call-stack recursion overflows on deep graphs).
+// `w` is the entry snapshot of writes so the gv === writes clean-graph exit stays consistent across
+// one pull even if a mid-walk recompute bumps the global. The DIRTY-break stops checking further deps
+// once a node is known dirty; the notify mask is cleared on every node left.
+function update<T>(root: Computed<T>): void {
+    let link: Link | null = null,
+        node: Computed<unknown> = root as Computed<unknown>,
+        resuming = false,
+        stack: Walk | null = null,
+        w = writes;
 
-    // gv === writes proves no write landed anywhere since this node last validated — O(1) clean-graph exit
-    if (computed.gv === w) {
-        computed.state &= ~STATE_NOTIFY_MASK;
-        return;
-    }
-
-    if (computed.state & STATE_CHECK) {
-        for (let link = computed.deps; link; link = link.nextDep) {
-            let dep = link.dep;
-
-            if ((dep as Computed<unknown>).state & STATE_COMPUTED) {
-                update(dep as Computed<unknown>);
-
-                if (computed.state & STATE_DIRTY) {
-                    break;
-                }
+    for (;;) {
+        if (!resuming) {
+            if (node.gv === w) {
+                node.state &= ~STATE_NOTIFY_MASK;
+            }
+            else if (node.state & STATE_CHECK) {
+                link = node.deps;
+                resuming = true;
+            }
+            else if (node.state & STATE_DIRTY) {
+                recompute(node, true);
+                node.state &= ~STATE_NOTIFY_MASK;
+            }
+            else {
+                node.gv = w;
+                node.state &= ~STATE_NOTIFY_MASK;
             }
         }
-    }
 
-    if (computed.state & STATE_DIRTY) {
-        recompute(computed, true);
-    }
-    else {
-        computed.gv = w;
-    }
+        if (resuming) {
+            let descended = false;
 
-    computed.state &= ~STATE_NOTIFY_MASK;
+            while (link !== null && !(node.state & STATE_DIRTY)) {
+                if ((link.dep as Computed<unknown>).state & STATE_COMPUTED) {
+                    stack = walkPush(node, link.nextDep, stack);
+                    node = link.dep as Computed<unknown>;
+                    link = null;
+                    resuming = false;
+                    descended = true;
+                    break;
+                }
+
+                link = link.nextDep;
+            }
+
+            if (descended) {
+                continue;
+            }
+
+            if (node.state & STATE_DIRTY) {
+                recompute(node, true);
+            }
+            else {
+                node.gv = w;
+            }
+
+            node.state &= ~STATE_NOTIFY_MASK;
+            resuming = false;
+        }
+
+        if (stack === null) {
+            return;
+        }
+
+        node = stack.computed!;
+        link = stack.link;
+        stack = walkPop(stack);
+        resuming = true;
+    }
 }
 
 
@@ -657,26 +770,69 @@ const computed = <T>(fn: Computed<T>['fn'], equals: ((a: T, b: T) => boolean) | 
     return self;
 };
 
-const dispose = <T>(computed: Computed<T>) => {
-    deleteFromHeap(computed);
+// Teardown runs as an iterative LIFO drain, not recursion: a recursive dispose→unlink→dispose cascade
+// overflows the call stack on deep chains. A dispose issued while a drain runs enqueues and returns,
+// so the running drain picks it up. Field-nulling plus the unobservers delete keep the drain
+// exactly-once, so a double dispose stays a no-op. The try/finally guarantees `draining` resets even
+// if a cleanup/disposal callback throws.
+const dispose = <T>(computed: Computed<T>): void => {
+    // A dispose issued mid-drain only enqueues; the running drain picks it up, so the first node is
+    // processed inline (no worklist node) and the pool is touched only for re-entrant deep cascades.
+    if (draining) {
+        disposeHead = walkPush(computed as Computed<unknown>, null, disposeHead);
 
-    let dep = computed.deps;
-
-    while (dep) {
-        dep = unlink(dep);
+        return;
     }
 
-    computed.deps = null;
+    draining = true;
 
-    if (computed.cleanup) {
-        cleanup(computed);
+    let node: Computed<unknown> = computed as Computed<unknown>;
+
+    try {
+        for (;;) {
+            deleteFromHeap(node);
+
+            let dep = node.deps;
+
+            while (dep) {
+                dep = unlink(dep);
+            }
+
+            node.deps = null;
+
+            if (node.cleanup) {
+                cleanup(node);
+            }
+
+            if (node.disposal) {
+                let d = node.disposal;
+
+                node.disposal = null;
+                d();
+            }
+
+            let fns = unobservers.get(node);
+
+            if (fns !== undefined) {
+                unobservers.delete(node);
+
+                fns = fns.slice();
+
+                for (let i = 0, n = fns.length; i < n; i++) {
+                    fns[i]();
+                }
+            }
+
+            if (disposeHead === null) {
+                break;
+            }
+
+            node = disposeHead.computed!;
+            disposeHead = walkPop(disposeHead);
+        }
     }
-
-    if (computed.disposal) {
-        let d = computed.disposal;
-
-        computed.disposal = null;
-        d();
+    finally {
+        draining = false;
     }
 };
 
