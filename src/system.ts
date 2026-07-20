@@ -679,7 +679,7 @@ function makeAsyncComputed<T>(factory: Computed<Promise<T> | AsyncIterable<T> | 
     return wrapper;
 }
 
-function makeComputed<T>(fn: Computed<T>['fn']): Computed<T> {
+function makeComputed<T>(fn: Computed<T>['fn'], eager: boolean = false): Computed<T> {
     let self: Computed<T> = {
             cleanup: null,
             deps: null,
@@ -704,6 +704,13 @@ function makeComputed<T>(fn: Computed<T>['fn']): Computed<T> {
     if (observer) {
         if (observer.depsTail === null) {
             self.height = observer.height;
+            recompute(self, false);
+        }
+        else if (eager) {
+            // computed() must know fn's return type to pick sync vs async. This probe runs BEFORE
+            // link() below, so self has no subs yet — recompute's propagate is a no-op and cannot
+            // re-run the parent. Deferring here (as effect() still does) would leave value unset.
+            self.height = observer.height + 1;
             recompute(self, false);
         }
         else {
@@ -747,11 +754,22 @@ const batch = <T>(fn: () => T): T => {
 // A fn returning a Promise or AsyncIterable transparently becomes an async computed: the first run is
 // the probe, reused as the factory (no duplicate dispatch). A plain fn returns the node directly.
 const computed = <T>(fn: Computed<T>['fn'], equals: ((a: Settled<T>, b: Settled<T>) => boolean) | null = null): Computed<Settled<T>> => {
-    let self: Computed<unknown> = makeComputed(fn),
+    // eager probe so self.value carries fn's return even when this is a non-first tracked op — the
+    // detection below cannot depend on the deferred branch, which never runs fn synchronously.
+    let o = observer,
+        self: Computed<unknown> = makeComputed(fn, true),
         value = self.value;
 
     if (isPromise(value) || (value != null && typeof (value as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === 'function')) {
-        self = makeAsyncComputed(self as Computed<Promise<unknown> | AsyncIterable<unknown>>);
+        // Built untracked: makeAsyncComputed's polling effect + wrapper take makeComputed's
+        // observer-null path (the proven top-level flow) instead of entangling with the enclosing
+        // observer's recompute, which deadlocks the scheduler. The probe is already linked+owned by
+        // the parent as the factory; the wrapper needs its own teardown tied to that same scope.
+        self = untrack(() => makeAsyncComputed(self as Computed<Promise<unknown> | AsyncIterable<unknown>>));
+
+        if (o) {
+            onCleanup(() => dispose(self));
+        }
     }
 
     self.equals = equals as ((a: unknown, b: unknown) => boolean) | null;

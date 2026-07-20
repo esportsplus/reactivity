@@ -208,4 +208,63 @@ describe('effect patterns', () => {
             expect(lengths).toEqual([3, 4, 3, 2]);
         });
     });
+
+    describe('writes across an async boundary in a reaction', () => {
+        it('a write before the await propagates in the current flush; a write after the await propagates once settled', async () => {
+            let post = signal(0),
+                postSeen: number[] = [],
+                pre = signal(0),
+                preSeen: number[] = [],
+                trigger = signal(0);
+
+            root(() => {
+                effect(() => {
+                    preSeen.push(read(pre));
+                });
+
+                effect(() => {
+                    postSeen.push(read(post));
+                });
+
+                // Reaction writes `pre` synchronously (before the await) and `post` in the
+                // deferred continuation (after the await) — reactively's before/after-await case
+                effect(() => {
+                    let v = read(trigger);
+
+                    if (v > 0) {
+                        write(pre, v);
+                        setTimeout(() => write(post, v * 10), 10);
+                    }
+                });
+            });
+
+            // Baseline: observers hold the initial 0
+            expect(preSeen).toEqual([0]);
+            expect(postSeen).toEqual([0]);
+
+            write(trigger, 1);
+            await Promise.resolve();
+            await Promise.resolve();
+
+            // Before-await write already landed; after-await write still pending
+            expect(preSeen).toEqual([0, 1]);
+            expect(postSeen).toEqual([0]);
+
+            await new Promise((r) => setTimeout(r, 20));
+
+            // After-await write lands once the boundary settles
+            expect(postSeen).toEqual([0, 10]);
+
+            write(trigger, 2);
+            await Promise.resolve();
+            await Promise.resolve();
+
+            expect(preSeen).toEqual([0, 1, 2]);
+            expect(postSeen).toEqual([0, 10]);
+
+            await new Promise((r) => setTimeout(r, 20));
+
+            expect(postSeen).toEqual([0, 10, 20]);
+        });
+    });
 });
