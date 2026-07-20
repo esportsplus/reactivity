@@ -1,1 +1,0 @@
-- pending-only-writes: complete full shape — selector recursive fan-out + nextPending on the SelectorSignal entry, tests/flush.ts invariant 2 — after flush-batch + signal-is-selector land. (Lazy mark-don't-schedule branch DROPPED: lazy-computeds was reverted for regressions 2026-07-19; revisit only if a non-regressing lazy design lands.)
