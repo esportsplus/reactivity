@@ -1,14 +1,14 @@
 import { onCleanup, root } from '@esportsplus/reactivity';
 import { isArray, isObject } from '@esportsplus/utilities';
-import { Reactive } from '~/types';
+import { PACKAGE_NAME } from '~/constants';
+import type { Reactive } from '~/types';
 import { ReactiveArray } from './array';
 import { ReactiveObject } from './object';
-import { PACKAGE_NAME } from '~/constants';
 
 
 type Guard<T> =
     T extends Record<PropertyKey, unknown>
-        ? T extends { dispose: any }
+        ? T extends { dispose: unknown }
             ? { never: '[ dispose ] is a reserved key' }
             : T
         : never;
@@ -23,10 +23,10 @@ function reactive<T>(input: T): Reactive<T> {
             let response: Reactive<T> | undefined;
 
             if (isObject(input)) {
-                response = new ReactiveObject(input) as any as Reactive<T>;
+                response = new ReactiveObject(input) as unknown as Reactive<T>;
             }
             else if (isArray(input)) {
-                response = new ReactiveArray(...input) as any as Reactive<T>;
+                response = new ReactiveArray(...input) as unknown as Reactive<T>;
             }
 
             if (response) {
@@ -41,7 +41,7 @@ function reactive<T>(input: T): Reactive<T> {
         });
 
     if (dispose) {
-        onCleanup(() => (value as any as { dispose: VoidFunction }).dispose());
+        onCleanup(() => (value as unknown as { dispose: VoidFunction }).dispose());
     }
 
     return value;
