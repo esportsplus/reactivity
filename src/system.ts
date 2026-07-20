@@ -709,6 +709,23 @@ const flush = (): void => {
     }
 };
 
+// Forces a re-derivation without the dummy-signal-dependency hack. writes++ FIRST so a gv-stamped
+// node cannot skip the forced re-run via update()'s clean-graph fast path; an asyncComputed wrapper
+// redirects to its factory so the promise re-dispatches (a refetch).
+const invalidate = <T>(computed: Computed<T>): void => {
+    let meta = asyncMeta.get(computed as Computed<unknown>);
+
+    if (meta) {
+        invalidate(meta.factory as Computed<T>);
+        return;
+    }
+
+    writes++;
+    computed.state |= STATE_DIRTY;
+    insertIntoHeap(computed);
+    schedule();
+};
+
 const isComputed = (value: unknown): value is Computed<unknown> => {
     return isObject(value) && !!((value as unknown as Computed<unknown>).state & STATE_COMPUTED);
 };
@@ -972,6 +989,7 @@ export {
     dispose,
     effect,
     flush,
+    invalidate,
     isComputed, isPending, isSignal,
     onCleanup,
     peek,
