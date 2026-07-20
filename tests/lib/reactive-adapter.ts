@@ -1,5 +1,7 @@
 import { computed, effect, read, root, signal, write } from '~/system';
 
+import type { Settled } from '~/types';
+
 
 interface ReactiveComputed<T> {
     read: () => T;
@@ -12,7 +14,7 @@ interface ReactiveSignal<T> extends ReactiveComputed<T> {
 
 // Mirrors js-reactivity-benchmark's ReactiveFramework so a future external-package swap is mechanical
 const framework = {
-    computed: <T>(fn: () => T): ReactiveComputed<T> => {
+    computed: <T>(fn: () => T): ReactiveComputed<Settled<T>> => {
         let node = computed(fn);
 
         return {
