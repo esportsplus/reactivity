@@ -313,6 +313,34 @@ All standard array methods (`push`, `pop`, `shift`, `unshift`, `splice`, `sort`,
 | `splice` | `{ start, deleteCount, items }` | Array was spliced |
 | `unshift` | `{ items: T[] }` | Items were unshifted |
 
+## Architecture
+
+- `src/system.ts` — the core signal/computed/effect engine: height-bucketed heap scheduler,
+  generation-version dependency dedup (read-version dedup), and iterative (non-recursive)
+  notify/update/dispose walks. Also supports async (Promise/AsyncIterable) computeds and
+  per-key selector signals (`signal.selector`).
+- `src/constants.ts` — shared state bitmasks and symbol constants consumed by every other module.
+- `src/types.ts` — shared `Signal`/`Computed`/`Link`/`Reactive` types.
+- `src/reactive/index.ts`, `src/reactive/array.ts`, `src/reactive/object.ts` — the runtime
+  `reactive()` dispatch and the `ReactiveObject`/`ReactiveArray` classes it builds on.
+- `src/compiler/*` — the build-time transform pipeline (`constants.ts`, `primitives.ts`,
+  `object.ts`, `array.ts`, `index.ts`) plus the `plugins/tsc.ts` and `plugins/vite.ts`
+  entrypoints that wire it into a build (see Transformer Plugins above).
+
+## Development
+
+```bash
+pnpm install
+pnpm build   # tsc
+pnpm test    # vitest run
+pnpm bench   # vitest bench --run
+```
+
+`agent:test` (`tsc --noEmit && vitest run`) and `agent:bench` (`vitest bench --run`) are the
+CI-facing aliases of the same build/test/bench commands.
+
 ## License
 
 MIT
+
+<!-- claude-code:readme-source-hash: 189167a17e9be8c6 -->
