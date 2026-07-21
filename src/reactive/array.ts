@@ -54,7 +54,10 @@ function dispose(value: unknown) {
 }
 
 
+// Derived arrays (splice removals, map/filter/slice) must be plain Arrays: species-creating a
+// ReactiveArray runs the reactive constructor per call and seeds _length from the length argument.
 class ReactiveArray<T> extends Array<T> {
+
     private _length: Signal<number>;
 
     listeners: Listeners<T> = {};
@@ -63,6 +66,11 @@ class ReactiveArray<T> extends Array<T> {
     constructor(...items: T[]) {
         super(...items);
         this._length = signal(items.length);
+    }
+
+
+    static get [Symbol.species]() {
+        return Array;
     }
 
 
