@@ -102,7 +102,9 @@ class ReactiveArray<T> extends Array<T> {
             write(this._length, i + 1);
         }
 
-        this.dispatch('set', { index: i, item: value });
+        if (this.listeners.set !== undefined) {
+            this.dispatch('set', { index: i, item: value });
+        }
     }
 
 
@@ -134,7 +136,10 @@ class ReactiveArray<T> extends Array<T> {
 
         if (added.length) {
             write(this._length, this.length);
-            this.dispatch('concat', { items: added });
+
+            if (this.listeners.concat !== undefined) {
+                this.dispatch('concat', { items: added });
+            }
         }
 
         return this;
@@ -226,7 +231,9 @@ class ReactiveArray<T> extends Array<T> {
             dispose(item);
             write(this._length, this.length);
 
-            this.dispatch('pop', { item });
+            if (this.listeners.pop !== undefined) {
+                this.dispatch('pop', { item });
+            }
         }
 
         return item;
@@ -240,7 +247,10 @@ class ReactiveArray<T> extends Array<T> {
         let length = super.push(...items);
 
         write(this._length, length);
-        this.dispatch('push', { items });
+
+        if (this.listeners.push !== undefined) {
+            this.dispatch('push', { items });
+        }
 
         return length;
     }
@@ -259,7 +269,9 @@ class ReactiveArray<T> extends Array<T> {
             dispose(item);
             write(this._length, this.length);
 
-            this.dispatch('shift', { item });
+            if (this.listeners.shift !== undefined) {
+                this.dispatch('shift', { item });
+            }
         }
 
         return item;
@@ -321,7 +333,9 @@ class ReactiveArray<T> extends Array<T> {
                 dispose(removed[i]);
             }
 
-            this.dispatch('splice', { deleteCount, items, start });
+            if (this.listeners.splice !== undefined) {
+                this.dispatch('splice', { deleteCount, items, start });
+            }
         }
 
         return removed;
@@ -335,7 +349,10 @@ class ReactiveArray<T> extends Array<T> {
         let length = super.unshift(...items);
 
         write(this._length, length);
-        this.dispatch('unshift', { items });
+
+        if (this.listeners.unshift !== undefined) {
+            this.dispatch('unshift', { items });
+        }
 
         return length;
     }
