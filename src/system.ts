@@ -1001,9 +1001,12 @@ root.disposables = 0;
 const signal = <T>(value: T, equals: ((a: T, b: T) => boolean) | null = null): Signal<T> => {
     return {
         equals: equals as ((a: unknown, b: unknown) => boolean) | null,
+        key: undefined,
         keys: null,
         nextPending: null,
+        parent: undefined,
         rv: 0,
+        state: 0,
         subs: null,
         subsTail: null,
         type: SIGNAL,
@@ -1029,6 +1032,7 @@ signal.selector = <T>(node: Signal<T>, key: T): boolean => {
             nextPending: null,
             parent: node,
             rv: 0,
+            state: 0,
             subs: null,
             subsTail: null,
             type: SIGNAL,

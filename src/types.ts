@@ -56,9 +56,12 @@ type Settled<T> =
 
 type Signal<T> = {
     equals: ((a: unknown, b: unknown) => boolean) | null;
+    key: unknown;
     keys: Map<T, SelectorSignal<T>> | null;
     nextPending: Signal<unknown> | null;
+    parent: Signal<unknown> | undefined;
     rv: number;
+    state: number;
     subs: Link | null;
     subsTail: Link | null;
     type: typeof SIGNAL;
