@@ -74,6 +74,19 @@ class ReactiveArray<T> extends Array<T> {
     }
 
 
+    get $length() {
+        return read(this._length);
+    }
+
+    set $length(value: number) {
+        if (value > this.length) {
+            throw Error(`@esportsplus/reactivity: cannot set length to a value larger than the current length, use splice instead.`);
+        }
+
+        this.splice(value, this.length);
+    }
+
+
     $set(i: number, value: T) {
         let prev = this[i];
 
@@ -319,19 +332,6 @@ class ReactiveArray<T> extends Array<T> {
         this.dispatch('unshift', { items });
 
         return length;
-    }
-
-
-    get $length() {
-        return read(this._length);
-    }
-
-    set $length(value: number) {
-        if (value > this.length) {
-            throw Error(`@esportsplus/reactivity: cannot set length to a value larger than the current length, use splice instead.`);
-        }
-
-        this.splice(value, this.length);
     }
 }
 
