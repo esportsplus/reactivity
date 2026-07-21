@@ -803,7 +803,6 @@ const dispose = <T>(computed: Computed<T>): void => {
     // processed inline (no worklist node) and the pool is touched only for re-entrant deep cascades.
     if (draining) {
         disposeHead = walkPush(computed as Computed<unknown>, null, disposeHead);
-
         return;
     }
 
