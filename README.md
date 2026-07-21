@@ -1,5 +1,7 @@
 # @esportsplus/reactivity
 
+Project doc bundle: [docs/index.md](./docs/index.md) — rejected dead-ends, skip reasons, completed-work index.
+
 A fine-grained reactivity system with compile-time transformations. Write reactive code with natural JavaScript syntax while the compiler generates optimized signal-based code.
 
 ## Installation

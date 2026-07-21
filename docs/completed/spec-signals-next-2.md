@@ -1,0 +1,11 @@
+---
+title: spec-signals-next-2
+type: completed-index
+---
+# spec-signals-next-2
+
+- [recursion-free-walks] 143d5591. Recursion-free notify(), update(), and dispose()/unlink() walks — reconciled (killed-run recovery). Deviations: unrecorded (the run died before its boundary). Cost: ~$UNMEASURED (manual pre-run, no journal)~ · spec: spec-signals-next-2
+- [unobserved-hooks] b7a93aa4. onUnobserved() — last-subscriber lifecycle hook — reconciled (killed-run recovery). Deviations: unrecorded (the run died before its boundary). Cost: ~$UNMEASURED (manual pre-run, no journal)~ · spec: spec-signals-next-2
+- [invalidate] 60df87ae. invalidate() — standalone re-derivation of any computed — reconciled (killed-run recovery). Deviations: unrecorded (the run died before its boundary). Cost: ~$UNMEASURED (manual pre-run, no journal)~ · spec: spec-signals-next-2
+- [custom-equals] a4cb4e04. Custom equals on signal() and computed() — reconciled (killed-run recovery). Deviations: unrecorded (the run died before its boundary). Cost: ~$UNMEASURED (manual pre-run, no journal)~ · spec: spec-signals-next-2
+- [async-iterable-resolve] 17b3878753d238869fdf6723dff468705d2795f8. Deviations: deviated — resolve()'s 'rejects when the tracked expression throws' was split into its own it() rather than combined into one test with the resolve-success case, matching the file's one-scenario-per-it convention from tests/async-hardening.ts; both scenarios from Design test 6 are covered.; added — Verified async generator .return() timing empirically (a queued return() on a generator suspended mid an unresolved internal await does not settle until that await resolves) via a throwaway Node script before writing tests 1-3, since the Design's prose doesn't spell out that an abandoned generator's pending gate must be released for its finally to run; tests 1-3 release the old generation's gate to observe closure, consistent with test 3's own description.; added — Added a gate()/tick() test-local helper pair (not in Design) to keep the generator-gating boilerplate readable across tests 1-5; mirrors async-hardening.ts's resolver-array convention.; ladder: 1 attempt (critic), completed. Cost: ~$16.19 equivalent API cost (blended-rate approximation). · spec: spec-signals-next-2
