@@ -266,6 +266,12 @@ class ReactiveArray<T> extends Array<T> {
     }
 
     sort(fn?: (a: T, b: T) => number) {
+        if (this.listeners.sort === undefined) {
+            super.sort(fn);
+
+            return this;
+        }
+
         let n = this.length,
             before = new Array(n) as T[];
 
