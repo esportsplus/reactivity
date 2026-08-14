@@ -22,6 +22,11 @@ interface Computed<T> {
     value: T;
 }
 
+type ComputedResult<T> =
+    T extends Promise<any> | AsyncIterable<any>
+        ? Computed<Settled<T>> & { pending: Signal<boolean> }
+        : Computed<Settled<T>>;
+
 interface Link {
     dep: Signal<unknown> | Computed<unknown>;
     nextDep: Link | null;
@@ -77,6 +82,7 @@ interface TransformResult {
 
 export type {
     Computed,
+    ComputedResult,
     Link,
     Reactive,
     SelectorSignal,

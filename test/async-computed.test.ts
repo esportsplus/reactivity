@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { computed, dispose, effect, isComputed, isSignal, read, root, signal, write } from '~/system';
 import { tick, waitFor } from './lib/wait-for';
-import type { Computed } from '~/system';
+import type { Computed, Signal } from '~/system';
 
 
 describe('asyncComputed', () => {
@@ -293,6 +293,92 @@ describe('asyncComputed', () => {
 
         // Recovers after a non-rejected promise
         expect(read(node)).toBe(3);
+    });
+
+    it('pending toggles true then false across a resolving promise', async () => {
+        let node!: Computed<number | undefined> & { pending: Signal<boolean> },
+            resolve!: (v: number) => void;
+
+        root(() => {
+            node = computed(() => new Promise<number>((r) => {
+                resolve = r;
+            }));
+        });
+
+        // The polling effect dispatches synchronously at creation — in flight now
+        expect(read(node.pending)).toBe(true);
+        expect(read(node)).toBeUndefined();
+
+        resolve(42);
+        await waitFor(() => read(node) === 42, 'node resolves to 42');
+
+        expect(read(node)).toBe(42);
+        expect(read(node.pending)).toBe(false);
+    });
+
+    it('pending rises on refetch while the value stays stale', async () => {
+        let node!: Computed<number | undefined> & { pending: Signal<boolean> },
+            resolvers: ((v: number) => void)[] = [],
+            s = signal(1);
+
+        root(() => {
+            node = computed(() => {
+                read(s);
+
+                return new Promise<number>((r) => {
+                    resolvers.push(r);
+                });
+            });
+        });
+
+        expect(read(node.pending)).toBe(true);
+
+        resolvers[0](10);
+        await waitFor(() => read(node) === 10, 'node settles to 10');
+
+        expect(read(node)).toBe(10);
+        expect(read(node.pending)).toBe(false);
+
+        // Refetch — dependency change re-dispatches the factory
+        write(s, 2);
+        await waitFor(() => resolvers.length === 2, 'refetch dispatched');
+
+        // stale-while-revalidate: value stays 10, but pending rises to signal the in-flight fetch
+        expect(read(node)).toBe(10);
+        expect(read(node.pending)).toBe(true);
+
+        resolvers[1](20);
+        await waitFor(() => read(node) === 20, 'node settles to 20');
+
+        expect(read(node)).toBe(20);
+        expect(read(node.pending)).toBe(false);
+    });
+
+    it('pending clears on rejection', async () => {
+        let node!: Computed<number | undefined> & { pending: Signal<boolean> },
+            reject!: (e: Error) => void;
+
+        root(() => {
+            node = computed(() => new Promise<number>((_, r) => {
+                reject = r;
+            }));
+        });
+
+        expect(read(node.pending)).toBe(true);
+
+        reject(new Error('boom'));
+        await waitFor(() => read(node.pending) === false, 'pending clears after rejection');
+
+        expect(read(node.pending)).toBe(false);
+        expect(() => read(node)).toThrow('boom');
+    });
+
+    it('sync computed has no pending', () => {
+        root(() => {
+            let node = computed(() => 42);
+
+            expect((node as { pending?: unknown }).pending).toBeUndefined();
+        });
     });
 
     it('disposing the returned computed stops the polling effect and the factory', async () => {

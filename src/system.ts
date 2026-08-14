@@ -4,7 +4,7 @@ import {
     STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
     STATE_CHECK, STATE_COMPUTED, STATE_DIRTY, STATE_EFFECT, STATE_ERROR, STATE_IN_HEAP, STATE_NOTIFY_MASK, STATE_RECOMPUTING
 } from './constants';
-import { Computed, Link, SelectorSignal, Settled, Signal } from './types';
+import { Computed, ComputedResult, Link, SelectorSignal, Settled, Signal } from './types';
 import { isObject, isPromise } from '@esportsplus/utilities';
 
 
@@ -613,12 +613,14 @@ function update<T>(root: Computed<T>): void {
 function makeAsyncComputed<T>(factory: Computed<Promise<T> | AsyncIterable<T> | T>): Computed<T | undefined> {
     let error = signal<unknown>(undefined),
         node = signal<T | undefined>(undefined),
+        pending = signal(false),
         v = 0;
 
     let stop = effect(() => {
         let fail = (e: unknown) => {
                 if (id === v && !(factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
                     write(error, e === undefined ? new Error('reactivity: async computed rejected with undefined') : e);
+                    write(pending, false);
                 }
             },
             id = ++v,
@@ -626,11 +628,16 @@ function makeAsyncComputed<T>(factory: Computed<Promise<T> | AsyncIterable<T> | 
             result = read(factory);
 
         if (isPromise(result)) {
+            if (id === v && !(factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
+                write(pending, true);
+            }
+
             (result as Promise<T>).then(
                 (value) => {
                     if (id === v && !(factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
                         write(error, undefined);
                         write(node, value);
+                        write(pending, false);
                     }
                 },
                 fail
@@ -651,15 +658,24 @@ function makeAsyncComputed<T>(factory: Computed<Promise<T> | AsyncIterable<T> | 
                 if (!r.done) {
                     write(error, undefined);
                     write(node, r.value);
+                    write(pending, false);
                     it.next().then(step, fail);
                 }
+                else {
+                    write(pending, false);
+                }
             };
+
+            if (id === v && !(factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
+                write(pending, true);
+            }
 
             untrack(() => it.next()).then(step, fail);
         }
         else {
             write(error, undefined);
             write(node, result as T);
+            write(pending, false);
         }
     });
 
@@ -672,6 +688,8 @@ function makeAsyncComputed<T>(factory: Computed<Promise<T> | AsyncIterable<T> | 
 
             return read(node);
         });
+
+    (wrapper as Computed<T | undefined> & { pending: Signal<boolean> }).pending = pending;
 
     asyncMeta.set(wrapper as Computed<unknown>, { factory: factory as Computed<unknown> });
     wrapper.disposal = stop;
@@ -753,7 +771,7 @@ const batch = <T>(fn: () => T): T => {
 
 // A fn returning a Promise or AsyncIterable transparently becomes an async computed: the first run is
 // the probe, reused as the factory (no duplicate dispatch). A plain fn returns the node directly.
-const computed = <T>(fn: Computed<T>['fn'], equals: ((a: Settled<T>, b: Settled<T>) => boolean) | null = null): Computed<Settled<T>> => {
+const computed = <T>(fn: Computed<T>['fn'], equals: ((a: Settled<T>, b: Settled<T>) => boolean) | null = null): ComputedResult<T> => {
     // eager probe so self.value carries fn's return even when this is a non-first tracked op — the
     // detection below cannot depend on the deferred branch, which never runs fn synchronously.
     let o = observer,
@@ -774,7 +792,7 @@ const computed = <T>(fn: Computed<T>['fn'], equals: ((a: Settled<T>, b: Settled<
 
     self.equals = equals as ((a: unknown, b: unknown) => boolean) | null;
 
-    return self as Computed<Settled<T>>;
+    return self as unknown as ComputedResult<T>;
 };
 
 // Forces a re-derivation without the dummy-signal-dependency hack. writes++ FIRST so a gv-stamped
