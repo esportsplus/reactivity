@@ -174,19 +174,19 @@ describe('effect error contract', () => {
         stop();
     });
 
-    it('effect onError receives the error and nothing rethrows', async () => {
+    it('effect catching its own error internally rethrows nothing', async () => {
         let errors: unknown[] = [],
             s = signal(0),
-            stop = effect(
-                () => {
+            stop = effect(() => {
+                try {
                     if (read(s) === 1) {
                         throw new Error('handled');
                     }
-                },
-                (e) => {
+                }
+                catch (e) {
                     errors.push(e);
                 }
-            );
+            });
 
         let captured = await captureUncaught(() => {
             write(s, 1);

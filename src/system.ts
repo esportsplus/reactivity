@@ -846,16 +846,18 @@ const dispose = <T>(computed: Computed<T>): void => {
     }
 };
 
-const effect = <T>(fn: Computed<T>['fn'], onError?: (e: unknown) => void) => {
+const effect = <T>(fn: Computed<T>['fn'], apply?: (value: T, prev: T | undefined) => void) => {
+    let prev: T | undefined;
+
     let c = makeComputed<T | undefined>(
-            onError
+            apply
                 ? (o) => {
-                    try {
-                        return fn(o);
-                    }
-                    catch (e) {
-                        onError(e);
-                    }
+                    let v = fn(o);
+
+                    untrack(() => apply(v, prev));
+                    prev = v;
+
+                    return v;
                 }
                 : fn
         );

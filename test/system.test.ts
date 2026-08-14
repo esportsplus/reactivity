@@ -1031,14 +1031,14 @@ describe('edge cases', () => {
                 return val * 10;
             });
 
-        effect(
-            () => {
+        effect(() => {
+            try {
                 effectValues.push(read(c));
-            },
-            (e) => {
+            }
+            catch (e) {
                 effectErrors.push(e);
             }
-        );
+        });
 
         expect(effectValues).toEqual([0]);
 
@@ -1072,14 +1072,14 @@ describe('edge cases', () => {
                 return val;
             });
 
-        effect(
-            () => {
+        effect(() => {
+            try {
                 effectValues.push(read(c));
-            },
-            (e) => {
+            }
+            catch (e) {
                 effectErrors.push(e);
             }
-        );
+        });
 
         expect(effectValues).toEqual([0]);
 

@@ -269,3 +269,65 @@ describe('effect patterns', () => {
         });
     });
 });
+
+
+describe('effect apply phase', () => {
+    it('apply receives (value, prev) after each run', async () => {
+        let calls: [number, number | undefined][] = [],
+            s = signal(1);
+
+        effect(
+            () => read(s),
+            (value, prev) => {
+                calls.push([value, prev]);
+            }
+        );
+
+        expect(calls).toEqual([[1, undefined]]);
+
+        write(s, 2);
+        await Promise.resolve();
+
+        expect(calls).toEqual([[1, undefined], [2, 1]]);
+
+        write(s, 3);
+        await Promise.resolve();
+
+        expect(calls).toEqual([[1, undefined], [2, 1], [3, 2]]);
+    });
+
+    it('apply runs untracked — its reads do not subscribe', async () => {
+        let applied: number[] = [],
+            runs = 0,
+            s = signal(1),
+            t = signal(100);
+
+        effect(
+            () => {
+                runs++;
+
+                return read(s);
+            },
+            (value) => {
+                applied.push(value + read(t));
+            }
+        );
+
+        expect(runs).toBe(1);
+        expect(applied).toEqual([101]);
+
+        // apply read t untracked, so writing t must NOT re-run the effect
+        write(t, 200);
+        await Promise.resolve();
+
+        expect(runs).toBe(1);
+        expect(applied).toEqual([101]);
+
+        // writing s re-runs fn; apply then reads the current t (200)
+        write(s, 2);
+        await Promise.resolve();
+
+        expect(runs).toBe(2);
+        expect(applied).toEqual([101, 202]);
+    });
+});
