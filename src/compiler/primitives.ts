@@ -67,7 +67,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
             else {
                 let unwrapped = arg;
 
-                while (ts.isAsExpression(unwrapped) || ts.isParenthesizedExpression(unwrapped) || ts.isTypeAssertionExpression(unwrapped)) {
+                while (ts.isAsExpression(unwrapped) || ts.isParenthesizedExpression(unwrapped) || ts.isTypeAssertion(unwrapped)) {
                     unwrapped = unwrapped.expression;
                 }
 
@@ -80,7 +80,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                         generate: () => `${NAMESPACE}.reactive`,
                         node: call.expression
                     });
-                    ts.forEachChild(node, n => visit(ctx, n));
+                    node.forEachChild(n => visit(ctx, n));
                     return;
                 }
             }
@@ -148,7 +148,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         !(ts.isVariableDeclaration(node.parent) && node.parent.name === node)
     ) {
         if (ts.isPropertyAccessExpression(node.parent) && node.parent.name === node) {
-            ts.forEachChild(node, n => visit(ctx, n));
+            node.forEachChild(n => visit(ctx, n));
             return;
         }
 
@@ -251,7 +251,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         }
     }
 
-    ts.forEachChild(node, n => visit(ctx, n));
+    node.forEachChild(n => visit(ctx, n));
 }
 
 

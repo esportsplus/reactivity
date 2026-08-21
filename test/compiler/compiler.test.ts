@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ts } from '@esportsplus/typescript';
+import { languageService } from '@esportsplus/typescript/compiler';
 import type { ReplacementIntent } from '@esportsplus/typescript/compiler';
 import { NAMESPACE } from '~/compiler/constants';
 import type { Bindings } from '~/compiler/types';
@@ -30,7 +31,7 @@ function isReactiveCall(node: ts.Node): boolean {
 }
 
 function parse(code: string): ts.SourceFile {
-    return ts.createSourceFile('test.ts', code, ts.ScriptTarget.Latest, true);
+    return languageService.parse(process.cwd() + '/test.ts', code);
 }
 
 function transformPrimitives(code: string): { bindings: Bindings; output: string } {

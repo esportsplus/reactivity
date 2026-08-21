@@ -7,13 +7,13 @@ import type { Bindings } from './types';
 
 type VisitContext = {
     bindings: Bindings;
-    checker: ts.TypeChecker | undefined;
+    checker: ts.Checker | undefined;
     replacements: ReplacementIntent[];
     sourceFile: ts.SourceFile;
 };
 
 
-function isReactiveCall(checker: ts.TypeChecker | undefined, node: ts.Node): node is ts.CallExpression {
+function isReactiveCall(checker: ts.Checker | undefined, node: ts.Node): node is ts.CallExpression {
     if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression)) {
         return false;
     }
@@ -220,7 +220,7 @@ function visit(ctx: VisitContext, node: ts.Node): void {
             right = node.right;
 
         // Unwrap "as" expressions: arr = [] as Type[]
-        while (ts.isAsExpression(right) || ts.isTypeAssertionExpression(right)) {
+        while (ts.isAsExpression(right) || ts.isTypeAssertion(right)) {
             right = right.expression;
         }
 
@@ -234,11 +234,11 @@ function visit(ctx: VisitContext, node: ts.Node): void {
         }
     }
 
-    ts.forEachChild(node, n => visit(ctx, n));
+    node.forEachChild(n => visit(ctx, n));
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings, checker?: ts.TypeChecker): ReplacementIntent[] => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, checker?: ts.Checker): ReplacementIntent[] => {
     let ctx: VisitContext = {
             bindings,
             checker,

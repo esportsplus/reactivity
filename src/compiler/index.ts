@@ -10,7 +10,7 @@ import primitives from './primitives';
 
 
 type FindRemainingContext = {
-    checker: ts.TypeChecker;
+    checker: ts.Checker;
     replacements: ReplacementIntent[];
     sourceFile: ts.SourceFile;
     transformedNodes: Set<ts.Node>;
@@ -18,7 +18,7 @@ type FindRemainingContext = {
 
 
 function findRemainingCalls(
-    checker: ts.TypeChecker,
+    checker: ts.Checker,
     sourceFile: ts.SourceFile,
     transformedNodes: Set<ts.Node>
 ): ReplacementIntent[] {
@@ -29,7 +29,7 @@ function findRemainingCalls(
     return ctx.replacements;
 }
 
-function isReactiveCallExpression(checker: ts.TypeChecker, node: ts.Node): node is ts.CallExpression {
+function isReactiveCallExpression(checker: ts.Checker, node: ts.Node): node is ts.CallExpression {
     if (!ts.isCallExpression(node)) {
         return false;
     }
@@ -49,14 +49,14 @@ function isReactiveCallExpression(checker: ts.TypeChecker, node: ts.Node): node 
     return false;
 }
 
-function hasReactiveCalls(checker: ts.TypeChecker, node: ts.Node): boolean {
+function hasReactiveCalls(checker: ts.Checker, node: ts.Node): boolean {
     if (isReactiveCallExpression(checker, node)) {
         return true;
     }
 
     let found = false;
 
-    ts.forEachChild(node, child => {
+    node.forEachChild(child => {
         if (!found && hasReactiveCalls(checker, child)) {
             found = true;
         }
@@ -73,7 +73,7 @@ function visit(ctx: FindRemainingContext, node: ts.Node): void {
         });
     }
 
-    ts.forEachChild(node, n => visit(ctx, n));
+    node.forEachChild(n => visit(ctx, n));
 }
 
 

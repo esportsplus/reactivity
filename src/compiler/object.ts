@@ -28,7 +28,7 @@ interface ReactiveObjectCall {
 interface VisitContext {
     bindings: Bindings;
     calls: ReactiveObjectCall[];
-    checker: ts.TypeChecker | undefined;
+    checker: ts.Checker | undefined;
     sourceFile: ts.SourceFile;
 }
 
@@ -51,11 +51,11 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.Sourc
         value = unwrapped,
         valueText = value.getText(sourceFile);
 
-    while (ts.isAsExpression(unwrapped) || ts.isTypeAssertionExpression(unwrapped) || ts.isParenthesizedExpression(unwrapped)) {
+    while (ts.isAsExpression(unwrapped) || ts.isTypeAssertion(unwrapped) || ts.isParenthesizedExpression(unwrapped)) {
         unwrapped = unwrapped.expression;
     }
 
-    if (ts.isAsExpression(value) || ts.isTypeAssertionExpression(value)) {
+    if (ts.isAsExpression(value) || ts.isTypeAssertion(value)) {
         let type = (value as ts.AsExpression).type;
 
         if (
@@ -216,7 +216,7 @@ function isStaticValue(node: ts.Node): boolean {
         (ts.isPrefixUnaryExpression(node) && ts.isNumericLiteral(node.operand));
 }
 
-function isReactiveCall(checker: ts.TypeChecker | undefined, node: ts.Node): node is ts.CallExpression {
+function isReactiveCall(checker: ts.Checker | undefined, node: ts.Node): node is ts.CallExpression {
     if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression)) {
         return false;
     }
@@ -250,14 +250,14 @@ function visit(ctx: VisitContext, node: ts.Node): void {
                 let prop = props[i];
 
                 if (ts.isSpreadAssignment(prop)) {
-                    ts.forEachChild(node, n => visit(ctx, n));
+                    node.forEachChild(n => visit(ctx, n));
                     return;
                 }
 
                 let analyzed = analyzeProperty(prop, ctx.sourceFile);
 
                 if (!analyzed) {
-                    ts.forEachChild(node, n => visit(ctx, n));
+                    node.forEachChild(n => visit(ctx, n));
                     return;
                 }
 
@@ -278,11 +278,11 @@ function visit(ctx: VisitContext, node: ts.Node): void {
         }
     }
 
-    ts.forEachChild(node, n => visit(ctx, n));
+    node.forEachChild(n => visit(ctx, n));
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings, checker?: ts.TypeChecker): ObjectTransformResult => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, checker?: ts.Checker): ObjectTransformResult => {
     let ctx: VisitContext = {
             bindings,
             calls: [],

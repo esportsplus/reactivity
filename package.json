@@ -4,7 +4,7 @@
         "@esportsplus/utilities": "^0.28.0"
     },
     "devDependencies": {
-        "@esportsplus/typescript": "^0.29.5",
+        "@esportsplus/typescript": "^0.31.0",
         "@types/node": "^26.1.1",
         "vite": "^8.1.5",
         "vitest": "^4.1.10"
