@@ -1,5 +1,5 @@
 import { isArray } from '@esportsplus/utilities';
-import { REACTIVE_ARRAY } from '~/constants';
+import { PACKAGE_NAME, REACTIVE_ARRAY } from '~/constants';
 import { read, signal, write } from '~/system';
 import type { Signal } from '~/types';
 import { isReactiveObject } from './object';
@@ -155,7 +155,8 @@ class ReactiveArray<T> extends Array<T> {
             return;
         }
 
-        let dirty = false;
+        let dirty = false,
+            errors: unknown[] | null = null;
 
         for (let i = 0, n = listeners.length; i < n; i++) {
             let listener = listeners[i];
@@ -172,9 +173,10 @@ class ReactiveArray<T> extends Array<T> {
                     listeners[i] = null;
                 }
             }
-            catch {
+            catch (e) {
                 dirty = true;
                 listeners[i] = null;
+                (errors ??= []).push(e);
             }
         }
 
@@ -182,6 +184,16 @@ class ReactiveArray<T> extends Array<T> {
             while (listeners.length && listeners[listeners.length - 1] === null) {
                 listeners.pop();
             }
+        }
+
+        if (errors !== null) {
+            let error = errors.length === 1
+                ? errors[0]
+                : new AggregateError(errors, `${PACKAGE_NAME}: dispatch produced multiple errors`);
+
+            queueMicrotask(() => {
+                throw error;
+            });
         }
     }
 

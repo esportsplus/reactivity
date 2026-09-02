@@ -3,6 +3,7 @@ import { effect, read, signal, write } from '~/system';
 import { ReactiveArray } from '~/reactive/array';
 import { ReactiveObject } from '~/reactive/object';
 import reactive from '~/reactive/index';
+import { captureUncaught } from '../lib/uncaught';
 
 
 describe('ReactiveArray', () => {
@@ -737,27 +738,33 @@ describe('ReactiveArray', () => {
             expect(calls).toBe(1);
         });
 
-        it('listener errors are caught and listener removed', () => {
+        it('listener errors surface asynchronously and the listener is removed', async () => {
             let arr = new ReactiveArray<number>(),
-                calls = 0;
+                calls = 0,
+                captured = await captureUncaught(() => {
+                    arr.on('push', () => { throw new Error('reactivity: test'); });
+                    arr.on('push', () => { calls++; });
 
-            arr.on('push', () => { throw new Error('test'); });
-            arr.on('push', () => { calls++; });
-
-            arr.push(1);
-            arr.push(2);
+                    arr.push(1);
+                    arr.push(2);
+                });
 
             expect(calls).toBe(2);
+            expect(captured.length).toBe(1);
+            expect((captured[0] as Error).message).toBe('reactivity: test');
         });
 
-        it('null slots reused for new listeners', () => {
-            let arr = new ReactiveArray<number>();
+        it('null slots reused for new listeners', async () => {
+            let arr = new ReactiveArray<number>(),
+                fn1 = () => { throw new Error('reactivity: remove me'); },
+                fn2 = vi.fn();
 
-            let fn1 = () => { throw new Error('remove me'); };
-            let fn2 = vi.fn();
+            let captured = await captureUncaught(() => {
+                arr.on('push', fn1);
+                arr.push(1); // fn1 throws and gets nulled
+            });
 
-            arr.on('push', fn1);
-            arr.push(1); // fn1 throws and gets nulled
+            expect(captured.length).toBe(1);
 
             arr.on('push', fn2);
             arr.push(2);
@@ -765,23 +772,26 @@ describe('ReactiveArray', () => {
             expect(fn2).toHaveBeenCalledTimes(1);
         });
 
-        it('multiple listeners removed via errors, new listeners fill holes in order', () => {
+        it('multiple listeners removed via errors, new listeners fill holes in order', async () => {
             let arr = new ReactiveArray<number>(),
-                order: number[] = [];
+                err1 = () => { throw new Error('reactivity: err1'); },
+                err2 = () => { throw new Error('reactivity: err2'); },
+                fn3 = vi.fn();
 
-            let err1 = () => { throw new Error('err1'); };
-            let err2 = () => { throw new Error('err2'); };
-            let fn3 = vi.fn();
-
-            arr.on('push', err1);
-            arr.on('push', err2);
-            arr.on('push', fn3);
-            arr.push(1); // err1 and err2 throw, slots 0 and 1 nulled
+            let captured = await captureUncaught(() => {
+                arr.on('push', err1);
+                arr.on('push', err2);
+                arr.on('push', fn3);
+                arr.push(1); // err1 and err2 throw, slots 0 and 1 nulled
+            });
 
             expect(fn3).toHaveBeenCalledTimes(1);
+            expect(captured.length).toBe(1);
+            expect(captured[0]).toBeInstanceOf(AggregateError);
+            expect((captured[0] as AggregateError).errors.length).toBe(2);
 
-            let fn4 = vi.fn();
-            let fn5 = vi.fn();
+            let fn4 = vi.fn(),
+                fn5 = vi.fn();
 
             arr.on('push', fn4); // fills hole at slot 0
             arr.on('push', fn5); // fills hole at slot 1
@@ -792,39 +802,44 @@ describe('ReactiveArray', () => {
             expect(fn5).toHaveBeenCalledTimes(1);
         });
 
-        it('trailing null slots cleaned after dispatch', () => {
-            let arr = new ReactiveArray<number>();
+        it('trailing null slots cleaned after dispatch', async () => {
+            let arr = new ReactiveArray<number>(),
+                fn1 = vi.fn(),
+                err2 = () => { throw new Error('reactivity: remove'); };
 
-            let fn1 = vi.fn();
-            let err2 = () => { throw new Error('remove'); };
+            let captured = await captureUncaught(() => {
+                arr.on('push', fn1);
+                arr.on('push', err2);
 
-            arr.on('push', fn1);
-            arr.on('push', err2);
-
-            // Before dispatch: listeners = [fn1, err2] (length 2)
-            arr.push(1); // err2 throws → nulled → trailing null cleaned
+                // Before dispatch: listeners = [fn1, err2] (length 2)
+                arr.push(1); // err2 throws → nulled → trailing null cleaned
+            });
 
             // Trailing null should be cleaned, so internal array length is 1
             expect(arr.listeners['push']!.length).toBe(1);
             expect(fn1).toHaveBeenCalledTimes(1);
+            expect(captured.length).toBe(1);
         });
 
-        it('on() inserts after trailing nulls cleaned from dispatch', () => {
+        it('on() inserts after trailing nulls cleaned from dispatch', async () => {
             let arr = new ReactiveArray<number>(),
                 fn1 = vi.fn(),
-                fn2 = () => { throw new Error('err2'); },
-                fn3 = () => { throw new Error('err3'); };
+                fn2 = () => { throw new Error('reactivity: err2'); },
+                fn3 = () => { throw new Error('reactivity: err3'); };
 
-            arr.on('push', fn1);
-            arr.on('push', fn2);
-            arr.on('push', fn3);
+            let captured = await captureUncaught(() => {
+                arr.on('push', fn1);
+                arr.on('push', fn2);
+                arr.on('push', fn3);
 
-            // Dispatch: fn2 and fn3 throw → nulled → trailing nulls cleaned
-            // listeners = [fn1, null, null] → cleanup → [fn1]
-            arr.push(1);
+                // Dispatch: fn2 and fn3 throw → nulled → trailing nulls cleaned
+                // listeners = [fn1, null, null] → cleanup → [fn1]
+                arr.push(1);
+            });
 
             expect(fn1).toHaveBeenCalledTimes(1);
             expect(arr.listeners['push']!.length).toBe(1);
+            expect(captured[0]).toBeInstanceOf(AggregateError);
 
             // Register fn4 — should append at index 1 (no holes left)
             let fn4 = vi.fn();
