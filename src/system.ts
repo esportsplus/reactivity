@@ -131,8 +131,8 @@ function deleteFromHeap<T>(computed: Computed<T>) {
     computed.prevHeap = computed;
 }
 
-// Reconstructs main's eager write() fan-out in one batched pass: N writes to one signal
-// queue it once, so each subscriber is heap-inserted once. Self-linked nextPending marks the tail.
+// N writes to one signal queue it once, so each subscriber is heap-inserted once. A self-linked
+// nextPending marks the tail.
 function drainPending() {
     let node = pendingHead;
 
@@ -974,8 +974,8 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
         link(node, observer);
 
         if ((node as Computed<unknown>).state & STATE_COMPUTED) {
-            // Invariant 1: a tracked mid-cycle read must see pending writes — drain so the heap
-            // and this node's notify bits reflect them before the broadcast condition is read
+            // A tracked read must see pending writes: drain so the heap and this node's notify
+            // bits reflect them before the pull gate below is evaluated
             if (pendingHead !== null) {
                 drainPending();
             }
