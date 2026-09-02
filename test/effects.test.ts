@@ -331,3 +331,39 @@ describe('effect apply phase', () => {
         expect(applied).toEqual([101, 202]);
     });
 });
+
+
+describe('scheduling from a top-level creation run', () => {
+    it('a write issued by a top-level effect creation propagates', async () => {
+        let runs = 0,
+            s = signal(0);
+
+        effect(() => {
+            read(s);
+            runs++;
+        });
+
+        effect(() => {
+            write(s, 5);
+        });
+
+        await waitFor(() => runs === 2, 'the reader re-runs');
+
+        expect(read(s)).toBe(5);
+    });
+
+    it('a deferred inner effect created by a top-level effect creation runs', async () => {
+        let inner = 0,
+            s = signal(0);
+
+        effect(() => {
+            read(s);
+
+            effect(() => {
+                inner++;
+            });
+        });
+
+        await waitFor(() => inner === 1, 'the inner effect runs');
+    });
+});

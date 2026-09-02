@@ -1,7 +1,7 @@
 import {
     PACKAGE_NAME,
     SIGNAL,
-    STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
+    STABILIZER_DEFERRED, STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
     STATE_CHECK, STATE_COMPUTED, STATE_DIRTY, STATE_EFFECT, STATE_ERROR, STATE_IN_HEAP, STATE_NOTIFY_MASK, STATE_RECOMPUTING
 } from './constants';
 import { Computed, ComputedResult, Link, SelectorSignal, Settled, Signal } from './types';
@@ -28,6 +28,8 @@ let asyncMeta = new WeakMap<Computed<unknown>, { factory: Computed<unknown> }>()
     notified = false,
     observer: Computed<unknown> | null = null,
     pendingHead: Signal<unknown> | null = null,
+    pulled: Computed<unknown> | null = null,
+    puller: Computed<unknown> | null = null,
     scope: Computed<unknown> | null = null,
     stabilizer = STABILIZER_IDLE,
     version = 0,
@@ -180,6 +182,10 @@ function insertIntoHeap<T>(computed: Computed<T>) {
             heap.length = Math.max(height + 1, Math.ceil(heap.length * 2));
         }
     }
+    // heap_i is only non-zero inside a pass: a bucket it already scanned needs another pass
+    else if (height < heap_i) {
+        stabilizer = STABILIZER_RESCHEDULE;
+    }
 }
 
 // https://github.com/stackblitz/alien-signals/blob/v2.0.3/src/system.ts#L52
@@ -305,7 +311,8 @@ function notify<T>(computed: Computed<T>, newState: number) {
 }
 
 // Shared by read()'s tracked pull and peek()'s untracked pull. observer is nulled around update()
-// so a recompute triggered here tracks into the node's own scope, never the caller's.
+// so a recompute triggered here tracks into the node's own scope, never the caller's. pulled/puller
+// let propagate() skip re-queueing the caller: it receives the fresh value when this returns.
 function pull<T>(node: Computed<T>): void {
     if (!notified) {
         notified = true;
@@ -317,17 +324,29 @@ function pull<T>(node: Computed<T>): void {
         }
     }
 
-    let o = observer;
+    let o = observer,
+        p = puller,
+        q = pulled;
 
     observer = null;
+    pulled = node as Computed<unknown>;
+    puller = o;
     update(node);
     observer = o;
+    pulled = q;
+    puller = p;
 }
 
 function propagate<T>(computed: Computed<T>) {
+    let skip = (computed as Computed<unknown>) === pulled ? puller : null;
+
     for (let c = computed.subs; c; c = c.nextSub) {
         let s = c.sub,
             state = s.state;
+
+        if (s === skip) {
+            continue;
+        }
 
         if (state & STATE_CHECK) {
             s.state = state | STATE_DIRTY;
@@ -339,14 +358,8 @@ function propagate<T>(computed: Computed<T>) {
     schedule();
 }
 
-function recompute<T>(computed: Computed<T>, del: boolean) {
-    if (del) {
-        deleteFromHeap(computed);
-    }
-    else {
-        computed.nextHeap = undefined;
-        computed.prevHeap = computed;
-    }
+function recompute<T>(computed: Computed<T>) {
+    deleteFromHeap(computed);
 
     if (computed.cleanup) {
         // A failing PREVIOUS generation's teardown must not poison this recompute or the stabilize pass
@@ -387,7 +400,8 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
     // Fresh version so rv/link stamps from this run (incl. nested creations) go stale — false negatives only
     version++;
     observer = o;
-    computed.state = STATE_COMPUTED | flags;
+    // fn may have re-queued this node (a tracked read drains pending writes), so heap membership survives
+    computed.state = STATE_COMPUTED | flags | (computed.state & STATE_IN_HEAP);
     // Entry snapshot, not current writes: a node whose fn wrote mid-run must stay gv < writes and validate normally
     computed.gv = w;
 
@@ -437,62 +451,68 @@ function recompute<T>(computed: Computed<T>, del: boolean) {
             propagate(computed);
         }
     }
+
+    if (!depth) {
+        release();
+    }
 }
 
-function schedule() {
-    if (stabilizer === STABILIZER_SCHEDULED) {
-        return;
-    }
-
-    if (stabilizer === STABILIZER_IDLE && !depth) {
+// A schedule() requested while depth > 0 is parked as DEFERRED and queued once the outermost
+// recompute/batch returns.
+function release() {
+    if (stabilizer === STABILIZER_DEFERRED) {
         stabilizer = STABILIZER_SCHEDULED;
         microtask(stabilize);
     }
-    else if (stabilizer === STABILIZER_RUNNING) {
-        stabilizer = STABILIZER_RESCHEDULE;
+}
+
+function schedule() {
+    if (stabilizer !== STABILIZER_IDLE) {
+        return;
+    }
+
+    if (depth) {
+        stabilizer = STABILIZER_DEFERRED;
+    }
+    else {
+        stabilizer = STABILIZER_SCHEDULED;
+        microtask(stabilize);
     }
 }
 
+// Buckets are popped from the head so a node queued at the current height mid-pass (a write drained
+// by a tracked read) settles in this pass, and the heap stays intact for deleteFromHeap() when a
+// recompute pulls a same-height sibling. A write that lands below heap_i flags RESCHEDULE.
 function stabilize() {
     let o = observer;
 
     observer = null;
-    stabilizer = STABILIZER_RUNNING;
 
-    for (heap_i = 0; heap_i <= heap_n; heap_i++) {
-        // Drain before scanning each height so writes emitted by a lower level's recompute
-        // land their subscribers in this same pass, matching main's eager same-pass pickup
-        if (pendingHead !== null) {
-            drainPending();
+    do {
+        stabilizer = STABILIZER_RUNNING;
+
+        for (heap_i = 0; heap_i <= heap_n; heap_i++) {
+            if (pendingHead !== null) {
+                drainPending();
+            }
+
+            let computed;
+
+            while ((computed = heap[heap_i]) !== undefined) {
+                recompute(computed);
+            }
         }
 
-        let computed = heap[heap_i];
-
-        heap[heap_i] = undefined;
-
-        while (computed !== undefined) {
-            let next = computed.nextHeap;
-
-            recompute(computed, false);
-
-            computed = next;
+        while (heap_n > 0 && heap[heap_n] === undefined) {
+            heap_n--;
         }
-    }
 
-    while (heap_n > 0 && heap[heap_n] === undefined) {
-        heap_n--;
+        heap_i = 0;
     }
+    while (pendingHead !== null || stabilizer === STABILIZER_RESCHEDULE);
 
-    heap_i = 0;
+    stabilizer = STABILIZER_IDLE;
     observer = o;
-
-    if (stabilizer === STABILIZER_RESCHEDULE) {
-        stabilizer = STABILIZER_SCHEDULED;
-        microtask(stabilize);
-    }
-    else {
-        stabilizer = STABILIZER_IDLE;
-    }
 }
 
 // https://github.com/stackblitz/alien-signals/blob/v2.0.3/src/system.ts#L100
@@ -556,7 +576,7 @@ function update<T>(root: Computed<T>): void {
                 resuming = true;
             }
             else if (node.state & STATE_DIRTY) {
-                recompute(node, true);
+                recompute(node);
                 node.state &= ~STATE_NOTIFY_MASK;
             }
             else {
@@ -586,7 +606,7 @@ function update<T>(root: Computed<T>): void {
             }
 
             if (node.state & STATE_DIRTY) {
-                recompute(node, true);
+                recompute(node);
             }
             else {
                 node.gv = w;
@@ -723,14 +743,14 @@ function makeComputed<T>(fn: Computed<T>['fn'], eager: boolean = false): Compute
     if (observer) {
         if (observer.depsTail === null) {
             self.height = observer.height;
-            recompute(self, false);
+            recompute(self);
         }
         else if (eager) {
             // computed() must know fn's return type to pick sync vs async. This probe runs BEFORE
             // link() below, so self has no subs yet — recompute's propagate is a no-op and cannot
             // re-run the parent. Deferring here (as effect() still does) would leave value unset.
             self.height = observer.height + 1;
-            recompute(self, false);
+            recompute(self);
         }
         else {
             self.height = observer.height + 1;
@@ -742,7 +762,7 @@ function makeComputed<T>(fn: Computed<T>['fn'], eager: boolean = false): Compute
         onCleanup(() => dispose(self));
     }
     else {
-        recompute(self, false);
+        recompute(self);
 
         if (scope) {
             onCleanup(() => dispose(self));
@@ -764,7 +784,7 @@ const batch = <T>(fn: () => T): T => {
         depth--;
 
         if (!depth) {
-            schedule();
+            release();
         }
     }
 };
@@ -896,13 +916,9 @@ const effect = <T>(fn: Computed<T>['fn'], apply?: (value: T, prev: T | undefined
     };
 };
 
-// RUNNING/RESCHEDULE means a pass is already draining (or a flush is already in this call chain);
-// re-entering stabilize here would corrupt heap_i, so this is a deliberate no-op.
-// Loops (not a single call): a write during a pass can target a height stabilize()'s current
-// pass already scanned past, which only flips stabilizer to RESCHEDULE for the *next* microtask
-// rather than draining in-pass — looping here is what actually settles that tail synchronously.
+// A no-op while a pass is running: re-entering stabilize() would corrupt heap_i.
 const flush = (): void => {
-    while (stabilizer === STABILIZER_SCHEDULED) {
+    if (stabilizer === STABILIZER_SCHEDULED) {
         stabilize();
     }
 };

@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { computed, dispose, effect, flush, isComputed, isSignal, onCleanup, read, root, signal, write } from '~/system';
+import { computed, dispose, effect, flush, isComputed, isSignal, onCleanup, peek, read, root, signal, write } from '~/system';
 import { waitFor } from './lib/wait-for';
 
 
@@ -836,6 +836,58 @@ describe('stale reads after a pass', () => {
 
         expect(seen[0]).toBe(20);
         expect(seen).not.toContain(10);
+    });
+});
+
+
+describe('same-height stabilization', () => {
+    it('settles a sibling pulled from the active heap bucket', () => {
+        let s = signal(0),
+            flag = signal(false),
+            M = computed(() => 0),
+            N = computed(() => read(flag) ? (read(M), read(s), 0) : 0),
+            R = computed(() => read(s) + read(N));
+
+        effect(() => { read(R); });
+        effect(() => { read(N); });
+        effect(() => { read(M); });
+
+        write(flag, true);
+        flush();
+        write(s, 1);
+
+        expect(() => {
+            peek(M);
+            flush();
+        }).not.toThrow();
+        expect(read(R)).toBe(1);
+    });
+
+    it('observes one settled value per write when a sibling grows', () => {
+        let s = signal(0),
+            flag = signal(false),
+            M = computed(() => 0),
+            N = computed(() => read(flag) ? read(M) + read(s) : 0),
+            values: number[] = [],
+            R = computed(() => {
+                let value = read(s) + read(N);
+
+                values.push(value);
+
+                return value;
+            });
+
+        effect(() => { read(R); });
+        effect(() => { read(N); });
+        effect(() => { read(M); });
+
+        write(flag, true);
+        flush();
+        values.length = 0;
+        write(s, 1);
+        flush();
+
+        expect(values).toEqual([2]);
     });
 });
 
