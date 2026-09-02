@@ -285,29 +285,25 @@ class ReactiveArray<T> extends Array<T> {
 
             super.sort(fn);
 
-            let buckets = new Map<T, number[]>(),
+            let buckets = new Map<T, { indices: number[]; next: number }>(),
                 order = new Array(n);
 
             for (let i = 0; i < n; i++) {
                 let value = before[i],
-                    list = buckets.get(value);
+                    bucket = buckets.get(value);
 
-                if (!list) {
-                    buckets.set(value, [i]);
+                if (bucket === undefined) {
+                    buckets.set(value, { indices: [i], next: 0 });
                 }
                 else {
-                    list.push(i);
+                    bucket.indices.push(i);
                 }
             }
 
             for (let i = 0; i < n; i++) {
-                let list = buckets.get(this[i])!;
+                let bucket = buckets.get(this[i])!;
 
-                order[i] = list.length === 1 ? list[0] : list[list.length - 1];
-
-                if (list.length > 1) {
-                    list.pop();
-                }
+                order[i] = bucket.indices[bucket.next++];
             }
 
             this.dispatch('sort', { order });

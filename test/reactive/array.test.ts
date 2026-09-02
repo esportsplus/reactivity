@@ -613,6 +613,27 @@ describe('ReactiveArray', () => {
             expect([...arr]).toEqual([1, 2, 2]);
         });
 
+        it('order maps duplicate values stably (first stays first)', () => {
+            let arr = new ReactiveArray([3, 1, 3, 2]),
+                order: number[] = [];
+
+            arr.on('sort', (e) => { order = e.order; });
+            arr.sort((a, b) => a - b);
+
+            expect([...arr]).toEqual([1, 2, 3, 3]);
+            expect(order).toEqual([1, 3, 0, 2]);
+        });
+
+        it('all-equal array yields identity order', () => {
+            let arr = new ReactiveArray([5, 5, 5]),
+                order: number[] = [];
+
+            arr.on('sort', (e) => { order = e.order; });
+            arr.sort((a, b) => a - b);
+
+            expect(order).toEqual([0, 1, 2]);
+        });
+
         it('sort preserves object references', () => {
             let a = { id: 3 },
                 b = { id: 1 },
