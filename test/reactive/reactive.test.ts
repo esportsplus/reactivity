@@ -391,6 +391,55 @@ describe('reactive()', () => {
             expect(() => reactive('hello' as any)).toThrow();
         });
     });
+
+
+    describe('auto-dispose', () => {
+        it('disposes an object with a computed property when its owning effect stops', async () => {
+            let s = signal(1),
+                runs = 0,
+                stop = effect(() => {
+                    reactive({
+                        doubled: () => {
+                            runs++;
+                            return read(s) * 2;
+                        }
+                    });
+                });
+
+            expect(runs).toBe(1);
+
+            stop();
+
+            write(s, 2);
+            await Promise.resolve();
+
+            expect(runs).toBe(1);
+        });
+
+        it('disposes nested objects of an array when its owning effect stops', () => {
+            let inner = new ReactiveObject({ x: 1 }),
+                spy = vi.spyOn(inner, 'dispose'),
+                stop = effect(() => {
+                    reactive([inner]);
+                });
+
+            stop();
+
+            expect(spy).toHaveBeenCalledTimes(1);
+        });
+
+        it('top-level reactive() is not auto-disposed', async () => {
+            let s = signal(1),
+                obj = reactive({ doubled: () => read(s) * 2 }) as any;
+
+            expect(obj.doubled).toBe(2);
+
+            write(s, 3);
+            await Promise.resolve();
+
+            expect(obj.doubled).toBe(6);
+        });
+    });
 });
 
 

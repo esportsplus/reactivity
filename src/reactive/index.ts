@@ -18,31 +18,19 @@ function reactive<T extends unknown[]>(input: T): Reactive<T>;
 function reactive<T extends Record<PropertyKey, unknown>>(input: Guard<T>): Reactive<T>;
 function reactive<T>(input: T): Reactive<T>;
 function reactive<T>(input: T): Reactive<T> {
-    let dispose = false,
-        value = root(() => {
-            let response: Reactive<T> | undefined;
-
+    let value = root(() => {
             if (isObject(input)) {
-                response = new ReactiveObject(input) as unknown as Reactive<T>;
-            }
-            else if (isArray(input)) {
-                response = new ReactiveArray(...input) as unknown as Reactive<T>;
+                return new ReactiveObject(input) as unknown as Reactive<T>;
             }
 
-            if (response) {
-                if (root.disposables) {
-                    dispose = true;
-                }
-
-                return response;
+            if (isArray(input)) {
+                return new ReactiveArray(...input) as unknown as Reactive<T>;
             }
 
             throw new Error(`${PACKAGE_NAME}: 'reactive' received invalid input - ${JSON.stringify(input)}`);
         });
 
-    if (dispose) {
-        onCleanup(() => (value as unknown as { dispose: VoidFunction }).dispose());
-    }
+    onCleanup(() => (value as unknown as { dispose: VoidFunction }).dispose());
 
     return value;
 }

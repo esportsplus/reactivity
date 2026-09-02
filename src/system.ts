@@ -742,7 +742,6 @@ function makeComputed<T>(fn: Computed<T>['fn'], eager: boolean = false): Compute
     }
     else {
         recompute(self, false);
-        root.disposables++;
 
         if (scope) {
             onCleanup(() => dispose(self));
@@ -985,7 +984,6 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
 
 const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
     let c,
-        d = root.disposables,
         o = observer,
         s = scope,
         self: Computed<unknown> | null = null,
@@ -993,7 +991,6 @@ const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
         value: T;
 
     observer = null;
-    root.disposables = 0;
 
     try {
         if (tracking) {
@@ -1007,7 +1004,6 @@ const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
     }
     finally {
         observer = o;
-        root.disposables = d;
         scope = s;
     }
 
@@ -1017,8 +1013,6 @@ const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
 
     return value;
 };
-
-root.disposables = 0;
 
 const signal = <T>(value: T, equals: ((a: T, b: T) => boolean) | null = null): Signal<T> => {
     return {

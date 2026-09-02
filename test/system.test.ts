@@ -602,32 +602,6 @@ describe('root', () => {
         expect(spy).toHaveBeenCalledTimes(1);
     });
 
-    it('tracks disposables counter for unowned computeds', () => {
-        let before = root.disposables;
-
-        root(() => {
-            computed(() => 1);
-            computed(() => 2);
-            computed(() => 3);
-        });
-
-        // root restores disposables to outer value after execution
-        expect(root.disposables).toBe(before);
-
-        // Nested: inner root creates computeds, outer root creates computeds
-        root(() => {
-            computed(() => 10);
-
-            root(() => {
-                computed(() => 20);
-                computed(() => 30);
-            });
-
-            computed(() => 40);
-        });
-
-        expect(root.disposables).toBe(before);
-    });
 });
 
 
