@@ -576,6 +576,32 @@ describe('root', () => {
         expect(inner).toBe(1);
     });
 
+    it('restores scope when an inner root throws', () => {
+        let spy = vi.fn(),
+            stop: VoidFunction | undefined;
+
+        root((dispose) => {
+            stop = dispose;
+
+            try {
+                root((inner) => {
+                    inner;
+                    throw new Error('reactivity: inner boom');
+                });
+            }
+            catch {
+            }
+
+            onCleanup(spy);
+        });
+
+        expect(spy).not.toHaveBeenCalled();
+
+        stop!();
+
+        expect(spy).toHaveBeenCalledTimes(1);
+    });
+
     it('tracks disposables counter for unowned computeds', () => {
         let before = root.disposables;
 

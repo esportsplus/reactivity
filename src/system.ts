@@ -995,18 +995,21 @@ const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
     observer = null;
     root.disposables = 0;
 
-    if (tracking) {
-        scope = self = { cleanup: null, state: STATE_COMPUTED } as Computed<unknown>;
-        value = (fn as (dispose: VoidFunction) => T)(c = () => dispose(self!));
+    try {
+        if (tracking) {
+            scope = self = { cleanup: null, state: STATE_COMPUTED } as Computed<unknown>;
+            value = (fn as (dispose: VoidFunction) => T)(c = () => dispose(self!));
+        }
+        else {
+            scope = null;
+            value = (fn as () => T)();
+        }
     }
-    else {
-        scope = null;
-        value = (fn as () => T)();
+    finally {
+        observer = o;
+        root.disposables = d;
+        scope = s;
     }
-
-    observer = o;
-    root.disposables = d;
-    scope = s;
 
     if (c) {
         onCleanup(c);
