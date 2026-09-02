@@ -1,10 +1,11 @@
 import { ts } from '@esportsplus/typescript';
 import type { ReplacementIntent } from '@esportsplus/typescript/compiler';
-import { NAMESPACE, TYPES } from './constants';
+import { COMPOUND_OPERATORS, NAMESPACE, TYPES } from './constants';
 import type { Bindings } from './types';
 
 
 interface ScopeBinding {
+    depth: number;
     name: string;
     scope: ts.Node;
     type: TYPES;
@@ -20,25 +21,6 @@ interface TransformContext {
 }
 
 
-const COMPOUND_OPERATORS = new Map<ts.SyntaxKind, string>([
-    [ts.SyntaxKind.AmpersandAmpersandEqualsToken, '&&'],
-    [ts.SyntaxKind.AmpersandEqualsToken, '&'],
-    [ts.SyntaxKind.AsteriskAsteriskEqualsToken, '**'],
-    [ts.SyntaxKind.AsteriskEqualsToken, '*'],
-    [ts.SyntaxKind.BarBarEqualsToken, '||'],
-    [ts.SyntaxKind.BarEqualsToken, '|'],
-    [ts.SyntaxKind.CaretEqualsToken, '^'],
-    [ts.SyntaxKind.GreaterThanGreaterThanEqualsToken, '>>'],
-    [ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken, '>>>'],
-    [ts.SyntaxKind.LessThanLessThanEqualsToken, '<<'],
-    [ts.SyntaxKind.MinusEqualsToken, '-'],
-    [ts.SyntaxKind.PercentEqualsToken, '%'],
-    [ts.SyntaxKind.PlusEqualsToken, '+'],
-    [ts.SyntaxKind.QuestionQuestionEqualsToken, '??'],
-    [ts.SyntaxKind.SlashEqualsToken, '/']
-]);
-
-
 function inScope(reference: ts.Node, binding: ScopeBinding): boolean {
     let current: ts.Node | undefined = reference;
 
@@ -51,6 +33,39 @@ function inScope(reference: ts.Node, binding: ScopeBinding): boolean {
     }
 
     return false;
+}
+
+function isScope(node: ts.Node): boolean {
+    return ts.isArrowFunction(node) ||
+        ts.isBlock(node) ||
+        ts.isCatchClause(node) ||
+        ts.isForInStatement(node) ||
+        ts.isForOfStatement(node) ||
+        ts.isForStatement(node) ||
+        ts.isFunctionDeclaration(node) ||
+        ts.isFunctionExpression(node) ||
+        ts.isSourceFile(node);
+}
+
+// Innermost enclosing scope plus its nesting depth, so shadowed names resolve to the closest binding
+function scopeOf(node: ts.Node): { depth: number; scope: ts.Node } {
+    let current: ts.Node | undefined = node.parent,
+        depth = 0,
+        scope: ts.Node = node.getSourceFile();
+
+    while (current) {
+        if (isScope(current)) {
+            if (scope === node.getSourceFile() && !ts.isSourceFile(current)) {
+                scope = current;
+            }
+
+            depth++;
+        }
+
+        current = current.parent;
+    }
+
+    return { depth, scope };
 }
 
 function visit(ctx: TransformContext, node: ts.Node): void {
@@ -101,32 +116,10 @@ function visit(ctx: TransformContext, node: ts.Node): void {
                 }
 
                 if (varname) {
-                    let current = call.parent,
-                        scope;
-
-                    while (current) {
-                        if (
-                            ts.isArrowFunction(current) ||
-                            ts.isBlock(current) ||
-                            ts.isForInStatement(current) ||
-                            ts.isForOfStatement(current) ||
-                            ts.isForStatement(current) ||
-                            ts.isFunctionDeclaration(current) ||
-                            ts.isFunctionExpression(current) ||
-                            ts.isSourceFile(current)
-                        ) {
-                            scope = current;
-                        }
-
-                        current = current.parent;
-                    }
-
-                    if (!scope) {
-                        scope = call.getSourceFile();
-                    }
+                    let { depth, scope } = scopeOf(call);
 
                     ctx.bindings.set(varname, classification);
-                    ctx.scopedBindings.push({ name: varname, scope, type: classification });
+                    ctx.scopedBindings.push({ depth, name: varname, scope, type: classification });
                 }
 
                 // Replace just the 'reactive' identifier with the appropriate namespace function
@@ -159,7 +152,7 @@ function visit(ctx: TransformContext, node: ts.Node): void {
         for (let i = 0, n = bindings.length; i < n; i++) {
             let b = bindings[i];
 
-            if (b.name === name && inScope(node, b)) {
+            if (b.name === name && (!binding || b.depth >= binding.depth) && inScope(node, b)) {
                 binding = b;
             }
         }

@@ -85,25 +85,25 @@ export default {
         }
 
         let bindings: Bindings = new Map(),
+            checker = ctx.checker,
             intents = {
                 imports: [] as ImportIntent[],
                 prepend: [] as string[],
                 replacements: [] as ReplacementIntent[]
-            };
+            },
+            isReactiveCall = (node: ts.Node): node is ts.CallExpression => isReactiveCallExpression(checker, node);
 
         // Run primitives transform first (tracks bindings for signal/computed)
-        intents.replacements.push(
-            ...primitives(ctx.sourceFile, bindings, (node: ts.Node) => isReactiveCallExpression(ctx.checker!, node))
-        );
+        intents.replacements.push(...primitives(ctx.sourceFile, bindings, isReactiveCall));
 
         // Run object transform
-        let { prepend, replacements } = object(ctx.sourceFile, bindings, ctx.checker);
+        let { prepend, replacements } = object(ctx.sourceFile, bindings, isReactiveCall);
 
         intents.prepend.push(...prepend);
         intents.replacements.push(...replacements);
 
         // Run array transform separately ( avoid race conditions )
-        intents.replacements.push(...array(ctx.sourceFile, bindings, ctx.checker));
+        intents.replacements.push(...array(ctx.sourceFile, bindings, isReactiveCall));
 
         // Find remaining reactive() calls that weren't transformed and replace with namespace version
         intents.replacements.push(

@@ -1,8 +1,8 @@
 import { ts } from '@esportsplus/typescript';
-import { code, imports, uid } from '@esportsplus/typescript/compiler';
+import { code, uid } from '@esportsplus/typescript/compiler';
 import type { ReplacementIntent } from '@esportsplus/typescript/compiler';
-import { ENTRYPOINT, NAMESPACE, PACKAGE_NAME, TYPES } from './constants';
-import type { Bindings } from './types';
+import { NAMESPACE, TYPES } from './constants';
+import type { Bindings, IsReactiveCall } from './types';
 
 
 interface AnalyzedProperty {
@@ -28,7 +28,7 @@ interface ReactiveObjectCall {
 interface VisitContext {
     bindings: Bindings;
     calls: ReactiveObjectCall[];
-    checker: ts.Checker | undefined;
+    isReactiveCall: IsReactiveCall;
     sourceFile: ts.SourceFile;
 }
 
@@ -216,24 +216,8 @@ function isStaticValue(node: ts.Node): boolean {
         (ts.isPrefixUnaryExpression(node) && ts.isNumericLiteral(node.operand));
 }
 
-function isReactiveCall(checker: ts.Checker | undefined, node: ts.Node): node is ts.CallExpression {
-    if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression)) {
-        return false;
-    }
-
-    let expr = node.expression;
-
-    // Use checker to verify symbol origin (handles re-exports)
-    if (checker) {
-        return imports.includes(checker, expr, PACKAGE_NAME, ENTRYPOINT);
-    }
-
-    // Fallback without checker: match by name only
-    return expr.text === ENTRYPOINT;
-}
-
 function visit(ctx: VisitContext, node: ts.Node): void {
-    if (isReactiveCall(ctx.checker, node)) {
+    if (ctx.isReactiveCall(node)) {
         let arg = node.arguments[0];
 
         if (arg && ts.isObjectLiteralExpression(arg)) {
@@ -243,7 +227,6 @@ function visit(ctx: VisitContext, node: ts.Node): void {
 
             if (node.parent && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
                 varname = node.parent.name.text;
-                ctx.bindings.set(varname, TYPES.Object);
             }
 
             for (let i = 0, n = props.length; i < n; i++) {
@@ -282,11 +265,11 @@ function visit(ctx: VisitContext, node: ts.Node): void {
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings, checker?: ts.Checker): ObjectTransformResult => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: IsReactiveCall): ObjectTransformResult => {
     let ctx: VisitContext = {
             bindings,
             calls: [],
-            checker,
+            isReactiveCall,
             sourceFile
         };
 

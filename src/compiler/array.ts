@@ -1,33 +1,17 @@
 import { ts } from '@esportsplus/typescript';
-import { ast, imports } from '@esportsplus/typescript/compiler';
+import { ast } from '@esportsplus/typescript/compiler';
 import type { ReplacementIntent } from '@esportsplus/typescript/compiler';
-import { ENTRYPOINT, NAMESPACE, PACKAGE_NAME, TYPES } from './constants';
-import type { Bindings } from './types';
+import { COMPOUND_OPERATORS, NAMESPACE, TYPES } from './constants';
+import type { Bindings, IsReactiveCall } from './types';
 
 
 type VisitContext = {
     bindings: Bindings;
-    checker: ts.Checker | undefined;
+    isReactiveCall: IsReactiveCall;
     replacements: ReplacementIntent[];
     sourceFile: ts.SourceFile;
 };
 
-
-function isReactiveCall(checker: ts.Checker | undefined, node: ts.Node): node is ts.CallExpression {
-    if (!ts.isCallExpression(node) || !ts.isIdentifier(node.expression)) {
-        return false;
-    }
-
-    let expr = node.expression;
-
-    // Use checker to verify symbol origin (handles re-exports)
-    if (checker) {
-        return imports.includes(checker, expr, PACKAGE_NAME, ENTRYPOINT);
-    }
-
-    // Fallback without checker: match by name only
-    return expr.text === ENTRYPOINT;
-}
 
 function getElementTypeText(typeNode: ts.TypeNode, sourceFile: ts.SourceFile): string | null {
     if (ts.isArrayTypeNode(typeNode)) {
@@ -47,42 +31,8 @@ function getElementTypeText(typeNode: ts.TypeNode, sourceFile: ts.SourceFile): s
     return null;
 }
 
-function getOperator(kind: ts.SyntaxKind) {
-    switch (kind) {
-        case ts.SyntaxKind.PlusEqualsToken: return '+';
-        case ts.SyntaxKind.MinusEqualsToken: return '-';
-        case ts.SyntaxKind.AsteriskEqualsToken: return '*';
-        case ts.SyntaxKind.SlashEqualsToken: return '/';
-        case ts.SyntaxKind.PercentEqualsToken: return '%';
-        case ts.SyntaxKind.AsteriskAsteriskEqualsToken: return '**';
-        case ts.SyntaxKind.AmpersandEqualsToken: return '&';
-        case ts.SyntaxKind.BarEqualsToken: return '|';
-        case ts.SyntaxKind.CaretEqualsToken: return '^';
-        default: return '+';
-    }
-}
-
-function isAssignmentOperator(kind: ts.SyntaxKind) {
-    return kind === ts.SyntaxKind.EqualsToken ||
-        kind === ts.SyntaxKind.PlusEqualsToken ||
-        kind === ts.SyntaxKind.MinusEqualsToken ||
-        kind === ts.SyntaxKind.AsteriskEqualsToken ||
-        kind === ts.SyntaxKind.SlashEqualsToken ||
-        kind === ts.SyntaxKind.PercentEqualsToken ||
-        kind === ts.SyntaxKind.AsteriskAsteriskEqualsToken ||
-        kind === ts.SyntaxKind.LessThanLessThanEqualsToken ||
-        kind === ts.SyntaxKind.GreaterThanGreaterThanEqualsToken ||
-        kind === ts.SyntaxKind.GreaterThanGreaterThanGreaterThanEqualsToken ||
-        kind === ts.SyntaxKind.AmpersandEqualsToken ||
-        kind === ts.SyntaxKind.BarEqualsToken ||
-        kind === ts.SyntaxKind.CaretEqualsToken ||
-        kind === ts.SyntaxKind.BarBarEqualsToken ||
-        kind === ts.SyntaxKind.AmpersandAmpersandEqualsToken ||
-        kind === ts.SyntaxKind.QuestionQuestionEqualsToken;
-}
-
 function visit(ctx: VisitContext, node: ts.Node): void {
-    if (isReactiveCall(ctx.checker, node) && node.arguments.length > 0) {
+    if (ctx.isReactiveCall(node) && node.arguments.length > 0) {
         let arg = node.arguments[0],
             expression = ts.isAsExpression(arg) ? arg.expression : arg;
 
@@ -148,10 +98,10 @@ function visit(ctx: VisitContext, node: ts.Node): void {
                 parent = node.parent;
 
             // arr.length = value OR arr.length += value
-            if (parent && ts.isBinaryExpression(parent) && parent.left === node && isAssignmentOperator(parent.operatorToken.kind)) {
-                let op = parent.operatorToken.kind;
+            if (parent && ts.isBinaryExpression(parent) && parent.left === node && (parent.operatorToken.kind === ts.SyntaxKind.EqualsToken || COMPOUND_OPERATORS.has(parent.operatorToken.kind))) {
+                let op = COMPOUND_OPERATORS.get(parent.operatorToken.kind);
 
-                if (op === ts.SyntaxKind.EqualsToken) {
+                if (op === undefined) {
                     ctx.replacements.push({
                         node: parent,
                         generate: (sf) => `${expr.getText(sf)}.$length = ${parent.right.getText(sf)}`
@@ -160,7 +110,7 @@ function visit(ctx: VisitContext, node: ts.Node): void {
                 else {
                     ctx.replacements.push({
                         node: parent,
-                        generate: (sf) => `${expr.getText(sf)}.$length = ${expr.getText(sf)}.length ${getOperator(op)} ${parent.right.getText(sf)}`
+                        generate: (sf) => `${expr.getText(sf)}.$length = ${expr.getText(sf)}.length ${op} ${parent.right.getText(sf)}`
                     });
                 }
             }
@@ -238,10 +188,10 @@ function visit(ctx: VisitContext, node: ts.Node): void {
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings, checker?: ts.Checker): ReplacementIntent[] => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: IsReactiveCall): ReplacementIntent[] => {
     let ctx: VisitContext = {
             bindings,
-            checker,
+            isReactiveCall,
             replacements: [],
             sourceFile
         };
