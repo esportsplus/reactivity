@@ -1,4 +1,5 @@
 allowBuilds:
   esbuild: true
 minimumReleaseAgeExclude:
-  - '@esportsplus/typescript@0.31.0'
+  - '@esportsplus/typescript@0.31.0 || 0.32.0'
+  - tsc-alias@1.9.4

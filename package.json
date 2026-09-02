@@ -4,10 +4,10 @@
         "@esportsplus/utilities": "^0.28.0"
     },
     "devDependencies": {
-        "@esportsplus/typescript": "^0.31.0",
-        "@types/node": "^26.1.1",
-        "vite": "^8.1.5",
-        "vitest": "^4.1.10"
+        "@esportsplus/typescript": "^0.32.0",
+        "@types/node": "^26.4.1",
+        "vite": "^8.2.2",
+        "vitest": "^4.1.11"
     },
     "exports": {
         ".": {
