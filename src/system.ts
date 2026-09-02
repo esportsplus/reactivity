@@ -327,23 +327,28 @@ function pull<T>(node: Computed<T>): void {
         }
     }
 
-    let o = observer,
-        p = puller,
-        q = pulled;
+    let o = observer;
 
+    // Cleared rather than restored: an outer pull then merely fails to skip, which is only a re-run
     observer = null;
     pulled = node as Computed<unknown>;
     puller = o;
     update(node);
     observer = o;
-    pulled = q;
-    puller = p;
+    pulled = null;
+    puller = null;
 }
 
 function propagate<T>(computed: Computed<T>) {
+    let c = computed.subs;
+
+    if (c === null) {
+        return;
+    }
+
     let skip = (computed as Computed<unknown>) === pulled ? puller : null;
 
-    for (let c = computed.subs; c; c = c.nextSub) {
+    for (; c; c = c.nextSub) {
         let s = c.sub,
             state = s.state;
 
@@ -362,7 +367,9 @@ function propagate<T>(computed: Computed<T>) {
 }
 
 function recompute<T>(computed: Computed<T>) {
-    deleteFromHeap(computed);
+    if (computed.state & STATE_IN_HEAP) {
+        deleteFromHeap(computed);
+    }
 
     if (computed.cleanup) {
         // A failing PREVIOUS generation's teardown must not poison this recompute or the stabilize pass
@@ -455,15 +462,9 @@ function recompute<T>(computed: Computed<T>) {
         }
     }
 
-    if (!depth) {
-        release();
-    }
-}
-
-// A schedule() requested while depth > 0 is parked as DEFERRED and queued once the outermost
-// recompute/batch returns.
-function release() {
-    if (stabilizer === STABILIZER_DEFERRED) {
+    // A schedule() requested while depth > 0 is parked as DEFERRED and queued once the outermost
+    // recompute returns
+    if (!depth && stabilizer === STABILIZER_DEFERRED) {
         stabilizer = STABILIZER_SCHEDULED;
         microtask(stabilize);
     }
@@ -641,24 +642,33 @@ function makeAsyncComputed<T>(factory: Computed<Promise<T> | AsyncIterable<T> | 
         v = 0;
 
     let stop = effect(() => {
-        let fail = (e: unknown) => {
-                if (id === v && !(factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
+        let id = ++v,
+            // A settle is stale once a newer dispatch exists or the factory has a re-run queued. Pending
+            // writes are drained first so a write that dirtied the factory but has not been settled yet
+            // still counts, whatever the microtask order.
+            stale = () => {
+                if (pendingHead !== null) {
+                    drainPending();
+                }
+
+                return id !== v || (factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK)) !== 0;
+            },
+            fail = (e: unknown) => {
+                if (!stale()) {
                     write(error, e === undefined ? new Error('reactivity: async computed rejected with undefined') : e);
                     write(pending, false);
                 }
             },
-            id = ++v,
-            // Heap membership (a write's eager insert) marks a pending re-run the notify mask alone misses.
             result = read(factory);
 
         if (isPromise(result)) {
-            if (id === v && !(factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
+            if (!stale()) {
                 write(pending, true);
             }
 
             (result as Promise<T>).then(
                 (value) => {
-                    if (id === v && !(factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
+                    if (!stale()) {
                         write(error, undefined);
                         write(node, value);
                         write(pending, false);
@@ -675,7 +685,7 @@ function makeAsyncComputed<T>(factory: Computed<Promise<T> | AsyncIterable<T> | 
             });
 
             let step = (r: IteratorResult<T>) => {
-                if (id !== v || (factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
+                if (stale()) {
                     return;
                 }
 
@@ -690,7 +700,7 @@ function makeAsyncComputed<T>(factory: Computed<Promise<T> | AsyncIterable<T> | 
                 }
             };
 
-            if (id === v && !(factory.state & (STATE_IN_HEAP | STATE_NOTIFY_MASK))) {
+            if (!stale()) {
                 write(pending, true);
             }
 
@@ -795,8 +805,9 @@ const batch = <T>(fn: () => T): T => {
     finally {
         depth--;
 
-        if (!depth) {
-            release();
+        if (!depth && stabilizer === STABILIZER_DEFERRED) {
+            stabilizer = STABILIZER_SCHEDULED;
+            microtask(stabilize);
         }
     }
 };
