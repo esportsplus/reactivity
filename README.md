@@ -1,7 +1,5 @@
 # @esportsplus/reactivity
 
-Project doc bundle: [docs/index.md](./docs/index.md) — rejected dead-ends, skip reasons, completed-work index.
-
 A fine-grained reactivity system with compile-time transformations. Write reactive code with natural JavaScript syntax while the compiler generates optimized signal-based code.
 
 ## Installation
@@ -223,7 +221,7 @@ let user = new ReactiveObject_1();
 | `reactive(() => expr)` | Creates a computed value (compile-time only) |
 | `reactive({...})` | Creates a reactive object with signals and computeds |
 | `reactive([...])` | Creates a reactive array |
-| `effect(fn, onError?)` | Runs a function that re-executes when dependencies change. Returns a dispose function. Optional `onError` receives thrown or rejected errors |
+| `effect(fn, apply?)` | Runs a function that re-executes when dependencies change. Returns a dispose function. Optional `apply(value, prev)` runs untracked after each run with `fn`'s return value |
 | `root(fn)` | Creates an untracked scope. If `fn` accepts an argument, a dispose function is provided |
 | `onCleanup(fn)` | Registers a cleanup function for the current effect/computed |
 
@@ -259,7 +257,7 @@ For advanced use cases, the underlying classes are exported:
 
 | Class | Description |
 |-------|-------------|
-| `ReactiveArray<T>` | Array subclass with reactivity and event dispatching |
+| `ReactiveArray<T>` | Array subclass with reactivity and event dispatching. `new ReactiveArray(items?: T[])` takes the initial items as one array |
 | `ReactiveObject<T>` | Base class for reactive objects |
 
 ### Constants
@@ -340,8 +338,13 @@ pnpm bench   # vitest bench --run
 `agent:test` (`tsc --noEmit && vitest run`) and `agent:bench` (`vitest bench --run`) are the
 CI-facing aliases of the same build/test/bench commands.
 
+## Changes in 0.35.0
+
+- `new ReactiveArray(items?)` takes an array instead of variadic items. `new ReactiveArray(5)` previously produced a length-5 holey array, and spreading large arrays overflowed the call stack.
+- `root.disposables` is removed. `reactive()` now always registers its disposal with the enclosing effect or root scope.
+- `ReactiveArray` listener errors are still detached but are now rethrown on a microtask instead of swallowed.
+- `TransformResult` is no longer exported.
+
 ## License
 
 MIT
-
-<!-- claude-code:readme-source-hash: 189167a17e9be8c6 -->
