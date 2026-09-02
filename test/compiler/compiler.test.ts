@@ -37,9 +37,9 @@ function parse(code: string): ts.SourceFile {
 function transformPrimitives(code: string): { bindings: Bindings; output: string } {
     let bindings: Bindings = new Map(),
         sourceFile = parse(code),
-        intents = primitives(sourceFile, bindings, isReactiveCall);
+        { replacements } = primitives(sourceFile, bindings, isReactiveCall);
 
-    return { bindings, output: applyIntents(code, sourceFile, intents) };
+    return { bindings, output: applyIntents(code, sourceFile, replacements) };
 }
 
 function transformArray(code: string, bindings?: Bindings): { bindings: Bindings; output: string } {

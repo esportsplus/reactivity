@@ -9,26 +9,6 @@ import object from './object';
 import primitives from './primitives';
 
 
-type FindRemainingContext = {
-    checker: ts.Checker;
-    replacements: ReplacementIntent[];
-    sourceFile: ts.SourceFile;
-    transformedNodes: Set<ts.Node>;
-};
-
-
-function findRemainingCalls(
-    checker: ts.Checker,
-    sourceFile: ts.SourceFile,
-    transformedNodes: Set<ts.Node>
-): ReplacementIntent[] {
-    let ctx: FindRemainingContext = { checker, replacements: [], sourceFile, transformedNodes };
-
-    visit(ctx, sourceFile);
-
-    return ctx.replacements;
-}
-
 function isReactiveCallExpression(checker: ts.Checker, node: ts.Node): node is ts.CallExpression {
     if (!ts.isCallExpression(node)) {
         return false;
@@ -49,75 +29,64 @@ function isReactiveCallExpression(checker: ts.Checker, node: ts.Node): node is t
     return false;
 }
 
-function hasReactiveCalls(checker: ts.Checker, node: ts.Node): boolean {
-    if (isReactiveCallExpression(checker, node)) {
-        return true;
-    }
-
-    let found = false;
-
-    node.forEachChild(child => {
-        if (!found && hasReactiveCalls(checker, child)) {
-            found = true;
-        }
-    });
-
-    return found;
-}
-
-function visit(ctx: FindRemainingContext, node: ts.Node): void {
-    if (isReactiveCallExpression(ctx.checker, node) && !ctx.transformedNodes.has(node) && !ctx.transformedNodes.has(node.expression)) {
-        ctx.replacements.push({
-            generate: () => `${NAMESPACE}.reactive(${node.arguments.map(a => a.getText(ctx.sourceFile)).join(', ')})`,
-            node
-        });
-    }
-
-    node.forEachChild(n => visit(ctx, n));
-}
-
 
 export default {
     patterns: ['reactive(', 'reactive<'],
     transform: (ctx: TransformContext) => {
-        if (!ctx.checker || !hasReactiveCalls(ctx.checker, ctx.sourceFile)) {
+        let checker = ctx.checker;
+
+        if (!checker) {
             return {};
         }
 
         let bindings: Bindings = new Map(),
-            checker = ctx.checker,
             intents = {
                 imports: [] as ImportIntent[],
                 prepend: [] as string[],
                 replacements: [] as ReplacementIntent[]
             },
-            isReactiveCall = (node: ts.Node): node is ts.CallExpression => isReactiveCallExpression(checker, node);
+            isReactiveCall = (node: ts.Node): node is ts.CallExpression => isReactiveCallExpression(checker, node),
+            sourceFile = ctx.sourceFile;
 
-        // Run primitives transform first (tracks bindings for signal/computed)
-        intents.replacements.push(...primitives(ctx.sourceFile, bindings, isReactiveCall));
+        // Run primitives transform first (tracks bindings for signal/computed, collects every call)
+        let { calls, replacements } = primitives(sourceFile, bindings, isReactiveCall);
 
-        // Run object transform
-        let { prepend, replacements } = object(ctx.sourceFile, bindings, isReactiveCall);
+        if (calls.length === 0) {
+            return {};
+        }
 
-        intents.prepend.push(...prepend);
         intents.replacements.push(...replacements);
 
+        // Run object transform
+        let objects = object(sourceFile, bindings, isReactiveCall);
+
+        intents.prepend.push(...objects.prepend);
+        intents.replacements.push(...objects.replacements);
+
         // Run array transform separately ( avoid race conditions )
-        intents.replacements.push(...array(ctx.sourceFile, bindings, isReactiveCall));
+        intents.replacements.push(...array(sourceFile, bindings, isReactiveCall));
 
-        // Find remaining reactive() calls that weren't transformed and replace with namespace version
-        intents.replacements.push(
-            ...findRemainingCalls(ctx.checker, ctx.sourceFile, new Set(intents.replacements.map(r => r.node)))
-        );
+        // Calls no transform claimed fall through to the runtime reactive()
+        let transformed = new Set(intents.replacements.map(r => r.node));
 
-        // Build import intent
-        if (intents.replacements.length > 0 || intents.prepend.length > 0) {
-            intents.imports.push({
-                namespace: NAMESPACE,
-                package: PACKAGE_NAME,
-                remove: [ENTRYPOINT]
+        for (let i = 0, n = calls.length; i < n; i++) {
+            let call = calls[i];
+
+            if (transformed.has(call) || transformed.has(call.expression)) {
+                continue;
+            }
+
+            intents.replacements.push({
+                generate: () => `${NAMESPACE}.reactive(${call.arguments.map(a => a.getText(sourceFile)).join(', ')})`,
+                node: call
             });
         }
+
+        intents.imports.push({
+            namespace: NAMESPACE,
+            package: PACKAGE_NAME,
+            remove: [ENTRYPOINT]
+        });
 
         return intents;
     }

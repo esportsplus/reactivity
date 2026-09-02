@@ -1,7 +1,7 @@
 import { ts } from '@esportsplus/typescript';
 import type { ReplacementIntent } from '@esportsplus/typescript/compiler';
 import { COMPOUND_OPERATORS, NAMESPACE, TYPES } from './constants';
-import type { Bindings } from './types';
+import type { Bindings, IsReactiveCall } from './types';
 
 
 interface ScopeBinding {
@@ -13,12 +13,18 @@ interface ScopeBinding {
 
 interface TransformContext {
     bindings: Bindings;
-    isReactiveCall: (node: ts.Node) => boolean;
+    calls: ts.CallExpression[];
+    isReactiveCall: IsReactiveCall;
     replacements: ReplacementIntent[];
     scopedBindings: ScopeBinding[];
     sourceFile: ts.SourceFile;
     tmpCounter: number;
 }
+
+type PrimitivesTransformResult = {
+    calls: ts.CallExpression[];
+    replacements: ReplacementIntent[];
+};
 
 
 function inScope(reference: ts.Node, binding: ScopeBinding): boolean {
@@ -70,7 +76,9 @@ function scopeOf(node: ts.Node): { depth: number; scope: ts.Node } {
 
 function visit(ctx: TransformContext, node: ts.Node): void {
     if (ctx.isReactiveCall(node)) {
-        let call = node as ts.CallExpression;
+        let call = node;
+
+        ctx.calls.push(call);
 
         if (call.arguments.length > 0) {
             let arg = call.arguments[0],
@@ -248,9 +256,10 @@ function visit(ctx: TransformContext, node: ts.Node): void {
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: (node: ts.Node) => boolean) => {
+export default (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: IsReactiveCall): PrimitivesTransformResult => {
     let ctx: TransformContext = {
             bindings,
+            calls: [],
             isReactiveCall,
             replacements: [],
             scopedBindings: [],
@@ -260,5 +269,5 @@ export default (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: (
 
     visit(ctx, sourceFile);
 
-    return ctx.replacements;
+    return { calls: ctx.calls, replacements: ctx.replacements };
 };
