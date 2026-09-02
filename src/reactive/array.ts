@@ -110,6 +110,7 @@ class ReactiveArray<T> extends Array<T> {
         }
 
         this.dispatch('set', { index: i, item: value });
+        dispose(prev);
     }
 
 

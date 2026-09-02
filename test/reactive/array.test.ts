@@ -1077,6 +1077,20 @@ describe('ReactiveArray', () => {
             expect(arr.length).toBe(2);
         });
 
+        it('$set() disposes the replaced ReactiveObject', () => {
+            let a = new ReactiveObject({ x: 1 }),
+                b = new ReactiveObject({ y: 2 }),
+                spyA = vi.spyOn(a, 'dispose'),
+                spyB = vi.spyOn(b, 'dispose'),
+                arr = new ReactiveArray<ReactiveObject<any>>([a]);
+
+            arr.$set(0, b);
+
+            expect(spyA).toHaveBeenCalledTimes(1);
+            expect(spyB).not.toHaveBeenCalled();
+            expect(arr[0]).toBe(b);
+        });
+
         it('does not dispose non-ReactiveObject elements', () => {
             let obj = { dispose: vi.fn() };
 
