@@ -686,10 +686,19 @@ describe('computed object size', () => {
         expect('type' in c).toBe(false);
     });
 
-    it('has no more own properties than 16 (14 slimmed + gv + rv)', () => {
+    it('has no more own properties than 17 (14 slimmed + gv + rv + pending)', () => {
         let c = computed(() => 42);
 
-        expect(Object.keys(c).length).toBeLessThanOrEqual(16);
+        expect(Object.keys(c).length).toBeLessThanOrEqual(17);
+    });
+
+    it('shares one shape between sync and async computeds', () => {
+        let a = computed(() => 42),
+            b = computed(() => Promise.resolve(42));
+
+        expect(Object.keys(a)).toEqual(Object.keys(b));
+        expect(a.pending).toBeNull();
+        expect(isSignal(b.pending)).toBe(true);
     });
 });
 

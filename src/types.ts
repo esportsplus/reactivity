@@ -13,6 +13,7 @@ interface Computed<T> {
     gv: number;
     height: number;
     nextHeap: Computed<unknown> | undefined;
+    pending: Signal<boolean> | null;
     prevHeap: Computed<unknown>;
     rv: number;
     state: number;

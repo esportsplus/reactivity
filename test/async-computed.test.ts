@@ -373,11 +373,11 @@ describe('asyncComputed', () => {
         expect(() => read(node)).toThrow('boom');
     });
 
-    it('sync computed has no pending', () => {
+    it('sync computed has a null pending', () => {
         root(() => {
             let node = computed(() => 42);
 
-            expect((node as { pending?: unknown }).pending).toBeUndefined();
+            expect(node.pending).toBeNull();
         });
     });
 

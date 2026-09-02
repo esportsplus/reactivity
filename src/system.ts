@@ -710,7 +710,7 @@ function makeAsyncComputed<T>(factory: Computed<Promise<T> | AsyncIterable<T> | 
             return read(node);
         });
 
-    (wrapper as Computed<T | undefined> & { pending: Signal<boolean> }).pending = pending;
+    wrapper.pending = pending;
 
     asyncMeta.set(wrapper as Computed<unknown>, { factory: factory as Computed<unknown> });
     wrapper.disposal = stop;
@@ -730,6 +730,7 @@ function makeComputed<T>(fn: Computed<T>['fn'], eager: boolean = false): Compute
             gv: 0,
             height: 0,
             nextHeap: undefined,
+            pending: null,
             prevHeap: null as unknown as Computed<unknown>,
             rv: 0,
             state: STATE_COMPUTED,
