@@ -37,6 +37,9 @@ let asyncMeta = new WeakMap<Computed<unknown>, { factory: Computed<unknown> }>()
     writes = 0;
 
 
+function noop() {
+}
+
 function walkPop(walk: Walk): Walk | null {
     let prev = walk.prev;
 
@@ -719,27 +722,7 @@ function makeAsyncComputed<T>(factory: Computed<Promise<T> | AsyncIterable<T> | 
 }
 
 function makeComputed<T>(fn: Computed<T>['fn'], eager: boolean = false): Computed<T> {
-    let self: Computed<T> = {
-            cleanup: null,
-            deps: null,
-            depsTail: null,
-            disposal: null,
-            equals: null,
-            error: null,
-            fn: fn,
-            gv: 0,
-            height: 0,
-            nextHeap: undefined,
-            pending: null,
-            prevHeap: null as unknown as Computed<unknown>,
-            rv: 0,
-            state: STATE_COMPUTED,
-            subs: null,
-            subsTail: null,
-            value: undefined as T,
-        };
-
-    self.prevHeap = self;
+    let self = makeNode(fn);
 
     if (observer) {
         if (observer.depsTail === null) {
@@ -769,6 +752,34 @@ function makeComputed<T>(fn: Computed<T>['fn'], eager: boolean = false): Compute
             onCleanup(() => dispose(self));
         }
     }
+
+    return self;
+}
+
+// Every node, including root()'s cleanup-only scope, is built here so dispose() and onCleanup()
+// only ever see one hidden class.
+function makeNode<T>(fn: Computed<T>['fn']): Computed<T> {
+    let self: Computed<T> = {
+            cleanup: null,
+            deps: null,
+            depsTail: null,
+            disposal: null,
+            equals: null,
+            error: null,
+            fn,
+            gv: 0,
+            height: 0,
+            nextHeap: undefined,
+            pending: null,
+            prevHeap: null as unknown as Computed<unknown>,
+            rv: 0,
+            state: STATE_COMPUTED,
+            subs: null,
+            subsTail: null,
+            value: undefined as T,
+        };
+
+    self.prevHeap = self;
 
     return self;
 }
@@ -1012,7 +1023,7 @@ const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
 
     try {
         if (tracking) {
-            scope = self = { cleanup: null, state: STATE_COMPUTED } as Computed<unknown>;
+            scope = self = makeNode(noop);
             value = (fn as (dispose: VoidFunction) => T)(c = () => dispose(self!));
         }
         else {
