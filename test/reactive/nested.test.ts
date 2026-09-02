@@ -63,7 +63,7 @@ describe('nested reactive patterns', () => {
             let todo1 = new ReactiveObject({ done: false, text: 'Learn reactivity' }) as any,
                 todo2 = new ReactiveObject({ done: true, text: 'Build app' }) as any,
                 todo3 = new ReactiveObject({ done: false, text: 'Test everything' }) as any,
-                todos = new ReactiveArray(todo1, todo2, todo3),
+                todos = new ReactiveArray([todo1, todo2, todo3]),
                 completedCounts: number[] = [];
 
             effect(() => {
@@ -88,7 +88,7 @@ describe('nested reactive patterns', () => {
 
         it('push new reactive object to array', () => {
             let todo1 = new ReactiveObject({ done: false, text: 'First' }) as any,
-                todos = new ReactiveArray(todo1);
+                todos = new ReactiveArray([todo1]);
 
             expect(todos.length).toBe(1);
 
@@ -104,10 +104,10 @@ describe('nested reactive patterns', () => {
 
     describe('matrix pattern', () => {
         it('array of arrays', () => {
-            let row1 = new ReactiveArray(1, 2, 3),
-                row2 = new ReactiveArray(4, 5, 6),
-                row3 = new ReactiveArray(7, 8, 9),
-                matrix = new ReactiveArray(row1, row2, row3);
+            let row1 = new ReactiveArray([1, 2, 3]),
+                row2 = new ReactiveArray([4, 5, 6]),
+                row3 = new ReactiveArray([7, 8, 9]),
+                matrix = new ReactiveArray([row1, row2, row3]);
 
             expect(matrix.length).toBe(3);
             expect([...matrix[0]]).toEqual([1, 2, 3]);
@@ -116,9 +116,9 @@ describe('nested reactive patterns', () => {
         });
 
         it('modifying inner array', () => {
-            let row1 = new ReactiveArray(1, 2, 3),
-                row2 = new ReactiveArray(4, 5, 6),
-                matrix = new ReactiveArray(row1, row2);
+            let row1 = new ReactiveArray([1, 2, 3]),
+                row2 = new ReactiveArray([4, 5, 6]),
+                matrix = new ReactiveArray([row1, row2]);
 
             row1.$set(0, 100);
             row2.push(60);
@@ -128,10 +128,10 @@ describe('nested reactive patterns', () => {
         });
 
         it('push new row to matrix', () => {
-            let row1 = new ReactiveArray(1, 2, 3),
-                matrix = new ReactiveArray(row1);
+            let row1 = new ReactiveArray([1, 2, 3]),
+                matrix = new ReactiveArray([row1]);
 
-            let row2 = new ReactiveArray(4, 5, 6);
+            let row2 = new ReactiveArray([4, 5, 6]);
 
             matrix.push(row2);
 
@@ -143,7 +143,7 @@ describe('nested reactive patterns', () => {
 
     describe('cross-object array + multiplier', () => {
         it('computed sum reacts to multiplier changes', async () => {
-            let items = new ReactiveArray(10, 20, 30),
+            let items = new ReactiveArray([10, 20, 30]),
                 multiplier = signal(2),
                 sum = computed(() => {
                     let total = 0;
@@ -171,7 +171,7 @@ describe('nested reactive patterns', () => {
         });
 
         it('computed sum reacts to reactive length changes', async () => {
-            let items = new ReactiveArray(10, 20, 30),
+            let items = new ReactiveArray([10, 20, 30]),
                 multiplier = signal(2),
                 sum = computed(() => {
                     let length = items.$length,

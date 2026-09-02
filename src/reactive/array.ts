@@ -63,9 +63,16 @@ class ReactiveArray<T> extends Array<T> {
     listeners: Listeners<T> = {};
 
 
-    constructor(...items: T[]) {
-        super(...items);
-        this._length = signal(items.length);
+    constructor(items?: readonly T[]) {
+        super();
+
+        let n = items ? items.length : 0;
+
+        for (let i = 0; i < n; i++) {
+            this[i] = items![i];
+        }
+
+        this._length = signal(n);
     }
 
 

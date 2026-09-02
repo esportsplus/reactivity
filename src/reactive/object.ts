@@ -67,7 +67,7 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
     }
 
     protected [REACTIVE_ARRAY]<U>(value: U[]): ReactiveArray<U> {
-        let node = new ReactiveArray(...value);
+        let node = new ReactiveArray(value);
 
         (this.disposers ??= []).push( () => node.dispose() );
 

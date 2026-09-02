@@ -9,7 +9,7 @@ describe('ReactiveArray creation', () => {
     });
 
     bench('create with 10 items', () => {
-        new ReactiveArray(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+        new ReactiveArray([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
     });
 
     bench('create with 100 items', () => {
@@ -19,7 +19,7 @@ describe('ReactiveArray creation', () => {
             items.push(i);
         }
 
-        new ReactiveArray(...items);
+        new ReactiveArray(items);
     });
 });
 
@@ -56,7 +56,7 @@ describe('ReactiveArray push', () => {
 
 describe('ReactiveArray pop', () => {
     bench('pop', () => {
-        let arr = new ReactiveArray(1, 2, 3, 4, 5);
+        let arr = new ReactiveArray([1, 2, 3, 4, 5]);
 
         arr.pop();
     });
@@ -65,19 +65,19 @@ describe('ReactiveArray pop', () => {
 
 describe('ReactiveArray splice', () => {
     bench('splice remove 1', () => {
-        let arr = new ReactiveArray(1, 2, 3, 4, 5);
+        let arr = new ReactiveArray([1, 2, 3, 4, 5]);
 
         arr.splice(2, 1);
     });
 
     bench('splice insert 1', () => {
-        let arr = new ReactiveArray(1, 2, 3, 4, 5);
+        let arr = new ReactiveArray([1, 2, 3, 4, 5]);
 
         arr.splice(2, 0, 99);
     });
 
     bench('splice replace 1', () => {
-        let arr = new ReactiveArray(1, 2, 3, 4, 5);
+        let arr = new ReactiveArray([1, 2, 3, 4, 5]);
 
         arr.splice(2, 1, 99);
     });
@@ -86,7 +86,7 @@ describe('ReactiveArray splice', () => {
 
 describe('ReactiveArray sort', () => {
     bench('sort 10 items', () => {
-        let arr = new ReactiveArray(5, 3, 8, 1, 9, 2, 7, 4, 6, 10);
+        let arr = new ReactiveArray([5, 3, 8, 1, 9, 2, 7, 4, 6, 10]);
 
         arr.sort((a, b) => a - b);
     });
@@ -98,7 +98,7 @@ describe('ReactiveArray sort', () => {
             items.push(i);
         }
 
-        let arr = new ReactiveArray(...items);
+        let arr = new ReactiveArray(items);
 
         arr.sort((a, b) => a - b);
     });
@@ -110,7 +110,7 @@ describe('ReactiveArray sort', () => {
             items.push(i);
         }
 
-        let arr = new ReactiveArray(...items);
+        let arr = new ReactiveArray(items);
 
         arr.sort((a, b) => a - b);
     });
@@ -119,13 +119,13 @@ describe('ReactiveArray sort', () => {
 
 describe('ReactiveArray $set', () => {
     bench('$set', () => {
-        let arr = new ReactiveArray(1, 2, 3, 4, 5);
+        let arr = new ReactiveArray([1, 2, 3, 4, 5]);
 
         arr.$set(2, 99);
     });
 
     bench('$set same value (no-op)', () => {
-        let arr = new ReactiveArray(1, 2, 3, 4, 5);
+        let arr = new ReactiveArray([1, 2, 3, 4, 5]);
 
         arr.$set(2, 3);
     });
@@ -169,7 +169,7 @@ describe('ReactiveArray dispose/clear', () => {
             items.push(i);
         }
 
-        let arr = new ReactiveArray(...items);
+        let arr = new ReactiveArray(items);
 
         arr.dispose();
     });
@@ -181,7 +181,7 @@ describe('ReactiveArray dispose/clear', () => {
             items.push(i);
         }
 
-        let arr = new ReactiveArray(...items);
+        let arr = new ReactiveArray(items);
 
         arr.clear();
     });
@@ -201,13 +201,13 @@ describe('ReactiveArray concat/unshift/shift/reverse', () => {
     });
 
     bench('unshift 10 items', () => {
-        let arr = new ReactiveArray(1, 2, 3, 4, 5);
+        let arr = new ReactiveArray([1, 2, 3, 4, 5]);
 
         arr.unshift(10, 20, 30, 40, 50, 60, 70, 80, 90, 100);
     });
 
     bench('shift', () => {
-        let arr = new ReactiveArray(1, 2, 3, 4, 5);
+        let arr = new ReactiveArray([1, 2, 3, 4, 5]);
 
         arr.shift();
     });
@@ -219,7 +219,7 @@ describe('ReactiveArray concat/unshift/shift/reverse', () => {
             items.push(i);
         }
 
-        let arr = new ReactiveArray(...items);
+        let arr = new ReactiveArray(items);
 
         arr.reverse();
     });
@@ -228,7 +228,7 @@ describe('ReactiveArray concat/unshift/shift/reverse', () => {
 
 describe('ReactiveArray reactive length', () => {
     bench('read $length in effect', () => {
-        let arr = new ReactiveArray(1, 2, 3);
+        let arr = new ReactiveArray([1, 2, 3]);
 
         let stop = effect(() => {
             arr.$length;

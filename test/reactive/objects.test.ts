@@ -126,7 +126,7 @@ describe('reactive object patterns', () => {
         });
 
         it('array computed using reduce via external signal', async () => {
-            let items = new ReactiveArray(1, 2, 3),
+            let items = new ReactiveArray([1, 2, 3]),
                 total = computed(() => {
                     let sum = 0;
 

@@ -182,7 +182,7 @@ describe('effect patterns', () => {
 
     describe('effect with reactive array', () => {
         it('effect tracks array length changes', async () => {
-            let arr = new ReactiveArray(1, 2, 3),
+            let arr = new ReactiveArray([1, 2, 3]),
                 runs = 0,
                 lengths: number[] = [];
 

@@ -105,7 +105,7 @@ function visit(ctx: VisitContext, node: ts.Node): void {
             ctx.replacements.push({
                 node,
                 generate: (sf) => expression.elements.length > 0
-                    ? ` new ${NAMESPACE}.ReactiveArray${typeParam}(...${expression.getText(sf)})`
+                    ? ` new ${NAMESPACE}.ReactiveArray${typeParam}(${expression.getText(sf)})`
                     : ` new ${NAMESPACE}.ReactiveArray${typeParam}()`
             });
         }

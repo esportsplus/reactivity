@@ -15,7 +15,7 @@ describe('ReactiveArray', () => {
         });
 
         it('creates array with initial items', () => {
-            let arr = new ReactiveArray(1, 2, 3);
+            let arr = new ReactiveArray([1, 2, 3]);
 
             expect(arr.length).toBe(3);
             expect(arr[0]).toBe(1);
@@ -24,7 +24,7 @@ describe('ReactiveArray', () => {
         });
 
         it('$length is reactive', async () => {
-            let arr = new ReactiveArray(1, 2, 3),
+            let arr = new ReactiveArray([1, 2, 3]),
                 lengths: number[] = [];
 
             effect(() => {
@@ -38,12 +38,32 @@ describe('ReactiveArray', () => {
 
             expect(lengths).toEqual([3, 4]);
         });
+
+        it('a single numeric item does not create holes', () => {
+            let arr = reactive([5]);
+
+            expect([...arr]).toEqual([5]);
+            expect(arr.length).toBe(1);
+            expect((arr as unknown as { $length: number }).$length).toBe(1);
+        });
+
+        it('empty and multi-item reactive arrays are unchanged', () => {
+            expect([...reactive([])]).toEqual([]);
+            expect([...reactive([1, 2, 3])]).toEqual([1, 2, 3]);
+        });
+
+        it('does not overflow the stack for a large array', () => {
+            let arr = new ReactiveArray(new Array(500000).fill(0));
+
+            expect(arr.length).toBe(500000);
+            expect(arr.$length).toBe(500000);
+        });
     });
 
 
     describe('$set', () => {
         it('sets value at index', () => {
-            let arr = new ReactiveArray(1, 2, 3);
+            let arr = new ReactiveArray([1, 2, 3]);
 
             arr.$set(1, 20);
 
@@ -51,7 +71,7 @@ describe('ReactiveArray', () => {
         });
 
         it('skips if same value', () => {
-            let arr = new ReactiveArray(1, 2, 3),
+            let arr = new ReactiveArray([1, 2, 3]),
                 dispatched = false;
 
             arr.on('set', () => { dispatched = true; });
@@ -61,7 +81,7 @@ describe('ReactiveArray', () => {
         });
 
         it('dispatches set event', () => {
-            let arr = new ReactiveArray(1, 2, 3),
+            let arr = new ReactiveArray([1, 2, 3]),
                 events: { index: number; item: number }[] = [];
 
             arr.on('set', (e) => { events.push(e); });
@@ -71,7 +91,7 @@ describe('ReactiveArray', () => {
         });
 
         it('updates length when setting beyond current length', async () => {
-            let arr = new ReactiveArray(1, 2, 3);
+            let arr = new ReactiveArray([1, 2, 3]);
 
             arr.$set(5, 99);
 
@@ -79,7 +99,7 @@ describe('ReactiveArray', () => {
         });
 
         it('$set beyond length updates $length reactively', async () => {
-            let arr = new ReactiveArray(1, 2, 3),
+            let arr = new ReactiveArray([1, 2, 3]),
                 lengths: number[] = [];
 
             effect(() => {
@@ -125,7 +145,7 @@ describe('ReactiveArray', () => {
         });
 
         it('$set with negative index does not affect length', () => {
-            let arr = new ReactiveArray(1, 2, 3);
+            let arr = new ReactiveArray([1, 2, 3]);
 
             arr.$set(-1 as any, 42);
 
@@ -135,7 +155,7 @@ describe('ReactiveArray', () => {
         });
 
         it('$set at large index updates $length', async () => {
-            let arr = new ReactiveArray(1, 2, 3),
+            let arr = new ReactiveArray([1, 2, 3]),
                 lengths: number[] = [];
 
             effect(() => {
@@ -155,13 +175,13 @@ describe('ReactiveArray', () => {
 
     describe('$length', () => {
         it('getter returns reactive length', () => {
-            let arr = new ReactiveArray(1, 2, 3);
+            let arr = new ReactiveArray([1, 2, 3]);
 
             expect(arr.$length).toBe(3);
         });
 
         it('setter truncates array via splice', () => {
-            let arr = new ReactiveArray(1, 2, 3, 4, 5);
+            let arr = new ReactiveArray([1, 2, 3, 4, 5]);
 
             arr.$length = 2;
 
@@ -171,7 +191,7 @@ describe('ReactiveArray', () => {
         });
 
         it('throws when setting length larger than current', () => {
-            let arr = new ReactiveArray(1, 2);
+            let arr = new ReactiveArray([1, 2]);
 
             expect(() => { arr.$length = 5; }).toThrow();
         });
@@ -189,7 +209,7 @@ describe('ReactiveArray', () => {
         });
 
         it('returns new length', () => {
-            let arr = new ReactiveArray(1);
+            let arr = new ReactiveArray([1]);
 
             expect(arr.push(2, 3)).toBe(3);
         });
@@ -205,7 +225,7 @@ describe('ReactiveArray', () => {
         });
 
         it('no-op for empty push', () => {
-            let arr = new ReactiveArray(1),
+            let arr = new ReactiveArray([1]),
                 dispatched = false;
 
             arr.on('push', () => { dispatched = true; });
@@ -229,7 +249,7 @@ describe('ReactiveArray', () => {
 
     describe('pop', () => {
         it('removes last item', () => {
-            let arr = new ReactiveArray(1, 2, 3);
+            let arr = new ReactiveArray([1, 2, 3]);
 
             expect(arr.pop()).toBe(3);
             expect(arr.length).toBe(2);
@@ -242,7 +262,7 @@ describe('ReactiveArray', () => {
         });
 
         it('dispatches pop event', () => {
-            let arr = new ReactiveArray(1, 2),
+            let arr = new ReactiveArray([1, 2]),
                 events: { item: number }[] = [];
 
             arr.on('pop', (e) => { events.push(e); });
@@ -262,7 +282,7 @@ describe('ReactiveArray', () => {
         });
 
         it('does not dispatch when popping explicit undefined value', () => {
-            let arr = new ReactiveArray<number | undefined>(1, undefined),
+            let arr = new ReactiveArray<number | undefined>([1, undefined]),
                 dispatched = false;
 
             arr.on('pop', () => { dispatched = true; });
@@ -274,7 +294,7 @@ describe('ReactiveArray', () => {
         });
 
         it('does not update reactive length when popping explicit undefined value', async () => {
-            let arr = new ReactiveArray<number | undefined>(1, undefined),
+            let arr = new ReactiveArray<number | undefined>([1, undefined]),
                 lengths: number[] = [];
 
             effect(() => {
@@ -293,7 +313,7 @@ describe('ReactiveArray', () => {
 
     describe('shift', () => {
         it('removes first item', () => {
-            let arr = new ReactiveArray(1, 2, 3);
+            let arr = new ReactiveArray([1, 2, 3]);
 
             expect(arr.shift()).toBe(1);
             expect(arr.length).toBe(2);
@@ -307,7 +327,7 @@ describe('ReactiveArray', () => {
         });
 
         it('dispatches shift event', () => {
-            let arr = new ReactiveArray(10, 20),
+            let arr = new ReactiveArray([10, 20]),
                 events: { item: number }[] = [];
 
             arr.on('shift', (e) => { events.push(e); });
@@ -317,7 +337,7 @@ describe('ReactiveArray', () => {
         });
 
         it('does not dispatch when shifting explicit undefined value', () => {
-            let arr = new ReactiveArray<number | undefined>(undefined, 1, 2),
+            let arr = new ReactiveArray<number | undefined>([undefined, 1, 2]),
                 dispatched = false;
 
             arr.on('shift', () => { dispatched = true; });
@@ -330,7 +350,7 @@ describe('ReactiveArray', () => {
         });
 
         it('does not update reactive length when shifting explicit undefined value', async () => {
-            let arr = new ReactiveArray<number | undefined>(undefined, 1, 2),
+            let arr = new ReactiveArray<number | undefined>([undefined, 1, 2]),
                 lengths: number[] = [];
 
             effect(() => {
@@ -360,7 +380,7 @@ describe('ReactiveArray', () => {
         });
 
         it('returns new length', () => {
-            let arr = new ReactiveArray(1);
+            let arr = new ReactiveArray([1]);
 
             expect(arr.unshift(0)).toBe(2);
         });
@@ -376,7 +396,7 @@ describe('ReactiveArray', () => {
         });
 
         it('no-op for empty unshift', async () => {
-            let arr = new ReactiveArray(1, 2),
+            let arr = new ReactiveArray([1, 2]),
                 dispatched = false,
                 lengths: number[] = [];
 
@@ -399,7 +419,7 @@ describe('ReactiveArray', () => {
 
     describe('splice', () => {
         it('removes items', () => {
-            let arr = new ReactiveArray(1, 2, 3, 4, 5);
+            let arr = new ReactiveArray([1, 2, 3, 4, 5]);
 
             let removed = arr.splice(1, 2);
 
@@ -408,7 +428,7 @@ describe('ReactiveArray', () => {
         });
 
         it('inserts items', () => {
-            let arr = new ReactiveArray(1, 4, 5);
+            let arr = new ReactiveArray([1, 4, 5]);
 
             arr.splice(1, 0, 2, 3);
 
@@ -416,7 +436,7 @@ describe('ReactiveArray', () => {
         });
 
         it('replaces items', () => {
-            let arr = new ReactiveArray(1, 2, 3);
+            let arr = new ReactiveArray([1, 2, 3]);
 
             arr.splice(1, 1, 20);
 
@@ -424,7 +444,7 @@ describe('ReactiveArray', () => {
         });
 
         it('dispatches splice event', () => {
-            let arr = new ReactiveArray(1, 2, 3),
+            let arr = new ReactiveArray([1, 2, 3]),
                 events: { start: number; deleteCount: number; items: number[] }[] = [];
 
             arr.on('splice', (e) => { events.push(e); });
@@ -434,7 +454,7 @@ describe('ReactiveArray', () => {
         });
 
         it('no event when nothing changes', () => {
-            let arr = new ReactiveArray(1, 2, 3),
+            let arr = new ReactiveArray([1, 2, 3]),
                 dispatched = false;
 
             arr.on('splice', () => { dispatched = true; });
@@ -444,7 +464,7 @@ describe('ReactiveArray', () => {
         });
 
         it('splice with start beyond array length removes nothing', () => {
-            let arr = new ReactiveArray(1, 2, 3),
+            let arr = new ReactiveArray([1, 2, 3]),
                 dispatched = false;
 
             arr.on('splice', () => { dispatched = true; });
@@ -457,7 +477,7 @@ describe('ReactiveArray', () => {
         });
 
         it('splice with negative start removes from end', () => {
-            let arr = new ReactiveArray(1, 2, 3, 4, 5),
+            let arr = new ReactiveArray([1, 2, 3, 4, 5]),
                 events: { start: number; deleteCount: number; items: number[] }[] = [];
 
             arr.on('splice', (e) => { events.push(e); });
@@ -473,7 +493,7 @@ describe('ReactiveArray', () => {
 
     describe('concat', () => {
         it('appends arrays', () => {
-            let arr = new ReactiveArray(1, 2);
+            let arr = new ReactiveArray([1, 2]);
 
             arr.concat([3, 4], [5]);
 
@@ -490,7 +510,7 @@ describe('ReactiveArray', () => {
         });
 
         it('returns this (mutating)', () => {
-            let arr = new ReactiveArray(1);
+            let arr = new ReactiveArray([1]);
             let result = arr.concat([2]);
 
             expect(result).toBe(arr);
@@ -507,7 +527,7 @@ describe('ReactiveArray', () => {
         });
 
         it('no event when nothing added', () => {
-            let arr = new ReactiveArray(1),
+            let arr = new ReactiveArray([1]),
                 dispatched = false;
 
             arr.on('concat', () => { dispatched = true; });
@@ -517,7 +537,7 @@ describe('ReactiveArray', () => {
         });
 
         it('concat with mixed arrays and single primitive values', () => {
-            let arr = new ReactiveArray(1, 2),
+            let arr = new ReactiveArray([1, 2]),
                 events: number[][] = [];
 
             arr.on('concat', (e) => { events.push(e.items); });
@@ -531,7 +551,7 @@ describe('ReactiveArray', () => {
 
     describe('reverse', () => {
         it('reverses in place', () => {
-            let arr = new ReactiveArray(1, 2, 3);
+            let arr = new ReactiveArray([1, 2, 3]);
 
             arr.reverse();
 
@@ -539,13 +559,13 @@ describe('ReactiveArray', () => {
         });
 
         it('returns this', () => {
-            let arr = new ReactiveArray(1, 2);
+            let arr = new ReactiveArray([1, 2]);
 
             expect(arr.reverse()).toBe(arr);
         });
 
         it('dispatches reverse event', () => {
-            let arr = new ReactiveArray(1, 2),
+            let arr = new ReactiveArray([1, 2]),
                 dispatched = false;
 
             arr.on('reverse', () => { dispatched = true; });
@@ -558,7 +578,7 @@ describe('ReactiveArray', () => {
 
     describe('sort', () => {
         it('sorts in place', () => {
-            let arr = new ReactiveArray(3, 1, 2);
+            let arr = new ReactiveArray([3, 1, 2]);
 
             arr.sort((a, b) => a - b);
 
@@ -566,13 +586,13 @@ describe('ReactiveArray', () => {
         });
 
         it('returns this', () => {
-            let arr = new ReactiveArray(3, 1);
+            let arr = new ReactiveArray([3, 1]);
 
             expect(arr.sort()).toBe(arr);
         });
 
         it('dispatches sort event with order', () => {
-            let arr = new ReactiveArray(3, 1, 2),
+            let arr = new ReactiveArray([3, 1, 2]),
                 order: number[] = [];
 
             arr.on('sort', (e) => { order = e.order; });
@@ -584,7 +604,7 @@ describe('ReactiveArray', () => {
         });
 
         it('handles duplicates in sort', () => {
-            let arr = new ReactiveArray(2, 1, 2),
+            let arr = new ReactiveArray([2, 1, 2]),
                 order: number[] = [];
 
             arr.on('sort', (e) => { order = e.order; });
@@ -597,7 +617,7 @@ describe('ReactiveArray', () => {
             let a = { id: 3 },
                 b = { id: 1 },
                 c = { id: 2 },
-                arr = new ReactiveArray(a, b, c);
+                arr = new ReactiveArray([a, b, c]);
 
             arr.sort((x, y) => x.id - y.id);
 
@@ -611,7 +631,7 @@ describe('ReactiveArray', () => {
 
     describe('clear', () => {
         it('empties array', () => {
-            let arr = new ReactiveArray(1, 2, 3);
+            let arr = new ReactiveArray([1, 2, 3]);
 
             arr.clear();
 
@@ -619,7 +639,7 @@ describe('ReactiveArray', () => {
         });
 
         it('dispatches clear event', () => {
-            let arr = new ReactiveArray(1, 2),
+            let arr = new ReactiveArray([1, 2]),
                 dispatched = false;
 
             arr.on('clear', () => { dispatched = true; });
@@ -629,7 +649,7 @@ describe('ReactiveArray', () => {
         });
 
         it('updates reactive length to 0', async () => {
-            let arr = new ReactiveArray(1, 2, 3),
+            let arr = new ReactiveArray([1, 2, 3]),
                 lengths: number[] = [];
 
             effect(() => { lengths.push(arr.$length); });
@@ -643,7 +663,7 @@ describe('ReactiveArray', () => {
 
     describe('dispose', () => {
         it('empties array', () => {
-            let arr = new ReactiveArray(1, 2, 3);
+            let arr = new ReactiveArray([1, 2, 3]);
 
             arr.dispose();
 
@@ -651,7 +671,7 @@ describe('ReactiveArray', () => {
         });
 
         it('sets reactive length to 0', async () => {
-            let arr = new ReactiveArray(1, 2, 3);
+            let arr = new ReactiveArray([1, 2, 3]);
 
             arr.dispose();
 
@@ -942,7 +962,7 @@ describe('ReactiveArray', () => {
                 spyB = vi.spyOn(b, 'dispose'),
                 spyC = vi.spyOn(c, 'dispose');
 
-            let arr = new ReactiveArray<ReactiveObject<any>>(a, b, c);
+            let arr = new ReactiveArray<ReactiveObject<any>>([a, b, c]);
 
             arr.dispose();
 
@@ -958,7 +978,7 @@ describe('ReactiveArray', () => {
                 spyA = vi.spyOn(a, 'dispose'),
                 spyB = vi.spyOn(b, 'dispose');
 
-            let arr = new ReactiveArray<ReactiveObject<any>>(a, b);
+            let arr = new ReactiveArray<ReactiveObject<any>>([a, b]);
 
             arr.clear();
 
@@ -973,7 +993,7 @@ describe('ReactiveArray', () => {
                 spyA = vi.spyOn(a, 'dispose'),
                 spyB = vi.spyOn(b, 'dispose');
 
-            let arr = new ReactiveArray<ReactiveObject<any>>(a, b);
+            let arr = new ReactiveArray<ReactiveObject<any>>([a, b]);
 
             arr.pop();
 
@@ -988,7 +1008,7 @@ describe('ReactiveArray', () => {
                 spyA = vi.spyOn(a, 'dispose'),
                 spyB = vi.spyOn(b, 'dispose');
 
-            let arr = new ReactiveArray<ReactiveObject<any>>(a, b);
+            let arr = new ReactiveArray<ReactiveObject<any>>([a, b]);
 
             arr.shift();
 
@@ -1007,7 +1027,7 @@ describe('ReactiveArray', () => {
                 spyC = vi.spyOn(c, 'dispose'),
                 spyD = vi.spyOn(d, 'dispose');
 
-            let arr = new ReactiveArray<ReactiveObject<any>>(a, b, c, d);
+            let arr = new ReactiveArray<ReactiveObject<any>>([a, b, c, d]);
 
             arr.splice(1, 2);
 
@@ -1026,7 +1046,7 @@ describe('ReactiveArray', () => {
                 spyB = vi.spyOn(b, 'dispose'),
                 spyR = vi.spyOn(replacement, 'dispose');
 
-            let arr = new ReactiveArray<ReactiveObject<any>>(a, b);
+            let arr = new ReactiveArray<ReactiveObject<any>>([a, b]);
 
             arr.splice(0, 1, replacement);
 
@@ -1039,7 +1059,7 @@ describe('ReactiveArray', () => {
         it('does not dispose non-ReactiveObject elements', () => {
             let obj = { dispose: vi.fn() };
 
-            let arr = new ReactiveArray<any>(1, 'str', obj);
+            let arr = new ReactiveArray<any>([1, 'str', obj]);
 
             arr.dispose();
 

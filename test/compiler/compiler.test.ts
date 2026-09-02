@@ -227,7 +227,7 @@ describe('array transform', () => {
         let { output } = transformArray('let arr = reactive([1, 2, 3]);');
 
         expect(output).toContain(`new ${NAMESPACE}.ReactiveArray`);
-        expect(output).toContain('...[1, 2, 3]');
+        expect(output).toContain('([1, 2, 3])');
     });
 
     it('transforms reactive([] as Type[]) to typed ReactiveArray', () => {

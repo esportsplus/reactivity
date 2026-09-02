@@ -24,7 +24,7 @@ function reactive<T>(input: T): Reactive<T> {
             }
 
             if (isArray(input)) {
-                return new ReactiveArray(...input) as unknown as Reactive<T>;
+                return new ReactiveArray(input) as unknown as Reactive<T>;
             }
 
             throw new Error(`${PACKAGE_NAME}: 'reactive' received invalid input - ${JSON.stringify(input)}`);
