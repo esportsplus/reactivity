@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { computed, dispose, effect, isComputed, isSignal, onCleanup, read, root, signal, write } from '~/system';
+import { computed, dispose, effect, flush, isComputed, isSignal, onCleanup, read, root, signal, write } from '~/system';
 import { waitFor } from './lib/wait-for';
 
 
@@ -789,6 +789,53 @@ describe('globalVersion fast path', () => {
 
         expect(read(c)).toBe(14);
         expect(seen[seen.length - 1]).toBe(14);
+    });
+});
+
+
+describe('stale reads after a pass', () => {
+    it('an observer created between a write and its flush never sees the stale value', async () => {
+        let s = signal(0),
+            c = computed(() => read(s)),
+            seen: number[] = [];
+
+        write(s, 1);
+        flush();
+
+        write(s, 2);
+
+        effect(() => {
+            seen.push(read(c));
+        });
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(seen[0]).toBe(2);
+        expect(seen).not.toContain(1);
+        expect(read(c)).toBe(2);
+    });
+
+    it('a computed created between a write and its flush computes from the new value', async () => {
+        let s = signal(0),
+            seen: number[] = [];
+
+        write(s, 1);
+        flush();
+
+        write(s, 2);
+
+        effect(() => {
+            let c = computed(() => read(s) * 10);
+
+            seen.push(read(c));
+        });
+
+        await Promise.resolve();
+        await Promise.resolve();
+
+        expect(seen[0]).toBe(20);
+        expect(seen).not.toContain(10);
     });
 });
 

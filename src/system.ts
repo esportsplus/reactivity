@@ -483,6 +483,7 @@ function stabilize() {
         heap_n--;
     }
 
+    heap_i = 0;
     observer = o;
 
     if (stabilizer === STABILIZER_RESCHEDULE) {
