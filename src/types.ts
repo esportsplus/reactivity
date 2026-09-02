@@ -1,4 +1,3 @@
-import { ts } from '@esportsplus/typescript';
 import { SIGNAL } from './constants';
 import { ReactiveArray } from './reactive';
 
@@ -73,12 +72,6 @@ type Signal<T> = {
     value: T;
 };
 
-interface TransformResult {
-    changed: boolean;
-    code: string;
-    sourceFile: ts.SourceFile;
-}
-
 
 export type {
     Computed,
@@ -87,6 +80,5 @@ export type {
     Reactive,
     SelectorSignal,
     Settled,
-    Signal,
-    TransformResult
+    Signal
 };

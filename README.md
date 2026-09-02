@@ -283,7 +283,6 @@ Symbol constants for type identification:
 | `SelectorSignal<T>` | Signal variant backing `signal.selector` per-key subscriptions |
 | `Link` | Dependency graph link between nodes |
 | `Reactive<T>` | Utility type for inferring reactive object/array types |
-| `TransformResult` | Compiler transform output metadata |
 
 ## ReactiveArray
 
