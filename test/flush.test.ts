@@ -1,8 +1,56 @@
 import { describe, expect, it } from 'vitest';
-import { batch, computed, effect, flush, read, signal, write } from '~/system';
+import { batch, computed, effect, flush, read, root, signal, write } from '~/system';
 
 
 describe('flush()', () => {
+    it('settles a requeued effect that discovers a deeper computed dependency', () => {
+        let runs = 0,
+            values: number[] = [],
+            trigger = signal(false),
+            source = signal(1);
+
+        let dispose = root((dispose) => {
+            let deep = computed(() => read(source));
+
+            for (let i = 0; i < 4; i++) {
+                let previous = deep;
+                deep = computed(() => read(previous) + 1);
+            }
+
+            effect(() => {
+                runs++;
+
+                if (read(trigger)) {
+                    write(trigger, false);
+                    values.push(read(deep));
+                }
+            });
+
+            return dispose;
+        });
+
+        try {
+            write(trigger, true);
+            flush();
+
+            expect(runs).toBe(3);
+            expect(values).toEqual([5]);
+
+            write(trigger, true);
+            flush();
+
+            expect(runs).toBe(5);
+            expect(values).toEqual([5, 5]);
+        }
+        finally {
+            dispose();
+        }
+
+        write(trigger, true);
+        flush();
+        expect(runs).toBe(5);
+    });
+
     it('runs the dependent effect synchronously before returning', () => {
         let runs = 0,
             s = signal(0);

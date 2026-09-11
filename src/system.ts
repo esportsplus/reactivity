@@ -1006,7 +1006,11 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
             let height = (node as Computed<T>).height;
 
             if (height >= observer.height) {
+                let queued = observer.state & STATE_IN_HEAP;
+
+                if (queued) deleteFromHeap(observer);
                 observer.height = height + 1;
+                if (queued) insertIntoHeap(observer);
             }
 
             if (height >= heap_i || (node as Computed<T>).state & STATE_NOTIFY_MASK) {
