@@ -1,10 +1,10 @@
 {
     "author": "ICJR",
     "dependencies": {
-        "@esportsplus/utilities": "^0.28.3"
+        "@esportsplus/utilities": "^0.28.4"
     },
     "devDependencies": {
-        "@esportsplus/typescript": "^0.34.3",
+        "@esportsplus/typescript": "^0.34.4",
         "@types/node": "^26.4.1",
         "vite": "^8.2.2",
         "vitest": "^5.0.0"
