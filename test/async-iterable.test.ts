@@ -218,4 +218,46 @@ describe('asyncComputed AsyncIterable support', () => {
 
         expect(() => read(node)).toThrow('iterable step boom');
     });
+
+    it('a rejecting return() during disposal is not an unhandled rejection', async () => {
+        let unhandled: unknown[] = [],
+            listener = (reason: unknown) => {
+                unhandled.push(reason);
+            };
+
+        process.on('unhandledRejection', listener);
+
+        try {
+            let iterable = {
+                    [Symbol.asyncIterator]: () => ({
+                        next: () => new Promise<IteratorResult<number>>(() => {}),
+                        return: () => Promise.reject(new Error('cleanup boom'))
+                    })
+                },
+                node!: Computed<number | undefined>,
+                stopRoot!: VoidFunction;
+
+            root((dispose) => {
+                stopRoot = dispose;
+                node = computed(() => iterable);
+            });
+
+            let keeper = effect(() => {
+                read(node);
+            });
+
+            await tick();
+
+            keeper();
+            stopRoot();
+
+            await tick();
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(unhandled).toEqual([]);
+        }
+        finally {
+            process.off('unhandledRejection', listener);
+        }
+    });
 });

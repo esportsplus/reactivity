@@ -680,8 +680,10 @@ function makeAsyncComputed<T>(factory: Computed<Promise<T> | AsyncIterable<T> | 
         else if (result != null && typeof (result as AsyncIterable<T>)[Symbol.asyncIterator] === 'function') {
             let it = (result as AsyncIterable<T>)[Symbol.asyncIterator]();
 
+            // Disposal leaves no consumer to observe a failing iterator cleanup; left unhandled, the
+            // rejection would crash hosts that treat unhandled rejections as fatal (Node's default)
             onCleanup(() => {
-                it.return?.();
+                it.return?.().then(undefined, () => {});
             });
 
             let step = (r: IteratorResult<T>) => {
