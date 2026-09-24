@@ -2,12 +2,21 @@ import { ts } from '@esportsplus/typescript';
 import { imports } from '@esportsplus/typescript/compiler';
 import type { ImportIntent, ReplacementIntent, TransformContext } from '@esportsplus/typescript/compiler';
 import { ENTRYPOINT, NAMESPACE, PACKAGE_NAME } from './constants';
-import type { Bindings } from './types';
 
 import array from './array';
 import object from './object';
 import primitives from './primitives';
+import scope from './bindings';
 
+
+// Resolved once per file: every pass asks the same question of the same nodes
+function collect(checker: ts.Checker, node: ts.Node, calls: Set<ts.Node>): void {
+    if (isReactiveCallExpression(checker, node)) {
+        calls.add(node);
+    }
+
+    node.forEachChild(child => collect(checker, child, calls));
+}
 
 function isReactiveCallExpression(checker: ts.Checker, node: ts.Node): node is ts.CallExpression {
     if (!ts.isCallExpression(node)) {
@@ -21,9 +30,9 @@ function isReactiveCallExpression(checker: ts.Checker, node: ts.Node): node is t
         return imports.includes(checker, expr, PACKAGE_NAME, ENTRYPOINT);
     }
 
-    // Property access: ns.reactive(...)
-    if (ts.isPropertyAccessExpression(expr) && expr.name.text === ENTRYPOINT) {
-        return imports.includes(checker, expr, PACKAGE_NAME);
+    // Namespace call: ns.reactive(...) — the namespace identifier carries the import origin
+    if (ts.isPropertyAccessExpression(expr) && expr.name.text === ENTRYPOINT && ts.isIdentifier(expr.expression)) {
+        return imports.includes(checker, expr.expression, PACKAGE_NAME);
     }
 
     return false;
@@ -39,21 +48,25 @@ export default {
             return {};
         }
 
-        let bindings: Bindings = new Map(),
+        let bindings = scope.create(checker),
+            candidates = new Set<ts.Node>(),
             intents = {
                 imports: [] as ImportIntent[],
                 prepend: [] as string[],
                 replacements: [] as ReplacementIntent[]
             },
-            isReactiveCall = (node: ts.Node): node is ts.CallExpression => isReactiveCallExpression(checker, node),
             sourceFile = ctx.sourceFile;
+
+        collect(checker, sourceFile, candidates);
+
+        if (candidates.size === 0) {
+            return {};
+        }
+
+        let isReactiveCall = (node: ts.Node): node is ts.CallExpression => candidates.has(node);
 
         // Run primitives transform first (tracks bindings for signal/computed, collects every call)
         let { calls, replacements } = primitives(sourceFile, bindings, isReactiveCall);
-
-        if (calls.length === 0) {
-            return {};
-        }
 
         intents.replacements.push(...replacements);
 

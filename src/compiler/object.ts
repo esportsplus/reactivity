@@ -3,6 +3,7 @@ import { code, uid } from '@esportsplus/typescript/compiler';
 import type { ReplacementIntent } from '@esportsplus/typescript/compiler';
 import { NAMESPACE, TYPES } from './constants';
 import type { Bindings, IsReactiveCall } from './types';
+import scope from './bindings';
 
 
 interface AnalyzedProperty {
@@ -223,11 +224,10 @@ function visit(ctx: VisitContext, node: ts.Node): void {
         if (arg && ts.isObjectLiteralExpression(arg)) {
             let properties: AnalyzedProperty[] = [],
                 props = arg.properties,
-                varname: string | null = null;
-
-            if (node.parent && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)) {
-                varname = node.parent.name.text;
-            }
+                target = node.parent && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)
+                    ? node.parent.name
+                    : null,
+                varname = target?.text ?? null;
 
             for (let i = 0, n = props.length; i < n; i++) {
                 let prop = props[i];
@@ -245,9 +245,14 @@ function visit(ctx: VisitContext, node: ts.Node): void {
                 }
 
                 properties.push(analyzed);
+            }
 
-                if (analyzed.type === TYPES.Array && varname) {
-                    ctx.bindings.set(`${varname}.${analyzed.key}`, TYPES.Array);
+            // Declared only once every property analyzed: a bailed object stays a runtime reactive()
+            if (target) {
+                for (let i = 0, n = properties.length; i < n; i++) {
+                    if (properties[i].type === TYPES.Array) {
+                        scope.declarePath(ctx.bindings, target, properties[i].key);
+                    }
                 }
             }
 
