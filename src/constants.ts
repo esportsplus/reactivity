@@ -1,12 +1,12 @@
-const COMPUTED = Symbol('reactivity.computed');
-
 const PACKAGE_NAME = '@esportsplus/reactivity';
 
-const REACTIVE_ARRAY = Symbol('reactivity.reactive.array');
+const COMPUTED = Symbol.for(`${PACKAGE_NAME}/computed`);
 
-const REACTIVE_OBJECT = Symbol('reactivity.reactive.object');
+const REACTIVE_ARRAY = Symbol.for(`${PACKAGE_NAME}/reactive.array`);
 
-const SIGNAL = Symbol('reactivity.signal');
+const REACTIVE_OBJECT = Symbol.for(`${PACKAGE_NAME}/reactive.object`);
+
+const SIGNAL = Symbol.for(`${PACKAGE_NAME}/signal`);
 
 const STABILIZER_DEFERRED = 4;
 
