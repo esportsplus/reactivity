@@ -1,233 +1,233 @@
-import { bench, describe } from 'vitest';
+import { test } from 'vitest';
 import { ReactiveArray } from '~/reactive/array';
 import { effect } from '~/system';
 
 
-describe('ReactiveArray creation', () => {
-    bench('create empty', () => {
-        new ReactiveArray<number>();
-    });
+test('ReactiveArray creation', async ({ bench }) => {
+    await bench.compare(
+        bench('create empty', () => {
+            new ReactiveArray<number>();
+        }),
+        bench('create with 10 items', () => {
+            new ReactiveArray([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
+        }),
+        bench('create with 100 items', () => {
+            let items = [];
 
-    bench('create with 10 items', () => {
-        new ReactiveArray([1, 2, 3, 4, 5, 6, 7, 8, 9, 10]);
-    });
+            for (let i = 0; i < 100; i++) {
+                items.push(i);
+            }
 
-    bench('create with 100 items', () => {
-        let items = [];
-
-        for (let i = 0; i < 100; i++) {
-            items.push(i);
-        }
-
-        new ReactiveArray(items);
-    });
+            new ReactiveArray(items);
+        })
+    );
 });
 
 
-describe('ReactiveArray push', () => {
-    bench('push 1 item', () => {
-        let arr = new ReactiveArray<number>();
+test('ReactiveArray push', async ({ bench }) => {
+    await bench.compare(
+        bench('push 1 item', () => {
+            let arr = new ReactiveArray<number>();
 
-        arr.push(1);
-    });
+            arr.push(1);
+        }),
+        bench('push 10 items (single call)', () => {
+            let arr = new ReactiveArray<number>();
 
-    bench('push 10 items (single call)', () => {
-        let arr = new ReactiveArray<number>();
+            arr.push(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
+        }),
+        bench('push 10 items (10 calls)', () => {
+            let arr = new ReactiveArray<number>();
 
-        arr.push(1, 2, 3, 4, 5, 6, 7, 8, 9, 10);
-    });
+            for (let i = 0; i < 10; i++) {
+                arr.push(i);
+            }
+        }),
+        bench('push with listener', () => {
+            let arr = new ReactiveArray<number>();
 
-    bench('push 10 items (10 calls)', () => {
-        let arr = new ReactiveArray<number>();
-
-        for (let i = 0; i < 10; i++) {
-            arr.push(i);
-        }
-    });
-
-    bench('push with listener', () => {
-        let arr = new ReactiveArray<number>();
-
-        arr.on('push', () => {});
-        arr.push(1);
-    });
+            arr.on('push', () => {});
+            arr.push(1);
+        })
+    );
 });
 
 
-describe('ReactiveArray pop', () => {
-    bench('pop', () => {
+test('ReactiveArray pop', async ({ bench }) => {
+    await bench('pop', () => {
         let arr = new ReactiveArray([1, 2, 3, 4, 5]);
 
         arr.pop();
-    });
+    }).run();
 });
 
 
-describe('ReactiveArray splice', () => {
-    bench('splice remove 1', () => {
-        let arr = new ReactiveArray([1, 2, 3, 4, 5]);
+test('ReactiveArray splice', async ({ bench }) => {
+    await bench.compare(
+        bench('splice remove 1', () => {
+            let arr = new ReactiveArray([1, 2, 3, 4, 5]);
 
-        arr.splice(2, 1);
-    });
+            arr.splice(2, 1);
+        }),
+        bench('splice insert 1', () => {
+            let arr = new ReactiveArray([1, 2, 3, 4, 5]);
 
-    bench('splice insert 1', () => {
-        let arr = new ReactiveArray([1, 2, 3, 4, 5]);
+            arr.splice(2, 0, 99);
+        }),
+        bench('splice replace 1', () => {
+            let arr = new ReactiveArray([1, 2, 3, 4, 5]);
 
-        arr.splice(2, 0, 99);
-    });
-
-    bench('splice replace 1', () => {
-        let arr = new ReactiveArray([1, 2, 3, 4, 5]);
-
-        arr.splice(2, 1, 99);
-    });
+            arr.splice(2, 1, 99);
+        })
+    );
 });
 
 
-describe('ReactiveArray sort', () => {
-    bench('sort 10 items', () => {
-        let arr = new ReactiveArray([5, 3, 8, 1, 9, 2, 7, 4, 6, 10]);
+test('ReactiveArray sort', async ({ bench }) => {
+    await bench.compare(
+        bench('sort 10 items', () => {
+            let arr = new ReactiveArray([5, 3, 8, 1, 9, 2, 7, 4, 6, 10]);
 
-        arr.sort((a, b) => a - b);
-    });
+            arr.sort((a, b) => a - b);
+        }),
+        bench('sort 100 items', () => {
+            let items = [];
 
-    bench('sort 100 items', () => {
-        let items = [];
+            for (let i = 100; i > 0; i--) {
+                items.push(i);
+            }
 
-        for (let i = 100; i > 0; i--) {
-            items.push(i);
-        }
+            let arr = new ReactiveArray(items);
 
-        let arr = new ReactiveArray(items);
+            arr.sort((a, b) => a - b);
+        }),
+        bench('sort 1000 items', () => {
+            let items = [];
 
-        arr.sort((a, b) => a - b);
-    });
+            for (let i = 1000; i > 0; i--) {
+                items.push(i);
+            }
 
-    bench('sort 1000 items', () => {
-        let items = [];
+            let arr = new ReactiveArray(items);
 
-        for (let i = 1000; i > 0; i--) {
-            items.push(i);
-        }
-
-        let arr = new ReactiveArray(items);
-
-        arr.sort((a, b) => a - b);
-    });
+            arr.sort((a, b) => a - b);
+        })
+    );
 });
 
 
-describe('ReactiveArray $set', () => {
-    bench('$set', () => {
-        let arr = new ReactiveArray([1, 2, 3, 4, 5]);
+test('ReactiveArray $set', async ({ bench }) => {
+    await bench.compare(
+        bench('$set', () => {
+            let arr = new ReactiveArray([1, 2, 3, 4, 5]);
 
-        arr.$set(2, 99);
-    });
+            arr.$set(2, 99);
+        }),
+        bench('$set same value (no-op)', () => {
+            let arr = new ReactiveArray([1, 2, 3, 4, 5]);
 
-    bench('$set same value (no-op)', () => {
-        let arr = new ReactiveArray([1, 2, 3, 4, 5]);
-
-        arr.$set(2, 3);
-    });
+            arr.$set(2, 3);
+        })
+    );
 });
 
 
-describe('ReactiveArray events', () => {
-    bench('dispatch to 1 listener', () => {
-        let arr = new ReactiveArray<number>();
+test('ReactiveArray events', async ({ bench }) => {
+    await bench.compare(
+        bench('dispatch to 1 listener', () => {
+            let arr = new ReactiveArray<number>();
 
-        arr.on('push', () => {});
-        arr.push(1);
-    });
-
-    bench('dispatch to 10 listeners', () => {
-        let arr = new ReactiveArray<number>();
-
-        for (let i = 0; i < 10; i++) {
             arr.on('push', () => {});
-        }
+            arr.push(1);
+        }),
+        bench('dispatch to 10 listeners', () => {
+            let arr = new ReactiveArray<number>();
 
-        arr.push(1);
-    });
+            for (let i = 0; i < 10; i++) {
+                arr.on('push', () => {});
+            }
 
-    bench('on + once interleaved', () => {
-        let arr = new ReactiveArray<number>();
+            arr.push(1);
+        }),
+        bench('on + once interleaved', () => {
+            let arr = new ReactiveArray<number>();
 
-        arr.on('push', () => {});
-        arr.once('push', () => {});
-        arr.on('push', () => {});
-        arr.push(1);
-    });
+            arr.on('push', () => {});
+            arr.once('push', () => {});
+            arr.on('push', () => {});
+            arr.push(1);
+        })
+    );
 });
 
 
-describe('ReactiveArray dispose/clear', () => {
-    bench('dispose with 100 items', () => {
-        let items = [];
+test('ReactiveArray dispose/clear', async ({ bench }) => {
+    await bench.compare(
+        bench('dispose with 100 items', () => {
+            let items = [];
 
-        for (let i = 0; i < 100; i++) {
-            items.push(i);
-        }
+            for (let i = 0; i < 100; i++) {
+                items.push(i);
+            }
 
-        let arr = new ReactiveArray(items);
+            let arr = new ReactiveArray(items);
 
-        arr.dispose();
-    });
+            arr.dispose();
+        }),
+        bench('clear with 100 items', () => {
+            let items = [];
 
-    bench('clear with 100 items', () => {
-        let items = [];
+            for (let i = 0; i < 100; i++) {
+                items.push(i);
+            }
 
-        for (let i = 0; i < 100; i++) {
-            items.push(i);
-        }
+            let arr = new ReactiveArray(items);
 
-        let arr = new ReactiveArray(items);
-
-        arr.clear();
-    });
+            arr.clear();
+        })
+    );
 });
 
 
-describe('ReactiveArray concat/unshift/shift/reverse', () => {
-    bench('concat 100 items', () => {
-        let arr = new ReactiveArray<number>(),
-            items = [];
+test('ReactiveArray concat/unshift/shift/reverse', async ({ bench }) => {
+    await bench.compare(
+        bench('concat 100 items', () => {
+            let arr = new ReactiveArray<number>(),
+                items = [];
 
-        for (let i = 0; i < 100; i++) {
-            items.push(i);
-        }
+            for (let i = 0; i < 100; i++) {
+                items.push(i);
+            }
 
-        arr.concat(items);
-    });
+            arr.concat(items);
+        }),
+        bench('unshift 10 items', () => {
+            let arr = new ReactiveArray([1, 2, 3, 4, 5]);
 
-    bench('unshift 10 items', () => {
-        let arr = new ReactiveArray([1, 2, 3, 4, 5]);
+            arr.unshift(10, 20, 30, 40, 50, 60, 70, 80, 90, 100);
+        }),
+        bench('shift', () => {
+            let arr = new ReactiveArray([1, 2, 3, 4, 5]);
 
-        arr.unshift(10, 20, 30, 40, 50, 60, 70, 80, 90, 100);
-    });
+            arr.shift();
+        }),
+        bench('reverse 100 items', () => {
+            let items = [];
 
-    bench('shift', () => {
-        let arr = new ReactiveArray([1, 2, 3, 4, 5]);
+            for (let i = 0; i < 100; i++) {
+                items.push(i);
+            }
 
-        arr.shift();
-    });
+            let arr = new ReactiveArray(items);
 
-    bench('reverse 100 items', () => {
-        let items = [];
-
-        for (let i = 0; i < 100; i++) {
-            items.push(i);
-        }
-
-        let arr = new ReactiveArray(items);
-
-        arr.reverse();
-    });
+            arr.reverse();
+        })
+    );
 });
 
 
-describe('ReactiveArray reactive length', () => {
-    bench('read $length in effect', () => {
+test('ReactiveArray reactive length', async ({ bench }) => {
+    await bench('read $length in effect', () => {
         let arr = new ReactiveArray([1, 2, 3]);
 
         let stop = effect(() => {
@@ -235,5 +235,5 @@ describe('ReactiveArray reactive length', () => {
         });
 
         stop();
-    });
+    }).run();
 });

@@ -1,4 +1,4 @@
-import { bench, describe } from 'vitest';
+import { test } from 'vitest';
 import { assert, framework, ReactiveComputed } from './lib/reactive-adapter';
 
 
@@ -324,7 +324,7 @@ function unstable() {
 }
 
 
-describe('kairo', () => {
+test('kairo', async ({ bench }) => {
     let avoidableRun = framework.withBuild(avoidablePropagation),
         broadRun = framework.withBuild(broadPropagation),
         deepRun = framework.withBuild(deepPropagation),
@@ -334,35 +334,30 @@ describe('kairo', () => {
         triangleRun = framework.withBuild(triangle),
         unstableRun = framework.withBuild(unstable);
 
-    bench('avoidablePropagation', async () => {
-        await avoidableRun();
-    });
-
-    bench('broad', async () => {
-        await broadRun();
-    });
-
-    bench('deep', async () => {
-        await deepRun();
-    });
-
-    bench('diamond', async () => {
-        await diamondRun();
-    });
-
-    bench('mux', async () => {
-        await muxRun();
-    });
-
-    bench('repeatedObservers', async () => {
-        await repeatedRun();
-    });
-
-    bench('triangle', async () => {
-        await triangleRun();
-    });
-
-    bench('unstable', async () => {
-        await unstableRun();
-    });
+    await bench.compare(
+        bench('avoidablePropagation', async () => {
+            await avoidableRun();
+        }),
+        bench('broad', async () => {
+            await broadRun();
+        }),
+        bench('deep', async () => {
+            await deepRun();
+        }),
+        bench('diamond', async () => {
+            await diamondRun();
+        }),
+        bench('mux', async () => {
+            await muxRun();
+        }),
+        bench('repeatedObservers', async () => {
+            await repeatedRun();
+        }),
+        bench('triangle', async () => {
+            await triangleRun();
+        }),
+        bench('unstable', async () => {
+            await unstableRun();
+        })
+    );
 });

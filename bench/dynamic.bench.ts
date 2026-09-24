@@ -1,4 +1,4 @@
-import { bench, describe } from 'vitest';
+import { test } from 'vitest';
 import { assert, framework, ReactiveComputed } from './lib/reactive-adapter';
 
 
@@ -89,15 +89,16 @@ function movingBranchPoint() {
 }
 
 
-describe('dynamic graphs', () => {
+test('dynamic graphs', async ({ bench }) => {
     let branchRun = framework.withBuild(movingBranchPoint),
         swapRun = framework.withBuild(dependencySwap);
 
-    bench('dependency set swap (20 computeds x 10 deps)', async () => {
-        await swapRun();
-    });
-
-    bench('moving branch point (30-deep chain re-link)', async () => {
-        await branchRun();
-    });
+    await bench.compare(
+        bench('dependency set swap (20 computeds x 10 deps)', async () => {
+            await swapRun();
+        }),
+        bench('moving branch point (30-deep chain re-link)', async () => {
+            await branchRun();
+        })
+    );
 });

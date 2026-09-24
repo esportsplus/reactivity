@@ -5,8 +5,8 @@ import { resolve } from 'path';
 export default defineConfig({
     resolve: {
         alias: {
-            '~': resolve(__dirname, 'src'),
-            '@esportsplus/reactivity': resolve(__dirname, 'src/index.ts')
+            '~': resolve(import.meta.dirname, 'src'),
+            '@esportsplus/reactivity': resolve(import.meta.dirname, 'src/index.ts')
         }
     },
     test: {

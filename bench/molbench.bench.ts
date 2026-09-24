@@ -1,4 +1,4 @@
-import { bench, describe } from 'vitest';
+import { test } from 'vitest';
 import { assert, framework } from './lib/reactive-adapter';
 
 
@@ -66,10 +66,10 @@ function mol() {
 }
 
 
-describe('molBench', () => {
+test('molBench', async ({ bench }) => {
     let molRun = framework.withBuild(mol);
 
-    bench('molBench', async () => {
+    await bench('molBench', async () => {
         await molRun();
-    });
+    }).run();
 });

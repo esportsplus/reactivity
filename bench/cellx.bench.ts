@@ -1,4 +1,4 @@
-import { bench, describe } from 'vitest';
+import { test } from 'vitest';
 import { assert, framework, ReactiveComputed } from './lib/reactive-adapter';
 
 
@@ -54,8 +54,8 @@ function cellx(layers: number, before: readonly number[], after: readonly number
 }
 
 
-describe('cellx', () => {
-    bench('cellx1000', async () => {
+test('cellx', async ({ bench }) => {
+    await bench('cellx1000', async () => {
         await framework.withBuild(() => cellx(1000, [-3, -6, -2, 2], [-2, -4, 2, 3]));
-    });
+    }).run();
 });
