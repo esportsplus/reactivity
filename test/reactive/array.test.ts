@@ -282,19 +282,21 @@ describe('ReactiveArray', () => {
             expect(dispatched).toBe(false);
         });
 
-        it('does not dispatch when popping explicit undefined value', () => {
+        // An element's value says nothing about whether one was removed: listeners (e.g. a rendered
+        // list) must see every removal or they desync from the array
+        it('dispatches when popping an explicit undefined value', () => {
             let arr = new ReactiveArray<number | undefined>([1, undefined]),
-                dispatched = false;
+                events: { item: number | undefined }[] = [];
 
-            arr.on('pop', () => { dispatched = true; });
+            arr.on('pop', (e) => { events.push(e); });
             let item = arr.pop();
 
             expect(item).toBe(undefined);
             expect(arr.length).toBe(1);
-            expect(dispatched).toBe(false);
+            expect(events).toEqual([{ item: undefined }]);
         });
 
-        it('does not update reactive length when popping explicit undefined value', async () => {
+        it('updates reactive length when popping an explicit undefined value', async () => {
             let arr = new ReactiveArray<number | undefined>([1, undefined]),
                 lengths: number[] = [];
 
@@ -307,7 +309,7 @@ describe('ReactiveArray', () => {
             arr.pop();
             await Promise.resolve();
 
-            expect(lengths).toEqual([2]);
+            expect(lengths).toEqual([2, 1]);
         });
     });
 
@@ -337,20 +339,20 @@ describe('ReactiveArray', () => {
             expect(events).toEqual([{ item: 10 }]);
         });
 
-        it('does not dispatch when shifting explicit undefined value', () => {
+        it('dispatches when shifting an explicit undefined value', () => {
             let arr = new ReactiveArray<number | undefined>([undefined, 1, 2]),
-                dispatched = false;
+                events: { item: number | undefined }[] = [];
 
-            arr.on('shift', () => { dispatched = true; });
+            arr.on('shift', (e) => { events.push(e); });
             let item = arr.shift();
 
             expect(item).toBe(undefined);
             expect(arr.length).toBe(2);
             expect(arr[0]).toBe(1);
-            expect(dispatched).toBe(false);
+            expect(events).toEqual([{ item: undefined }]);
         });
 
-        it('does not update reactive length when shifting explicit undefined value', async () => {
+        it('updates reactive length when shifting an explicit undefined value', async () => {
             let arr = new ReactiveArray<number | undefined>([undefined, 1, 2]),
                 lengths: number[] = [];
 
@@ -363,7 +365,17 @@ describe('ReactiveArray', () => {
             arr.shift();
             await Promise.resolve();
 
-            expect(lengths).toEqual([3]);
+            expect(lengths).toEqual([3, 2]);
+        });
+
+        it('does not dispatch when shifting an empty array', () => {
+            let arr = new ReactiveArray<number>(),
+                dispatched = false;
+
+            arr.on('shift', () => { dispatched = true; });
+
+            expect(arr.shift()).toBe(undefined);
+            expect(dispatched).toBe(false);
         });
     });
 
@@ -477,7 +489,7 @@ describe('ReactiveArray', () => {
             expect(dispatched).toBe(false);
         });
 
-        it('splice with negative start removes from end', () => {
+        it('splice with negative start dispatches the resolved start', () => {
             let arr = new ReactiveArray([1, 2, 3, 4, 5]),
                 events: { start: number; deleteCount: number; items: number[] }[] = [];
 
@@ -487,7 +499,35 @@ describe('ReactiveArray', () => {
 
             expect([...removed]).toEqual([4]);
             expect([...arr]).toEqual([1, 2, 3, 5]);
-            expect(events).toEqual([{ start: -2, deleteCount: 1, items: [] }]);
+            expect(events).toEqual([{ start: 3, deleteCount: 1, items: [] }]);
+        });
+
+        it('splice dispatches the count actually removed, not the requested count', () => {
+            let arr = new ReactiveArray([1, 2, 3]),
+                events: { start: number; deleteCount: number; items: number[] }[] = [];
+
+            arr.on('splice', (e) => { events.push(e); });
+            arr.splice(1, 100);
+
+            expect([...arr]).toEqual([1]);
+            expect(events).toEqual([{ start: 1, deleteCount: 2, items: [] }]);
+        });
+
+        it('splice clamps an out-of-range or fractional start the way Array.prototype.splice does', () => {
+            let arr = new ReactiveArray([1, 2, 3]),
+                events: { start: number; deleteCount: number; items: number[] }[] = [];
+
+            arr.on('splice', (e) => { events.push(e); });
+            arr.splice(100, 0, 4);
+            arr.splice(-100, 0, 0);
+            arr.splice(1.9, 0, 9);
+
+            expect([...arr]).toEqual([0, 9, 1, 2, 3, 4]);
+            expect(events).toEqual([
+                { start: 3, deleteCount: 0, items: [4] },
+                { start: 0, deleteCount: 0, items: [0] },
+                { start: 1, deleteCount: 0, items: [9] }
+            ]);
         });
     });
 

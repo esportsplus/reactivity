@@ -240,13 +240,15 @@ class ReactiveArray<T> extends Array<T> {
     }
 
     pop() {
-        let item = super.pop();
-
-        if (item !== undefined) {
-            dispose(item);
-            write(this._length, this.length);
-            this.dispatch('pop', { item });
+        if (this.length === 0) {
+            return undefined;
         }
+
+        let item = super.pop() as T;
+
+        dispose(item);
+        write(this._length, this.length);
+        this.dispatch('pop', { item });
 
         return item;
     }
@@ -273,13 +275,15 @@ class ReactiveArray<T> extends Array<T> {
     }
 
     shift() {
-        let item = super.shift();
-
-        if (item !== undefined) {
-            dispose(item);
-            write(this._length, this.length);
-            this.dispatch('shift', { item });
+        if (this.length === 0) {
+            return undefined;
         }
+
+        let item = super.shift() as T;
+
+        dispose(item);
+        write(this._length, this.length);
+        this.dispatch('shift', { item });
 
         return item;
     }
@@ -326,7 +330,8 @@ class ReactiveArray<T> extends Array<T> {
     }
 
     splice(start: number, deleteCount: number = this.length, ...items: T[]) {
-        let removed = super.splice(start, deleteCount, ...items);
+        let length = this.length,
+            removed = super.splice(start, deleteCount, ...items);
 
         if (items.length > 0 || removed.length > 0) {
             write(this._length, this.length);
@@ -335,7 +340,15 @@ class ReactiveArray<T> extends Array<T> {
                 dispose(removed[i]);
             }
 
-            this.dispatch('splice', { deleteCount, items, start });
+            // Listeners receive the position and count Array.prototype.splice actually applied
+            // (negative, fractional and out-of-range arguments resolved), never the raw arguments
+            let index = Math.trunc(start) || 0;
+
+            this.dispatch('splice', {
+                deleteCount: removed.length,
+                items,
+                start: index < 0 ? Math.max(length + index, 0) : Math.min(index, length)
+            });
         }
 
         return removed;
