@@ -3,7 +3,6 @@ import { code, uid } from '@esportsplus/typescript/compiler';
 import type { ReplacementIntent } from '@esportsplus/typescript/compiler';
 import { NAMESPACE, TYPES } from './constants';
 import type { Bindings, IsReactiveCall } from './types';
-import scope from './bindings';
 
 
 interface AnalyzedProperty {
@@ -34,7 +33,9 @@ interface VisitContext {
 }
 
 
-function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.SourceFile): AnalyzedProperty | null {
+function analyzeProperty(prop: ts.ObjectLiteralElementLike, bindings: Bindings): AnalyzedProperty | null {
+    let sourceFile = bindings.sourceFile;
+
     if (!ts.isPropertyAssignment(prop)) {
         return null;
     }
@@ -86,6 +87,14 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, sourceFile: ts.Sourc
         }
 
         return { isStatic, key, type: TYPES.Array, valueText };
+    }
+
+    // A non-literal array is typed Reactive<T[]> on the object, so it must become a ReactiveArray
+    // exactly like a literal one
+    let type = isStaticValue(unwrapped) ? undefined : bindings.checker.getTypeAtLocation(value);
+
+    if (type && (bindings.checker.isArrayType(type) || bindings.checker.isTupleType(type))) {
+        return { isStatic: false, key, type: TYPES.Array, valueText };
     }
 
     return {
@@ -224,10 +233,9 @@ function visit(ctx: VisitContext, node: ts.Node): void {
         if (arg && ts.isObjectLiteralExpression(arg)) {
             let properties: AnalyzedProperty[] = [],
                 props = arg.properties,
-                target = node.parent && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)
-                    ? node.parent.name
-                    : null,
-                varname = target?.text ?? null;
+                varname = node.parent && ts.isVariableDeclaration(node.parent) && ts.isIdentifier(node.parent.name)
+                    ? node.parent.name.text
+                    : null;
 
             for (let i = 0, n = props.length; i < n; i++) {
                 let prop = props[i];
@@ -237,7 +245,7 @@ function visit(ctx: VisitContext, node: ts.Node): void {
                     return;
                 }
 
-                let analyzed = analyzeProperty(prop, ctx.sourceFile);
+                let analyzed = analyzeProperty(prop, ctx.bindings);
 
                 if (!analyzed) {
                     node.forEachChild(n => visit(ctx, n));
@@ -245,15 +253,6 @@ function visit(ctx: VisitContext, node: ts.Node): void {
                 }
 
                 properties.push(analyzed);
-            }
-
-            // Declared only once every property analyzed: a bailed object stays a runtime reactive()
-            if (target) {
-                for (let i = 0, n = properties.length; i < n; i++) {
-                    if (properties[i].type === TYPES.Array) {
-                        scope.declarePath(ctx.bindings, target, properties[i].key);
-                    }
-                }
             }
 
             ctx.calls.push({
@@ -290,8 +289,9 @@ export default (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: I
         prepend.push(buildClassCode(call.classname, call.properties, typehint));
         replacements.push({
             generate: () => {
+                // Every property but a static signal (baked into its field) is a constructor parameter
                 let args = call.properties
-                    .filter(({ isStatic, type }) => typehint || !isStatic || type === TYPES.Computed)
+                    .filter(({ isStatic, type }) => typehint || !isStatic || type !== TYPES.Signal)
                     .map(p => p.valueText)
                     .join(', ');
 

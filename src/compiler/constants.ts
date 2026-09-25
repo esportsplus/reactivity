@@ -28,6 +28,7 @@ const NAMESPACE = uid('reactivity');
 const TYPES = {
     Array: 0,
     Computed: 1,
+    Object: 3,
     Signal: 2
 } as const;
 

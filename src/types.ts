@@ -43,7 +43,8 @@ declare const READONLY: unique symbol;
 type Reactive<T> = T extends (...args: never[]) => infer R
     ? Settled<R> & { readonly [READONLY]: true }
     : T extends (infer U)[]
-        ? U[] & Pick<ReactiveArray<U>, 'clear' | 'dispose' | 'on' | 'once'>
+        // `$length` / `$set` are what the compiler lowers `.length` and element writes to
+        ? U[] & Pick<ReactiveArray<U>, '$length' | '$set' | 'clear' | 'dispose' | 'on' | 'once'>
         : T extends Record<PropertyKey, unknown>
             ? { [K in keyof T]: T[K] extends (infer U)[] ? Reactive<U[]> : T[K]; } & { dispose: VoidFunction }
             : T;

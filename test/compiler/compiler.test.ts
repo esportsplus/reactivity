@@ -27,43 +27,47 @@ function applyIntents(code: string, sourceFile: ts.SourceFile, intents: Replacem
     return code;
 }
 
-function isReactiveCall(node: ts.Node): node is ts.CallExpression {
-    return ts.isCallExpression(node) && ts.isIdentifier(node.expression) && node.expression.text === 'reactive';
-}
+// The unit transforms run on real modules: `reactive` is resolved through the import like any consumer's
+const PRELUDE = "import { reactive, ReactiveArray } from '@esportsplus/reactivity';\n";
 
-// Bindings resolve by symbol, so every transform needs a checker over the parsed source
-function parse(code: string): { bindings: Bindings; sourceFile: ts.SourceFile } {
-    let { checker, sourceFile } = languageService.scratch(process.cwd() + '/test.ts', code);
 
-    return { bindings: scope.create(checker), sourceFile };
+function parse(code: string): { bindings: Bindings; code: string; isReactiveCall: (node: ts.Node) => node is ts.CallExpression; sourceFile: ts.SourceFile } {
+    code = PRELUDE + code;
+
+    let { checker, program, sourceFile } = languageService.scratch(process.cwd() + '/test.ts', code),
+        bindings = scope.create(checker, program, sourceFile);
+
+    return { bindings, code, isReactiveCall: (node): node is ts.CallExpression => scope.isReactiveCall(bindings, node), sourceFile };
 }
 
 // Full pipeline over a module importing reactive(): what a real consumer compiles
 function transformModule(code: string): string {
-    code = `import { reactive } from '@esportsplus/reactivity';\n` + code;
+    return transformSource(`import { reactive } from '@esportsplus/reactivity';\n` + code);
+}
 
-    let { checker, sourceFile } = languageService.scratch(process.cwd() + '/module.ts', code),
-        result = pipeline.transform({ checker, code, sourceFile } as never);
+function transformSource(code: string): string {
+    let { checker, program, sourceFile } = languageService.scratch(process.cwd() + '/module.ts', code),
+        result = pipeline.transform({ checker, code, program, sourceFile } as never);
 
     return applyIntents(code, sourceFile, result.replacements ?? []);
 }
 
-function transformPrimitives(code: string): { bindings: Bindings; output: string } {
-    let { bindings, sourceFile } = parse(code),
-        { replacements } = primitives(sourceFile, bindings, isReactiveCall);
+function transformPrimitives(source: string): { bindings: Bindings; failures: string[]; output: string } {
+    let { bindings, code, isReactiveCall, sourceFile } = parse(source),
+        { failures, replacements } = primitives(sourceFile, bindings, isReactiveCall);
+
+    return { bindings, failures: failures.map(f => f.message), output: applyIntents(code, sourceFile, replacements) };
+}
+
+function transformArray(source: string): { bindings: Bindings; output: string } {
+    let { bindings, code, isReactiveCall, sourceFile } = parse(source),
+        { replacements } = array(sourceFile, bindings, isReactiveCall);
 
     return { bindings, output: applyIntents(code, sourceFile, replacements) };
 }
 
-function transformArray(code: string): { bindings: Bindings; output: string } {
-    let { bindings, sourceFile } = parse(code),
-        intents = array(sourceFile, bindings, isReactiveCall);
-
-    return { bindings, output: applyIntents(code, sourceFile, intents) };
-}
-
-function transformObject(code: string): { bindings: Bindings; output: string; prepend: string[] } {
-    let { bindings, sourceFile } = parse(code),
+function transformObject(source: string): { bindings: Bindings; output: string; prepend: string[] } {
+    let { bindings, code, isReactiveCall, sourceFile } = parse(source),
         result = object(sourceFile, bindings, isReactiveCall);
 
     return {
@@ -73,24 +77,20 @@ function transformObject(code: string): { bindings: Bindings; output: string; pr
     };
 }
 
-function typeOf(bindings: Bindings, name: string): number | undefined {
-    for (let [symbol, type] of bindings.symbols) {
-        if (symbol.name === name) {
-            return type;
-        }
-    }
+// Kind of the binding the variable `name` declares
+function typeOf(bindings: Bindings, name: string): number | null {
+    let found: ts.Identifier | undefined,
+        visit = (node: ts.Node): void => {
+            if (!found && ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === name) {
+                found = node.name;
+            }
 
-    return undefined;
-}
+            node.forEachChild(visit);
+        };
 
-function hasPath(bindings: Bindings, name: string, path: string): boolean {
-    for (let [symbol, paths] of bindings.paths) {
-        if (symbol.name === name && paths.has(path)) {
-            return true;
-        }
-    }
+    visit(bindings.sourceFile);
 
-    return false;
+    return found ? scope.kind(bindings, scope.origin(bindings, found)) : null;
 }
 
 
@@ -150,10 +150,61 @@ describe('primitives transform', () => {
         expect(output).toContain(`${NAMESPACE}.read(x)`);
     });
 
-    it('transforms dynamic expression to namespace reactive', () => {
-        let { output } = transformPrimitives('let x = reactive(someCall());');
+    it('builds a non-literal array or object argument with the runtime reactive()', () => {
+        let { output } = transformPrimitives('declare function someCall(): number[];\nlet x = reactive(someCall());');
 
         expect(output).toContain(`${NAMESPACE}.reactive(someCall())`);
+    });
+
+    it('classifies a non-literal primitive argument as a signal by its type', () => {
+        let { output } = transformPrimitives('declare let n: number;\nlet x = reactive(n);\nlet y = x + 1;');
+
+        expect(output).toContain(`let x = ${NAMESPACE}.signal(n)`);
+        expect(output).toContain(`let y = ${NAMESPACE}.read(x) + 1`);
+    });
+
+    it('classifies a function-typed argument as a computed', () => {
+        let { output } = transformPrimitives('declare function total(): number;\nlet x = reactive(total);');
+
+        expect(output).toContain(`let x = ${NAMESPACE}.computed(total)`);
+    });
+
+    it('rejects an argument whose kind is not provable', () => {
+        let { failures } = transformPrimitives('declare let value: any;\nlet x = reactive(value);');
+
+        expect(failures).toHaveLength(1);
+        expect(failures[0]).toContain('provable');
+    });
+
+    it('rejects a signal that does not initialize a variable', () => {
+        let { failures } = transformPrimitives('declare function take(value: unknown): void;\ntake(reactive(0));\nlet o = { count: reactive(1) };');
+
+        expect(failures).toHaveLength(2);
+        expect(failures[0]).toContain('must initialize a variable');
+    });
+
+    it('rejects a write to a computed', () => {
+        let { failures } = transformPrimitives('let d = reactive(() => 1);\nd = 2;');
+
+        expect(failures).toEqual(['a reactive computed is read-only']);
+    });
+
+    it('rejects a destructuring assignment into a reactive binding', () => {
+        let { failures } = transformPrimitives('let x = reactive(0);\n[x] = [1];');
+
+        expect(failures[0]).toContain('destructuring');
+    });
+
+    it('reads a binding assigned with reactive() after its declaration', () => {
+        let { output } = transformPrimitives('let x: number;\nx = reactive(0);\nlet y = x + 1;');
+
+        expect(output).toContain(`let y = ${NAMESPACE}.read(x) + 1`);
+    });
+
+    it('reads through typeof', () => {
+        let { output } = transformPrimitives("let x = reactive(0);\nlet t = typeof x;");
+
+        expect(output).toContain(`let t = typeof ${NAMESPACE}.read(x)`);
     });
 
     it('tracks bindings for signal type', () => {
@@ -250,10 +301,16 @@ describe('object transform', () => {
         expect(output).toContain('<MyType>');
     });
 
-    it('tracks nested array bindings', () => {
-        let { bindings } = transformObject('let obj = reactive({ items: [1, 2, 3] });');
+    it('passes every array property to the constructor, static elements included', () => {
+        let { output } = transformObject('let obj = reactive({ n: 1, items: [1, 2] });');
 
-        expect(hasPath(bindings, 'obj', 'items')).toBe(true);
+        expect(output).toMatch(/new ReactiveObject_\w+\(\[1, 2\]\)/);
+    });
+
+    it('makes a non-literal array property a reactive array', () => {
+        let { prepend } = transformObject('declare let list: number[];\nlet obj = reactive({ items: list });');
+
+        expect(prepend[0]).toContain(`${NAMESPACE}.REACTIVE_ARRAY`);
     });
 });
 
@@ -311,16 +368,36 @@ describe('array transform', () => {
         expect(typeOf(bindings, 'arr')).toBe(TYPES.Array);
     });
 
-    it('tracks alias binding from reactive array', () => {
-        let { bindings } = transformArray('let a = reactive([1]); let b = a;');
+    it('compiles an alias of a reactive array by its type', () => {
+        let { output } = transformArray('let a = reactive([1]); let b = a; let n = b.length;');
 
-        expect(typeOf(bindings, 'b')).toBe(TYPES.Array);
+        expect(output).toContain('let n = b.$length');
     });
 
-    it('tracks typed parameter as ReactiveArray', () => {
-        let { bindings } = transformArray('function fn(arr: ReactiveArray) { return arr; }');
+    it('compiles a ReactiveArray-typed parameter by its type', () => {
+        let { output } = transformArray('function fn(arr: ReactiveArray<number>) { arr[0] = 1; return arr.length; }');
 
-        expect(typeOf(bindings, 'arr')).toBe(TYPES.Array);
+        expect(output).toContain('arr.$set(0, 1)');
+        expect(output).toContain('return arr.$length');
+    });
+
+    it('compiles an array property of a reactive object by its type', () => {
+        let { output } = transformArray('let obj = reactive({ items: [1] }); let n = obj.items.length;');
+
+        expect(output).toContain('let n = obj.items.$length');
+    });
+
+    it('routes compound and increment element writes through $set', () => {
+        let { output } = transformArray('let arr = reactive([1]); arr[0] += 2; arr[0]++;');
+
+        expect(output).toContain('((_a, _k) => _a.$set(_k, _a[_k] + (2)))(arr, 0)');
+        expect(output).toContain('((_a, _k, _v) => (_a.$set(_k, _v + 1), _v))(arr, 0, arr[0])');
+    });
+
+    it('leaves a plain array untouched', () => {
+        let { output } = transformArray('let arr = [1]; arr[0] = 2; let n = arr.length;');
+
+        expect(output).toContain('arr[0] = 2; let n = arr.length;');
     });
 
     it('transforms empty array', () => {
@@ -388,12 +465,39 @@ describe('binding resolution (full pipeline)', () => {
         expect(output).toContain(`let count = ${NAMESPACE}.signal(0);`);
         expect(output).toContain(`let next = ${NAMESPACE}.read(count) + 1;`);
     });
+
+    it('transforms calls through an aliased import', () => {
+        let output = transformSource("import { reactive as r } from '@esportsplus/reactivity';\nlet count = r(0);\nlet next = count + 1;");
+
+        expect(output).toContain(`let count = ${NAMESPACE}.signal(0);`);
+        expect(output).toContain(`let next = ${NAMESPACE}.read(count) + 1;`);
+    });
+
+    it('transforms a reactive array created through an aliased import', () => {
+        let output = transformSource("import { reactive as r } from '@esportsplus/reactivity';\nlet list = r([1, 2]);\nlet size = list.length;");
+
+        expect(output).not.toContain('r([1, 2])');
+        expect(output).toContain('let size = list.$length');
+    });
+
+    it('leaves a parameter that shadows an alias untouched', () => {
+        let code = "import { reactive as r } from '@esportsplus/reactivity';\nfunction f(r: (n: number) => number) { return r(1); }";
+
+        expect(transformSource(code)).toBe(code);
+    });
+
+    it('leaves another export imported under the name reactive untouched', () => {
+        let code = "import { root as reactive } from '@esportsplus/reactivity';\nlet value = reactive(() => 1);";
+
+        expect(transformSource(code)).toBe(code);
+    });
 });
 
 
 describe('index transform', () => {
-    it('exports patterns array', () => {
-        expect(pipeline.patterns).toEqual(['reactive(', 'reactive<']);
+    // A module can reach reactive() or read a binding under any name, so no text prefilter may skip it
+    it('has no text patterns', () => {
+        expect('patterns' in pipeline).toBe(false);
     });
 
     it('has transform function', () => {
