@@ -347,6 +347,20 @@ describe('array transform', () => {
         expect(output).toContain('arr.$length = arr.length + 3');
     });
 
+    it('transforms arr.length++ and --arr.length to $length writes', () => {
+        expect(transformArray('let arr = reactive([1]); arr.length++;').output).toContain('arr.$length = arr.length + 1');
+        expect(transformArray('let arr = reactive([1]); --arr.length;').output).toContain('arr.$length = arr.length - 1');
+    });
+
+    it('transforms non-mutating unary operators on arr.length as reads', () => {
+        for (let op of ['!', '-', '+', '~']) {
+            let { output } = transformArray(`let arr = reactive([1]); let x = ${op}arr.length;`);
+
+            expect(output).toContain(`${op}arr.$length`);
+            expect(output).not.toContain('arr.$length =');
+        }
+    });
+
     it('transforms every compound operator on arr.length with its own token', () => {
         for (let op of ['<<', '>>', '>>>', '??', '||', '&&', '-', '*', '/', '%', '**', '&', '|', '^']) {
             let { output } = transformArray(`let arr = reactive([1]); arr.length ${op}= 2;`);

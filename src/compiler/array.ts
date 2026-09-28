@@ -133,7 +133,11 @@ function length(access: ts.PropertyAccessExpression, replacements: ReplacementIn
         });
     }
     // arr.length++ / arr.length-- / ++arr.length / --arr.length
-    else if (parent && (ts.isPostfixUnaryExpression(parent) || ts.isPrefixUnaryExpression(parent))) {
+    else if (
+        parent &&
+        (ts.isPostfixUnaryExpression(parent) || ts.isPrefixUnaryExpression(parent)) &&
+        (parent.operator === ts.SyntaxKind.PlusPlusToken || parent.operator === ts.SyntaxKind.MinusMinusToken)
+    ) {
         let op = parent.operator === ts.SyntaxKind.PlusPlusToken ? '+' : '-';
 
         replacements.push({
