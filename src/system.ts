@@ -1032,7 +1032,8 @@ const flush = (): void => {
     }
 };
 
-// Whether an onCleanup() made now would land on an owner (a running computed/effect or a root's scope)
+// Whether an onCleanup() made now would land on an owner (a running computed/effect, also inside
+// untrack, or a root's scope)
 const hasOwner = (): boolean => observer !== null || scope !== null;
 
 const isComputed = (value: unknown): value is Computed<unknown> => {
@@ -1195,16 +1196,26 @@ signal.selector = <T>(node: Signal<T>, key: T): boolean => {
     return read(entry);
 };
 
+// Pauses tracking without changing ownership: work created inside fn is owned by the running
+// computation (as scope), so its next re-run or dispose tears it down. Outside one this is a plain call.
 const untrack = <T>(fn: () => T): T => {
     let o = observer;
 
+    if (o === null) {
+        return fn();
+    }
+
+    let s = scope;
+
     observer = null;
+    scope = o;
 
     try {
         return fn();
     }
     finally {
         observer = o;
+        scope = s;
     }
 };
 

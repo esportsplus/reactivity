@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { computed, effect, peek, read, signal, untrack, write } from '~/system';
+import { computed, effect, hasOwner, onCleanup, peek, read, root, signal, untrack, write } from '~/system';
+import type { Computed } from '~/system';
 
 
 describe('untrack', () => {
@@ -68,6 +69,229 @@ describe('untrack', () => {
 
     it('returns the value fn produces', () => {
         expect(untrack(() => 42)).toBe(42);
+    });
+});
+
+
+describe('untrack ownership', () => {
+    it('an effect created inside untrack during a re-run is disposed by the next re-run and by dispose', async () => {
+        let inner = signal(0),
+            innerRuns: string[] = [],
+            outer = signal(0),
+            stop = effect(() => {
+                let gen = read(outer);
+
+                untrack(() => {
+                    effect(() => {
+                        innerRuns.push(`${gen}:${read(inner)}`);
+                    });
+                });
+            });
+
+        write(outer, 1);
+        await Promise.resolve();
+
+        expect(innerRuns).toEqual(['0:0', '1:0']);
+
+        write(inner, 1);
+        await Promise.resolve();
+
+        // Only generation 1's inner effect is alive; generation 0's was disposed by the re-run
+        expect(innerRuns).toEqual(['0:0', '1:0', '1:1']);
+
+        stop();
+        write(inner, 2);
+        await Promise.resolve();
+
+        expect(innerRuns).toEqual(['0:0', '1:0', '1:1']);
+    });
+
+    it('onCleanup inside untrack runs on the next re-run and on dispose', async () => {
+        let log: number[] = [],
+            s = signal(0),
+            stop = effect(() => {
+                let v = read(s);
+
+                untrack(() => onCleanup(() => { log.push(v); }));
+            });
+
+        write(s, 1);
+        await Promise.resolve();
+
+        expect(log).toEqual([0]);
+
+        stop();
+
+        expect(log).toEqual([0, 1]);
+    });
+
+    it('tears down untracked children and cleanups in registration order', async () => {
+        let log: string[] = [],
+            s = signal(0),
+            stop = effect(() => {
+                read(s);
+                onCleanup(() => { log.push('a'); });
+                untrack(() => {
+                    effect(() => {
+                        onCleanup(() => { log.push('b'); });
+                    });
+                    onCleanup(() => { log.push('c'); });
+                });
+                root((d) => {
+                    onCleanup(() => { log.push('d'); });
+                });
+            });
+
+        write(s, 1);
+        await Promise.resolve();
+
+        expect(log).toEqual(['a', 'b', 'c', 'd']);
+
+        stop();
+
+        // dispose() drains owned children after the owner's own cleanups, exactly as for tracked children
+        expect(log.slice(4).sort()).toEqual(['a', 'b', 'c', 'd']);
+    });
+
+    it('reads inside untrack still do not subscribe, nor do reads of untracked children', async () => {
+        let a = signal(0),
+            b = signal(0),
+            runs = 0;
+
+        effect(() => {
+            runs++;
+            untrack(() => {
+                read(a);
+                computed(() => read(b));
+            });
+        });
+
+        write(a, 1);
+        write(b, 1);
+        await Promise.resolve();
+
+        expect(runs).toBe(1);
+    });
+
+    it('outside any computation creations stay unowned', () => {
+        let log: string[] = [],
+            stop = untrack(() => {
+                onCleanup(() => { log.push('dropped'); });
+
+                return effect(() => {
+                    onCleanup(() => { log.push('effect'); });
+                });
+            }),
+            c = untrack(() => computed(() => 1)) as Computed<unknown>;
+
+        expect(c.owner).toBe(null);
+
+        stop();
+
+        expect(log).toEqual(['effect']);
+    });
+
+    it('inside root((d) => ...) creations stay owned by the root', () => {
+        let log: string[] = [];
+
+        root((d) => {
+            untrack(() => {
+                onCleanup(() => { log.push('cleanup'); });
+                effect(() => {
+                    onCleanup(() => { log.push('effect'); });
+                });
+            });
+            d();
+        });
+
+        expect(log).toEqual(['cleanup', 'effect']);
+    });
+
+    it('nested untrack keeps the running computation as owner', async () => {
+        let log: number[] = [],
+            s = signal(0),
+            stop = effect(() => {
+                let v = read(s);
+
+                untrack(() => untrack(() => onCleanup(() => { log.push(v); })));
+            });
+
+        write(s, 1);
+        await Promise.resolve();
+        stop();
+
+        expect(log).toEqual([0, 1]);
+    });
+
+    it('a zero-arg root inside untrack stays detached', async () => {
+        let log: number[] = [],
+            s = signal(0),
+            stop = effect(() => {
+                let v = read(s);
+
+                untrack(() => root(() => {
+                    onCleanup(() => { log.push(-1); });
+                    untrack(() => effect(() => {
+                        onCleanup(() => { log.push(v); });
+                    }));
+                }));
+            });
+
+        write(s, 1);
+        await Promise.resolve();
+        stop();
+
+        // Neither the root's cleanup (no owner) nor its effects are torn down by the outer effect
+        expect(log).toEqual([]);
+    });
+
+    it('restores owner and observer when fn throws', async () => {
+        let a = signal(0),
+            runs = 0;
+
+        effect(() => {
+            runs++;
+
+            try {
+                untrack(() => {
+                    throw new Error('boom');
+                });
+            }
+            catch {
+                // only restoration is under test
+            }
+
+            read(a);
+        });
+
+        expect(untrack(() => hasOwner())).toBe(false);
+
+        write(a, 1);
+        await Promise.resolve();
+
+        expect(runs).toBe(2);
+    });
+
+    it('an async computed created inside untrack is owned by the running computation', async () => {
+        let log: string[] = [],
+            s = signal(0),
+            stop = effect(() => {
+                let v = read(s);
+
+                untrack(() => computed(async () => {
+                    onCleanup(() => { log.push(`factory ${v}`); });
+                    return v;
+                }));
+            });
+
+        write(s, 1);
+        await Promise.resolve();
+
+        expect(log).toEqual(['factory 0']);
+
+        stop();
+
+        expect(log).toEqual(['factory 0', 'factory 1']);
     });
 });
 

@@ -551,19 +551,36 @@ describe('ownership throwing cleanup', () => {
 
 
 describe('hasOwner', () => {
-    it('is true inside a tracking root or a run, false outside and in a detached root', () => {
+    it('is true inside a tracking root or a run (also untracked), false outside and in a detached root', () => {
         let seen: boolean[] = [],
             stop = effect(() => {
                 seen.push(hasOwner());
                 seen.push(untrack(() => hasOwner()));
+                seen.push(untrack(() => root(() => hasOwner())));
             });
 
         seen.push(hasOwner());
+        seen.push(untrack(() => hasOwner()));
         root((d) => { seen.push(hasOwner()); d(); });
         root(() => { seen.push(hasOwner()); });
         stop();
 
-        expect(seen).toEqual([true, false, false, true, false]);
+        expect(seen).toEqual([true, true, false, false, false, true, false]);
+    });
+
+    it('is true inside untrack during a re-run', async () => {
+        let s = signal(0),
+            seen: boolean[] = [],
+            stop = effect(() => {
+                read(s);
+                seen.push(untrack(() => hasOwner()));
+            });
+
+        write(s, 1);
+        await Promise.resolve();
+        stop();
+
+        expect(seen).toEqual([true, true]);
     });
 });
 

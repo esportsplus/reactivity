@@ -236,7 +236,7 @@ These operate directly on signal/computed nodes — the transformer emits them, 
 | `read(node)` | Reads a signal or computed value, subscribing the current scope |
 | `write(signal, value)` | Sets a signal value |
 | `peek(node)` | Reads a signal/computed's current value **without** subscribing (returns an up-to-date value even for a dirty computed) |
-| `untrack(fn)` | Runs `fn` without tracking dependencies; returns `fn`'s result |
+| `untrack(fn)` | Runs `fn` without tracking dependencies; returns `fn`'s result. Ownership is unchanged: effects, computeds, child roots and `onCleanup` created inside are owned by the running effect/computed (or the enclosing `root((dispose) => …)`) and torn down on its next re-run or dispose. Use a zero-arg `root(() => …)` for deliberately detached work |
 | `batch(fn)` | Groups writes so dependent effects defer until `fn` returns; pair with `flush()` for a synchronous transaction |
 | `flush()` | Synchronously settles all pending computed/effect updates |
 | `dispose(computed)` | Disposes a computed and its dependencies |
