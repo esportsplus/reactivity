@@ -158,10 +158,11 @@ class ReactiveArray<T> extends Array<T> {
         let dirty = false,
             errors: unknown[] | null = null;
 
+        // n is fixed: a listener unsubscribed mid-dispatch leaves a null (or, once trimmed, a missing) slot
         for (let i = 0, n = listeners.length; i < n; i++) {
             let listener = listeners[i];
 
-            if (listener === null) {
+            if (listener == null) {
                 continue;
             }
 
@@ -181,9 +182,7 @@ class ReactiveArray<T> extends Array<T> {
         }
 
         if (dirty) {
-            while (listeners.length && listeners[listeners.length - 1] === null) {
-                listeners.pop();
-            }
+            this.prune(event, listeners);
         }
 
         if (errors !== null) {
@@ -205,7 +204,9 @@ class ReactiveArray<T> extends Array<T> {
         write(this._length, 0);
     }
 
-    on<K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) {
+    // Returns the unsubscribe. A listener already registered for the event is not added twice, and either
+    // registration's unsubscribe removes it.
+    on<K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>): VoidFunction {
         let entry = listener as AnyListener<T>,
             listeners = this.listeners[event];
 
@@ -213,30 +214,58 @@ class ReactiveArray<T> extends Array<T> {
             this.listeners[event] = [entry];
         }
         else {
-            let hole = listeners.length;
+            let hole = listeners.length,
+                registered = false;
 
             for (let i = 0, n = hole; i < n; i++) {
                 let l = listeners[i];
 
                 if (l === entry) {
-                    return;
+                    registered = true;
+                    break;
                 }
                 else if (l === null && hole === n) {
                     hole = i;
                 }
             }
 
-            listeners[hole] = entry;
-
-            while (listeners.length && listeners[listeners.length - 1] === null) {
-                listeners.pop();
+            if (!registered) {
+                listeners[hole] = entry;
+                this.prune(event, listeners);
             }
         }
+
+        return () => {
+            let current = this.listeners[event];
+
+            if (current === undefined) {
+                return;
+            }
+
+            let i = current.indexOf(entry);
+
+            if (i !== -1) {
+                current[i] = null;
+                this.prune(event, current);
+            }
+        };
     }
 
-    once<K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>) {
+    once<K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>): VoidFunction {
         listener.once = true;
-        this.on(event, listener);
+
+        return this.on(event, listener);
+    }
+
+    // Trims trailing empty slots; an event left with no listeners is deleted, so e.g. sort() skips computing its order
+    private prune<K extends keyof Events<T>>(event: K, listeners: (AnyListener<T> | null)[]) {
+        while (listeners.length && listeners[listeners.length - 1] === null) {
+            listeners.pop();
+        }
+
+        if (listeners.length === 0 && this.listeners[event] === listeners) {
+            delete this.listeners[event];
+        }
     }
 
     pop() {

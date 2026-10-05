@@ -767,6 +767,74 @@ describe('ReactiveArray', () => {
             expect(calls).toBe(1);
         });
 
+        it('on returns an unsubscribe that stops the listener', () => {
+            let arr = new ReactiveArray<number>(),
+                calls = 0,
+                off = arr.on('push', () => { calls++; });
+
+            arr.push(1);
+            off();
+            arr.push(2);
+            off();
+
+            expect(calls).toBe(1);
+        });
+
+        it('a listener unsubscribing during dispatch does not disturb the others', () => {
+            let arr = new ReactiveArray<number>(),
+                calls: string[] = [],
+                offB: VoidFunction = () => {},
+                offA = arr.on('push', () => {
+                    calls.push('a');
+                    offA();
+                    offB();
+                });
+
+            offB = arr.on('push', () => { calls.push('b'); });
+            arr.on('push', () => { calls.push('c'); });
+            arr.push(1);
+            arr.push(2);
+
+            expect(calls).toEqual(['a', 'c', 'c']);
+        });
+
+        it('deletes the event once its last listener unsubscribes', () => {
+            let arr = new ReactiveArray<number>(),
+                a = arr.on('push', () => {}),
+                b = arr.on('push', () => {});
+
+            a();
+
+            expect(arr.listeners.push!.filter(Boolean)).toHaveLength(1);
+
+            b();
+
+            expect('push' in arr.listeners).toBe(false);
+
+            arr.once('push', () => {});
+            arr.push(1);
+
+            expect('push' in arr.listeners).toBe(false);
+        });
+
+        it('sorts without computing an order once no sort listener remains', () => {
+            let arr = new ReactiveArray<number>([3, 1, 2]),
+                calls = 0,
+                off = arr.on('sort', () => { calls++; });
+
+            arr.sort((a, b) => a - b);
+            off();
+
+            let dispatch = vi.spyOn(arr, 'dispatch');
+
+            arr.sort((a, b) => b - a);
+
+            expect(calls).toBe(1);
+            expect([...arr]).toEqual([3, 2, 1]);
+            expect('sort' in arr.listeners).toBe(false);
+            expect(dispatch).not.toHaveBeenCalled();
+        });
+
         it('once fires only once', () => {
             let arr = new ReactiveArray<number>(),
                 calls = 0;

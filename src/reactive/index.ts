@@ -1,6 +1,6 @@
-import { onCleanup, root } from '@esportsplus/reactivity';
 import { isArray, isObject } from '@esportsplus/utilities';
 import { PACKAGE_NAME } from '~/constants';
+import { onCleanup, root } from '~/system';
 import type { Reactive } from '~/types';
 import { ReactiveArray } from './array';
 import { ReactiveObject } from './object';
