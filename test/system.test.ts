@@ -686,10 +686,10 @@ describe('computed object size', () => {
         expect('type' in c).toBe(false);
     });
 
-    it('has no more own properties than 17 (14 slimmed + gv + rv + pending)', () => {
+    it('has no more own properties than 22 (14 slimmed + gv + rv + pending + 5 ownership)', () => {
         let c = computed(() => 42);
 
-        expect(Object.keys(c).length).toBeLessThanOrEqual(17);
+        expect(Object.keys(c).length).toBeLessThanOrEqual(22);
     });
 
     it('shares one shape between sync and async computeds', () => {

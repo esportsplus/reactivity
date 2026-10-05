@@ -16,7 +16,8 @@ type Walk = {
     prev: Walk | null;
 };
 
-let asyncMeta = new WeakMap<Computed<unknown>, { factory: Computed<unknown> }>(),
+// Async wrapper -> the factory computed it settles, so invalidate() can redirect a refetch to it
+let asyncFactory = new WeakMap<Computed<unknown>, Computed<unknown>>(),
     depth = 0,
     disposeHead: Walk | null = null,
     draining = false,
@@ -67,36 +68,46 @@ function walkPush(computed: Computed<unknown> | null, link: Link | null, prev: W
 }
 
 
+// Owned children merge with the user cleanups by ownerSlot, so both run in registration order. Each
+// child is taken from the live list head and disowned before its dispose, so a cleanup that disposes
+// a later sibling just shortens the list.
 function cleanup<T>(computed: Computed<T>): void {
-    if (!computed.cleanup) {
-        return;
-    }
-
-    let errors: unknown[] = [],
+    let child = computed.owned,
         value = computed.cleanup;
 
     computed.cleanup = null;
 
-    if (typeof value === 'function') {
-        try {
-            value();
-        }
-        catch (e) {
-            errors.push(e);
-        }
+    if (child === null && typeof value === 'function') {
+        value();
+        return;
     }
-    else {
-        for (let i = 0, n = value.length; i < n; i++) {
+
+    let errors: unknown[] | null = null,
+        n = value === null ? 0 : typeof value === 'function' ? 1 : value.length;
+
+    for (let i = 0; i <= n; i++) {
+        while ((child = computed.owned) !== null && (i === n || child.ownerSlot <= i)) {
+            disown(child);
+
             try {
-                value[i]();
+                dispose(child);
             }
             catch (e) {
-                errors.push(e);
+                (errors ??= []).push(e);
+            }
+        }
+
+        if (i < n) {
+            try {
+                (typeof value === 'function' ? value : value![i])();
+            }
+            catch (e) {
+                (errors ??= []).push(e);
             }
         }
     }
 
-    if (errors.length) {
+    if (errors !== null) {
         throw errors.length === 1 ? errors[0] : new AggregateError(errors, `${PACKAGE_NAME}: cleanup produced multiple errors`);
     }
 }
@@ -132,6 +143,27 @@ function deleteFromHeap<T>(computed: Computed<T>) {
 
     computed.nextHeap = undefined;
     computed.prevHeap = computed;
+}
+
+// O(1) removal from the owner's owned list; the head's prevOwned is the tail, as in the heap buckets
+function disown(child: Computed<unknown>) {
+    let next = child.nextOwned,
+        owner = child.owner!,
+        prev = child.prevOwned!;
+
+    if (owner.owned === child) {
+        owner.owned = next;
+
+        if (next !== null) {
+            next.prevOwned = prev;
+        }
+    }
+    else {
+        prev.nextOwned = next;
+        (next ?? owner.owned!).prevOwned = prev;
+    }
+
+    child.nextOwned = child.owner = child.prevOwned = null;
 }
 
 // N writes to one signal queue it once, so each subscriber is heap-inserted once. A self-linked
@@ -313,6 +345,29 @@ function notify<T>(computed: Computed<T>, newState: number) {
     }
 }
 
+// Child owners (a root with a dispose param, a computed/effect created under an owner) link into the
+// owner's list instead of registering a dispose closure, so an early dispose unlinks in O(1).
+// ownerSlot snapshots how many user cleanups precede the child for cleanup()'s ordering merge.
+function own(owner: Computed<unknown>, child: Computed<unknown>) {
+    let head = owner.owned,
+        value = owner.cleanup;
+
+    child.owner = owner;
+    child.ownerSlot = value === null ? 0 : typeof value === 'function' ? 1 : value.length;
+
+    if (head === null) {
+        owner.owned = child;
+        child.prevOwned = child;
+    }
+    else {
+        let tail = head.prevOwned!;
+
+        tail.nextOwned = child;
+        child.prevOwned = tail;
+        head.prevOwned = child;
+    }
+}
+
 // Shared by read()'s tracked pull and peek()'s untracked pull. observer is nulled around update()
 // so a recompute triggered here tracks into the node's own scope, never the caller's. pulled/puller
 // let propagate() skip re-queueing the caller: it receives the fresh value when this returns.
@@ -371,7 +426,7 @@ function recompute<T>(computed: Computed<T>) {
         deleteFromHeap(computed);
     }
 
-    if (computed.cleanup) {
+    if (computed.cleanup !== null || computed.owned !== null) {
         // A failing PREVIOUS generation's teardown must not poison this recompute or the stabilize pass
         try {
             cleanup(computed);
@@ -727,7 +782,7 @@ function makeAsyncComputed<T>(factory: Computed<Promise<T> | AsyncIterable<T> | 
 
     wrapper.pending = pending;
 
-    asyncMeta.set(wrapper as Computed<unknown>, { factory: factory as Computed<unknown> });
+    asyncFactory.set(wrapper as Computed<unknown>, factory as Computed<unknown>);
     wrapper.disposal = stop;
 
     return wrapper;
@@ -755,13 +810,13 @@ function makeComputed<T>(fn: Computed<T>['fn'], eager: boolean = false): Compute
         }
 
         link(self, observer);
-        onCleanup(() => dispose(self));
+        own(observer, self as Computed<unknown>);
     }
     else {
         recompute(self);
 
         if (scope) {
-            onCleanup(() => dispose(self));
+            own(scope, self as Computed<unknown>);
         }
     }
 
@@ -782,8 +837,13 @@ function makeNode<T>(fn: Computed<T>['fn']): Computed<T> {
             gv: 0,
             height: 0,
             nextHeap: undefined,
+            nextOwned: null,
+            owned: null,
+            owner: null,
+            ownerSlot: 0,
             pending: null,
             prevHeap: null as unknown as Computed<unknown>,
+            prevOwned: null,
             rv: 0,
             state: STATE_COMPUTED,
             subs: null,
@@ -824,14 +884,17 @@ const computed = <T>(fn: Computed<T>['fn'], equals: ((a: Settled<T>, b: Settled<
         value = self.value;
 
     if (isPromise(value) || (value != null && typeof (value as { [Symbol.asyncIterator]?: unknown })[Symbol.asyncIterator] === 'function')) {
-        // Built untracked: makeAsyncComputed's polling effect + wrapper take makeComputed's
+        // Built in a detached root: makeAsyncComputed's polling effect + wrapper take makeComputed's
         // observer-null path (the proven top-level flow) instead of entangling with the enclosing
         // observer's recompute, which deadlocks the scheduler. The probe is already linked+owned by
-        // the parent as the factory; the wrapper needs its own teardown tied to that same scope.
-        self = untrack(() => makeAsyncComputed(self as Computed<Promise<unknown> | AsyncIterable<unknown>>));
+        // the parent as the factory; the wrapper (whose disposal stops the polling effect) is owned
+        // by that same owner.
+        let owner = o || scope;
 
-        if (o) {
-            onCleanup(() => dispose(self));
+        self = root(() => makeAsyncComputed(self as Computed<Promise<unknown> | AsyncIterable<unknown>>));
+
+        if (owner !== null) {
+            own(owner, self);
         }
     }
 
@@ -844,10 +907,10 @@ const computed = <T>(fn: Computed<T>['fn'], equals: ((a: Settled<T>, b: Settled<
 // node cannot skip the forced re-run via update()'s clean-graph fast path; an async computed's wrapper
 // redirects to its factory so the promise re-dispatches (a refetch).
 computed.invalidate = <T>(c: Computed<T>): void => {
-    let meta = asyncMeta.get(c);
+    let factory = asyncFactory.get(c as Computed<unknown>);
 
-    if (meta) {
-        computed.invalidate(meta.factory);
+    if (factory) {
+        computed.invalidate(factory);
         return;
     }
 
@@ -860,7 +923,8 @@ computed.invalidate = <T>(c: Computed<T>): void => {
 // Teardown runs as an iterative LIFO drain, not recursion: a recursive dispose→unlink→dispose cascade
 // overflows the call stack on deep chains. A dispose issued while a drain runs enqueues and returns,
 // so the running drain picks it up. Field-nulling keeps the drain exactly-once, so a double dispose
-// stays a no-op. The try/finally guarantees `draining` resets even if a cleanup/disposal callback throws.
+// stays a no-op. Cleanup/disposal errors are collected and rethrown once the drain empties, so a
+// throwing cleanup never strands queued nodes; the try/finally still guarantees `draining` resets.
 const dispose = <T>(computed: Computed<T>): void => {
     // A dispose issued mid-drain only enqueues; the running drain picks it up, so the first node is
     // processed inline (no worklist node) and the pool is touched only for re-entrant deep cascades.
@@ -871,7 +935,8 @@ const dispose = <T>(computed: Computed<T>): void => {
 
     draining = true;
 
-    let node: Computed<unknown> = computed as Computed<unknown>;
+    let errors: unknown[] | null = null,
+        node: Computed<unknown> = computed as Computed<unknown>;
 
     try {
         for (;;) {
@@ -885,15 +950,30 @@ const dispose = <T>(computed: Computed<T>): void => {
 
             node.deps = null;
 
-            if (node.cleanup) {
-                cleanup(node);
+            if (node.owner !== null) {
+                disown(node);
+            }
+
+            if (node.cleanup !== null || node.owned !== null) {
+                try {
+                    cleanup(node);
+                }
+                catch (e) {
+                    (errors ??= []).push(e);
+                }
             }
 
             if (node.disposal) {
                 let d = node.disposal;
 
                 node.disposal = null;
-                d();
+
+                try {
+                    d();
+                }
+                catch (e) {
+                    (errors ??= []).push(e);
+                }
             }
 
             if (disposeHead === null) {
@@ -906,6 +986,10 @@ const dispose = <T>(computed: Computed<T>): void => {
     }
     finally {
         draining = false;
+    }
+
+    if (errors !== null) {
+        throw errors.length === 1 ? errors[0] : new AggregateError(errors, `${PACKAGE_NAME}: dispose produced multiple errors`);
     }
 };
 
@@ -947,6 +1031,9 @@ const flush = (): void => {
         stabilize();
     }
 };
+
+// Whether an onCleanup() made now would land on an owner (a running computed/effect or a root's scope)
+const hasOwner = (): boolean => observer !== null || scope !== null;
 
 const isComputed = (value: unknown): value is Computed<unknown> => {
     return isObject(value) && !!((value as unknown as Computed<unknown>).state & STATE_COMPUTED);
@@ -1028,11 +1115,11 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
     return node.value;
 };
 
+// Owned before fn runs (nothing can register on the owner meanwhile, so ownerSlot is unchanged): a
+// root disposed inside its own fn then unlinks instead of being parked on the owner as a dead child.
 const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
-    let c,
-        o = observer,
+    let o = observer,
         s = scope,
-        self: Computed<unknown> | null = null,
         tracking = fn.length,
         value: T;
 
@@ -1040,8 +1127,15 @@ const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
 
     try {
         if (tracking) {
-            scope = self = makeNode(noop);
-            value = (fn as (dispose: VoidFunction) => T)(c = () => dispose(self!));
+            let self = makeNode(noop),
+                owner = o || s;
+
+            if (owner !== null) {
+                own(owner, self);
+            }
+
+            scope = self;
+            value = (fn as (dispose: VoidFunction) => T)(() => dispose(self));
         }
         else {
             scope = null;
@@ -1051,10 +1145,6 @@ const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
     finally {
         observer = o;
         scope = s;
-    }
-
-    if (c) {
-        onCleanup(c);
     }
 
     return value;
@@ -1166,6 +1256,7 @@ export {
     dispose,
     effect,
     flush,
+    hasOwner,
     isComputed, isSignal,
     onCleanup,
     peek,

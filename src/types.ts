@@ -13,8 +13,13 @@ interface Computed<T> {
     gv: number;
     height: number;
     nextHeap: Computed<unknown> | undefined;
+    nextOwned: Computed<unknown> | null;
+    owned: Computed<unknown> | null;
+    owner: Computed<unknown> | null;
+    ownerSlot: number;
     pending: Signal<boolean> | null;
     prevHeap: Computed<unknown>;
+    prevOwned: Computed<unknown> | null;
     rv: number;
     state: number;
     subs: Link | null;
