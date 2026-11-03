@@ -8,13 +8,13 @@ importers:
 
   .:
     dependencies:
+      '@esportsplus/typescript':
+        specifier: link:../typescript
+        version: link:../typescript
       '@esportsplus/utilities':
         specifier: ^0.28.6
         version: 0.28.6
     devDependencies:
-      '@esportsplus/typescript':
-        specifier: link:../typescript
-        version: link:../typescript
       '@types/node':
         specifier: ^26.6.6
         version: 26.6.6

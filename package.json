@@ -1,10 +1,10 @@
 {
     "author": "ICJR",
     "dependencies": {
+        "@esportsplus/typescript": "link:../typescript",
         "@esportsplus/utilities": "^0.28.6"
     },
     "devDependencies": {
-        "@esportsplus/typescript": "link:../typescript",
         "@types/node": "^26.6.6",
         "oxlint": "^1.90.0",
         "oxlint-tsgolint": "^7.0.2005",
