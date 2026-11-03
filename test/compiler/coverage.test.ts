@@ -73,7 +73,7 @@ function project(files: Record<string, string>) {
     return {
         directory,
         plugin,
-        transform: (name: string) => plugin.transform(files[name], directory + '/' + name)
+        transform: (name: string) => plugin.transform.handler(files[name], directory + '/' + name)
     };
 }
 

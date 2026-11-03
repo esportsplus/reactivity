@@ -94,7 +94,7 @@ function compile(name: string): string | null {
 
     plugin.configResolved({ command: 'build', root: directory });
 
-    return plugin.transform(FILES[name], directory + '/' + name)?.code ?? null;
+    return plugin.transform.handler(FILES[name], directory + '/' + name)?.code ?? null;
 }
 
 

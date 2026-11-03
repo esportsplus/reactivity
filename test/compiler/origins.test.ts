@@ -85,7 +85,7 @@ function compile(name: string, files: Record<string, string> = FILES): string {
 
     plugin.configResolved({ command: 'build', root: directory });
 
-    return plugin.transform(files[name], directory + '/' + name)?.code ?? files[name];
+    return plugin.transform.handler(files[name], directory + '/' + name)?.code ?? files[name];
 }
 
 

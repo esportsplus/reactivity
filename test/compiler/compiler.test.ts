@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { ts } from '@esportsplus/typescript';
-import { languageService } from '@esportsplus/typescript/compiler';
+import { coordinator, languageService } from '@esportsplus/typescript/compiler';
 import type { ReplacementIntent } from '@esportsplus/typescript/compiler';
 import { NAMESPACE, TYPES } from '~/compiler/constants';
 import type { Bindings } from '~/compiler/types';
@@ -21,7 +21,7 @@ function applyIntents(code: string, sourceFile: ts.SourceFile, intents: Replacem
             end = intent.node.getEnd(),
             start = intent.node.getStart(sourceFile);
 
-        code = code.slice(0, start) + intent.generate(sourceFile) + code.slice(end);
+        code = code.slice(0, start) + intent.generate(sourceFile, node => node.getText(sourceFile)) + code.slice(end);
     }
 
     return code;
@@ -40,16 +40,15 @@ function parse(code: string): { bindings: Bindings; code: string; isReactiveCall
     return { bindings, code, isReactiveCall: (node): node is ts.CallExpression => scope.isReactiveCall(bindings, node), sourceFile };
 }
 
-// Full pipeline over a module importing reactive(): what a real consumer compiles
+// Full pipeline over a module importing reactive(), composed by the coordinator: what a real consumer compiles
 function transformModule(code: string): string {
     return transformSource(`import { reactive } from '@esportsplus/reactivity';\n` + code);
 }
 
 function transformSource(code: string): string {
-    let { checker, program, sourceFile } = languageService.scratch(process.cwd() + '/module.ts', code),
-        result = pipeline.transform({ checker, code, program, sourceFile } as never);
+    let { checker, program, sourceFile } = languageService.scratch(process.cwd() + '/module.ts', code);
 
-    return applyIntents(code, sourceFile, result.replacements ?? []);
+    return coordinator.transform([pipeline], code, sourceFile, { checker, program }, process.cwd(), new Map()).code;
 }
 
 function transformPrimitives(source: string): { bindings: Bindings; failures: string[]; output: string } {
