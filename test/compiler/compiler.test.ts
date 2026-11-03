@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { ts } from '@esportsplus/typescript';
 import { coordinator, languageService } from '@esportsplus/typescript/compiler';
 import type { ReplacementIntent } from '@esportsplus/typescript/compiler';
-import { NAMESPACE, TYPES } from '~/compiler/constants';
+import { NAMESPACE, PACKAGE_NAME, TYPES } from '~/compiler/constants';
 import type { Bindings } from '~/compiler/types';
 import array from '~/compiler/array';
 import scope from '~/compiler/bindings';
@@ -508,15 +508,30 @@ describe('binding resolution (full pipeline)', () => {
 
 
 describe('index transform', () => {
-    // A module can reach reactive() or read a binding under any name, so no text prefilter may skip it
+    // A module can reach reactive() or read a binding under any name, so no name prefilter may skip it
     it('has no text patterns', () => {
         expect('patterns' in pipeline).toBe(false);
+    });
+
+    it('names itself in coordinator errors', () => {
+        expect(pipeline.name).toBe(PACKAGE_NAME);
     });
 
     it('has transform function', () => {
         expect(typeof pipeline.transform).toBe('function');
     });
-});
+
+    it('skips a module without an import before resolving anything', () => {
+        let code = 'let reactive = (n: number) => n;\nexport let x = reactive(1);',
+            { program, sourceFile } = languageService.scratch(process.cwd() + '/plain.ts', code),
+            checker = new Proxy({}, {
+                get: () => {
+                    throw new Error('checker queried');
+                }
+            }) as ts.Checker;
+
+        expect(pipeline.transform({ checker, code, program, shared: new Map(), sourceFile })).toEqual({});
+    });});
 
 
 describe('plugins', () => {

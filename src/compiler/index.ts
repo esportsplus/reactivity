@@ -9,6 +9,11 @@ import primitives from './primitives';
 import scope from './bindings';
 
 
+// A binding from this package is only ever reached through an import, so a module without one has
+// nothing to compile and is not resolved at all
+const REGEX_IMPORT = /\bimport\b|\brequire\s*\(/;
+
+
 // Every use the compiler cannot lower fails the build, all of them reported at once: shipping one
 // would leave an uncompiled reactive() or an unread signal in the output
 function failed(sourceFile: ts.SourceFile, failures: Failure[]): Error {
@@ -79,11 +84,16 @@ function siteOf(identifier: ts.Node): ts.Node {
 }
 
 
-// No text patterns: a module can reach `reactive`, or read a reactive binding, under any name
-// (a barrel's rename, a default re-export, a namespace), so every module is resolved against the
-// program and compiled exactly where its values resolve to reactive declarations
+// No name patterns: a module can reach `reactive`, or read a reactive binding, under any name
+// (a barrel's rename, a default re-export, a namespace), so every module that imports anything is
+// resolved against the program and compiled exactly where its values resolve to reactive declarations
 export default {
+    name: PACKAGE_NAME,
     transform: (ctx: TransformContext) => {
+        if (!REGEX_IMPORT.test(ctx.code)) {
+            return {};
+        }
+
         let { checker, program, sourceFile } = ctx,
             bindings = scope.create(checker, program, sourceFile),
             calls = new Set<ts.Node>(),
