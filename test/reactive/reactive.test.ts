@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { computed, effect, onCleanup, read, signal, write } from '~/system';
 import { SIGNAL } from '~/constants';
-import { ReactiveObject, isReactiveObject } from '~/reactive/object';
+import { isReactiveObject, ReactiveObject } from '~/reactive/object';
 import reactive from '~/reactive/index';
 import { ReactiveArray } from '~/reactive/array';
 import { tick, waitFor } from '../lib/wait-for';
