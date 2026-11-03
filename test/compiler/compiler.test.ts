@@ -531,6 +531,34 @@ describe('index transform', () => {
             }) as ts.Checker;
 
         expect(pipeline.transform({ checker, code, program, shared: new Map(), sourceFile })).toEqual({});
+    });
+
+    it('classifies every reactive() argument from one batched type request', () => {
+        let code = "import { reactive } from '@esportsplus/reactivity';\ndeclare let n: number;\ndeclare function total(): number;\nlet a = reactive(n);\nlet b = reactive(total);\nlet c = a + b + a + b;",
+            { checker, program, sourceFile } = languageService.scratch(process.cwd() + '/batched.ts', code),
+            single = 0,
+            counted = new Proxy(checker, {
+                get(target, key) {
+                    let value = Reflect.get(target, key);
+
+                    if (key !== 'getTypeAtLocation' || typeof value !== 'function') {
+                        return value;
+                    }
+
+                    return (node: unknown) => {
+                        if (!Array.isArray(node)) {
+                            single++;
+                        }
+
+                        return value.call(target, node);
+                    };
+                }
+            }),
+            output = coordinator.transform([pipeline], code, sourceFile, { checker: counted, program }, process.cwd(), new Map()).code;
+
+        expect(output).toContain(`let a = ${NAMESPACE}.signal(n);`);
+        expect(output).toContain(`let b = ${NAMESPACE}.computed(total);`);
+        expect(single).toBe(0);
     });});
 
 

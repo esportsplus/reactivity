@@ -96,27 +96,18 @@ export default {
 
         let { checker, program, sourceFile } = ctx,
             bindings = scope.create(checker, program, sourceFile),
-            calls = new Set<ts.Node>(),
+            calls = new Set<ts.CallExpression>(),
             dependencies = new Set<string>(),
+            entries = new Set<ts.Node>(),
             failures: Failure[] = [],
             self = sourceFile.fileName.toLowerCase();
 
         for (let [identifier, found] of bindings.origins) {
-            let entry = scope.holds(bindings, found);
-
-            if (!entry && scope.kind(bindings, found) === null) {
+            if (!scope.holds(bindings, found)) {
                 continue;
             }
 
-            for (let file of [...found.through, found.declaration.path]) {
-                if (file.toLowerCase() !== self) {
-                    dependencies.add(file);
-                }
-            }
-
-            if (!entry) {
-                continue;
-            }
+            entries.add(identifier);
 
             let site = siteOf(identifier),
                 parent = site.parent;
@@ -136,7 +127,22 @@ export default {
             }
         }
 
-        let isReactiveCall = (node: ts.Node): node is ts.CallExpression => calls.has(node),
+        // Every call is known before any binding is classified, so their argument types arrive in one request
+        scope.prefetch(bindings, [...calls]);
+
+        for (let [identifier, found] of bindings.origins) {
+            if (!entries.has(identifier) && scope.kind(bindings, found) === null) {
+                continue;
+            }
+
+            for (let file of [...found.through, found.declaration.path]) {
+                if (file.toLowerCase() !== self) {
+                    dependencies.add(file);
+                }
+            }
+        }
+
+        let isReactiveCall = (node: ts.Node): node is ts.CallExpression => calls.has(node as ts.CallExpression),
             intents = {
                 imports: [] as ImportIntent[],
                 prepend: [] as string[],

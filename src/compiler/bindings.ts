@@ -1,5 +1,5 @@
 import { ts } from '@esportsplus/typescript';
-import { references } from '@esportsplus/typescript/compiler';
+import { checker, references } from '@esportsplus/typescript/compiler';
 import type { Origin } from '@esportsplus/typescript/compiler';
 import { ENTRYPOINT, PACKAGE_NAME, TYPES } from './constants';
 import type { Bindings } from './types';
@@ -7,7 +7,9 @@ import type { Bindings } from './types';
 
 type Assignment = { call: ts.CallExpression; target: ts.Identifier };
 
-// Per program snapshot: answers about declarations and types hold for the snapshot's lifetime
+// Per program snapshot: answers about declarations and types hold for the snapshot's lifetime. `arrays`
+// and `kinds` hold answers built from queries the shared checker does not memoize (getPropertyOfType,
+// getNonNullableType, isArrayType), so dropping them costs a round-trip per array candidate or read
 type Caches = {
     arrays: Map<number, boolean>;
     assignments: Map<string, Map<string, Assignment[]>>;
@@ -204,13 +206,19 @@ const classify = (bindings: Bindings, call: ts.CallExpression): TYPES | null => 
     return type ? kindOf(bindings.checker, type) : null;
 };
 
-const create = (checker: ts.Checker, program: ts.Program, sourceFile: ts.SourceFile): Bindings => ({
-    checker,
-    entries: new Set(references.exported(checker, program, PACKAGE_NAME, ENTRYPOINT).map(references.key)),
-    origins: references.origins(checker, program, sourceFile),
-    program,
-    sourceFile
-});
+// Memoized per program (an already memoized checker is kept as is), so batched and repeated queries
+// share one cache whoever hands the checker in
+const create = (queries: ts.Checker, program: ts.Program, sourceFile: ts.SourceFile): Bindings => {
+    let memoized = checker.cached(queries, program);
+
+    return {
+        checker: memoized,
+        entries: new Set(references.exported(memoized, program, PACKAGE_NAME, ENTRYPOINT).map(references.key)),
+        origins: references.origins(memoized, program, sourceFile),
+        program,
+        sourceFile
+    };
+};
 
 // Whether a callee expression denotes `reactive`: `reactive`, an alias, `ns.reactive`, `ns['reactive']`
 const denotes = (bindings: Bindings, expression: ts.Expression): boolean => {
@@ -293,6 +301,37 @@ const origin = (bindings: Bindings, node: ts.Node): Origin | null => {
     return bindings.origins.get(node) ?? references.origin(bindings.checker, bindings.program, node);
 };
 
+// Types of the arguments classify() reads from the checker, requested in one round-trip; the
+// memoized checker then answers each classify() from that request
+const prefetch = (bindings: Bindings, calls: ts.CallExpression[]): void => {
+    let nodes: ts.Node[] = [];
+
+    for (let i = 0, n = calls.length; i < n; i++) {
+        let arg = calls[i].arguments[0];
+
+        if (!arg || calls[i].arguments.length !== 1 || ts.isSpreadElement(arg)) {
+            continue;
+        }
+
+        let value = unwrap(arg);
+
+        if (
+            ts.isArrayLiteralExpression(value) ||
+            ts.isArrowFunction(value) ||
+            ts.isFunctionExpression(value) ||
+            ts.isObjectLiteralExpression(value)
+        ) {
+            continue;
+        }
+
+        nodes.push(arg);
+    }
+
+    if (nodes.length > 0) {
+        bindings.checker.getTypeAtLocation(nodes);
+    }
+};
+
 
 // The expression a value comes from, without parentheses, `!` and type assertions
 const unwrap = (expression: ts.Expression): ts.Expression => {
@@ -300,4 +339,4 @@ const unwrap = (expression: ts.Expression): ts.Expression => {
 };
 
 
-export default { arrays, classify, create, denotes, holds, isReactiveCall, kind, origin, unwrap };
+export default { arrays, classify, create, denotes, holds, isReactiveCall, kind, origin, prefetch, unwrap };
