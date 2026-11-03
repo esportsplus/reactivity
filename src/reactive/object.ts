@@ -87,7 +87,7 @@ class ReactiveObject<T extends Record<PropertyKey, unknown>> {
             return;
         }
 
-        while (disposer = disposers.pop()) {
+        while ((disposer = disposers.pop())) {
             disposer();
         }
     }

@@ -6,6 +6,8 @@
     "devDependencies": {
         "@esportsplus/typescript": "link:../typescript",
         "@types/node": "^26.6.6",
+        "oxlint": "^1.90.0",
+        "oxlint-tsgolint": "^7.0.2005",
         "vite": "^8.3.5",
         "vitest": "^5.1.0"
     },
@@ -43,8 +45,10 @@
         "agent:test": "pnpm typecheck && vitest run",
         "bench": "vitest bench --run",
         "build": "tsc -p tsconfig.build.json",
+        "lint": "oxlint -c oxlintrc.json --type-aware --deny-warnings",
         "test": "vitest run",
         "typecheck": "tsc --noEmit",
+        "verify": "pnpm build && pnpm typecheck && pnpm lint && pnpm test",
         "-": "-",
         "prepare": "pnpm build",
         "prepublishOnly": "pnpm build"

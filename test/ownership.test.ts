@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computed, dispose, effect, flush, hasOwner, onCleanup, owner as current, read, root, signal, untrack, write } from '~/system';
+import { computed, owner as current, dispose, effect, flush, hasOwner, onCleanup, read, root, signal, untrack, write } from '~/system';
 import type { Computed } from '~/system';
 import { captureUncaught } from './lib/uncaught';
 

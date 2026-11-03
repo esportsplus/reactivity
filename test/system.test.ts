@@ -584,8 +584,7 @@ describe('root', () => {
             stop = dispose;
 
             try {
-                root((inner) => {
-                    inner;
+                root((_inner) => {
                     throw new Error('reactivity: inner boom');
                 });
             }

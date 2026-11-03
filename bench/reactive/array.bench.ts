@@ -231,6 +231,7 @@ test('ReactiveArray reactive length', async ({ bench }) => {
         let arr = new ReactiveArray([1, 2, 3]);
 
         let stop = effect(() => {
+            // oxlint-disable-next-line no-unused-expressions -- the tracked read is what is measured
             arr.$length;
         });
 

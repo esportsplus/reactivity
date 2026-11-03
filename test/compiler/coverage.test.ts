@@ -7,17 +7,23 @@ import vite from '~/compiler/plugins/vite';
 
 // Every route by which a module reaches `reactive`, or a binding it created, must compile
 const FILES: Record<string, string> = {
-    'state.ts': [
-        "import { reactive } from '@esportsplus/reactivity';",
-        'export let count = reactive(0);',
-        'export let list = reactive([1, 2]);',
-        'export let store = reactive({ n: 1, items: [1] });',
-        'export default reactive(0);'
-    ].join('\n'),
     'barrel.ts': [
         "export { reactive as make } from '@esportsplus/reactivity';",
         "export * as R from '@esportsplus/reactivity';",
         "export * from './state';"
+    ].join('\n'),
+    'entries.ts': [
+        "import { make, R } from './barrel';",
+        "import * as B from './barrel';",
+        'export let a = make(0);',
+        'export let b = R.reactive(0);',
+        'export let c = B.R.reactive(0);',
+        "export let d = R['reactive'](0);",
+        'const alias = make;',
+        'export let e = alias(0);',
+        'const { reactive: destructured } = R;',
+        'export let f = destructured(0);',
+        'export let g = () => a + b + c + d + e + f;'
     ].join('\n'),
     'reads.ts': [
         "import { count, list, store } from './state';",
@@ -33,18 +39,12 @@ const FILES: Record<string, string> = {
         'export let g = () => store.items.length;',
         "export let h = () => S['count'] + 1;"
     ].join('\n'),
-    'entries.ts': [
-        "import { make, R } from './barrel';",
-        "import * as B from './barrel';",
-        'export let a = make(0);',
-        'export let b = R.reactive(0);',
-        'export let c = B.R.reactive(0);',
-        "export let d = R['reactive'](0);",
-        'const alias = make;',
-        'export let e = alias(0);',
-        'const { reactive: destructured } = R;',
-        'export let f = destructured(0);',
-        'export let g = () => a + b + c + d + e + f;'
+    'state.ts': [
+        "import { reactive } from '@esportsplus/reactivity';",
+        'export let count = reactive(0);',
+        'export let list = reactive([1, 2]);',
+        'export let store = reactive({ n: 1, items: [1] });',
+        'export default reactive(0);'
     ].join('\n')
 };
 
@@ -133,8 +133,8 @@ describe('compiler coverage', () => {
 
     it('fails the build when a signal is destructured out of a module namespace', () => {
         let files = {
-                'state.ts': "import { reactive } from '@esportsplus/reactivity';\nexport let count = reactive(0);",
-                'copy.ts': "import * as S from './state';\nconst { count } = S;\nexport let n = count;"
+                'copy.ts': "import * as S from './state';\nconst { count } = S;\nexport let n = count;",
+                'state.ts': "import { reactive } from '@esportsplus/reactivity';\nexport let count = reactive(0);"
             },
             { transform } = project(files);
 

@@ -431,6 +431,7 @@ class ReactiveArray<T> extends Array<T> {
         }
         else {
             let n = this.length,
+                // oxlint-disable-next-line unicorn/no-new-array -- preallocated to n, every slot is written next
                 before = new Array(n) as T[];
 
             for (let i = 0; i < n; i++) {
@@ -440,6 +441,7 @@ class ReactiveArray<T> extends Array<T> {
             super.sort(fn);
 
             let buckets = new Map<T, { indices: number[]; next: number }>(),
+                // oxlint-disable-next-line unicorn/no-new-array -- preallocated to n, every slot is written next
                 order = new Array(n);
 
             for (let i = 0; i < n; i++) {

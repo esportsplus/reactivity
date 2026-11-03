@@ -21,6 +21,7 @@ let asyncFactory = new WeakMap<Computed<unknown>, Computed<unknown>>(),
     depth = 0,
     disposeHead: Walk | null = null,
     draining = false,
+    // oxlint-disable-next-line unicorn/no-new-array -- preallocated heap; slots are filled by height
     heap: (Computed<unknown> | undefined)[] = new Array(64),
     heap_i = 0,
     heap_n = 0,
@@ -276,6 +277,7 @@ function link<T>(dep: Signal<T> | Computed<T>, sub: Computed<T>) {
                        pooled.nextSub = null,
                        pooled.version = version,
                        pooled)
+                    // oxlint-disable-next-line sort-keys -- creation order fixes the hidden class every link shares
                     : {
                         dep,
                         sub,

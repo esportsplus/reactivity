@@ -68,10 +68,10 @@ function declare(ctx: { isReactiveCall: IsReactiveCall; replacements: Replacemen
             let typeParam = elementType ? `<${elementType}>` : '';
 
             ctx.replacements.push({
-                node,
                 generate: (sf) => expression.elements.length > 0
                     ? ` new ${NAMESPACE}.ReactiveArray${typeParam}(${expression.getText(sf)})`
-                    : ` new ${NAMESPACE}.ReactiveArray${typeParam}()`
+                    : ` new ${NAMESPACE}.ReactiveArray${typeParam}()`,
+                node
             });
         }
     }
@@ -126,10 +126,10 @@ function length(access: ts.PropertyAccessExpression, replacements: ReplacementIn
         let op = COMPOUND_OPERATORS.get(parent.operatorToken.kind);
 
         replacements.push({
-            node: parent,
             generate: (sf) => op === undefined
                 ? `${expr.getText(sf)}.$length = ${parent.right.getText(sf)}`
-                : `${expr.getText(sf)}.$length = ${expr.getText(sf)}.length ${op} ${parent.right.getText(sf)}`
+                : `${expr.getText(sf)}.$length = ${expr.getText(sf)}.length ${op} ${parent.right.getText(sf)}`,
+            node: parent
         });
     }
     // arr.length++ / arr.length-- / ++arr.length / --arr.length
@@ -141,15 +141,15 @@ function length(access: ts.PropertyAccessExpression, replacements: ReplacementIn
         let op = parent.operator === ts.SyntaxKind.PlusPlusToken ? '+' : '-';
 
         replacements.push({
-            node: parent,
-            generate: (sf) => `${expr.getText(sf)}.$length = ${expr.getText(sf)}.length ${op} 1`
+            generate: (sf) => `${expr.getText(sf)}.$length = ${expr.getText(sf)}.length ${op} 1`,
+            node: parent
         });
     }
     // Read-only: arr.length -> arr.$length
     else {
         replacements.push({
-            node: access,
-            generate: (sf) => `${expr.getText(sf)}.$length`
+            generate: (sf) => `${expr.getText(sf)}.$length`,
+            node: access
         });
     }
 }
@@ -170,10 +170,10 @@ function write(access: ts.ElementAccessExpression, ctx: ArrayTransformResult): v
             right = parent.right;
 
         ctx.replacements.push({
-            node: parent,
             generate: (sf) => op === undefined
                 ? `${array(sf)}.$set(${index(sf)}, ${right.getText(sf)})`
-                : `((_a, _k) => _a.$set(_k, _a[_k] ${op} (${right.getText(sf)})))(${array(sf)}, ${index(sf)})`
+                : `((_a, _k) => _a.$set(_k, _a[_k] ${op} (${right.getText(sf)})))(${array(sf)}, ${index(sf)})`,
+            node: parent
         });
 
         return;
@@ -183,10 +183,10 @@ function write(access: ts.ElementAccessExpression, ctx: ArrayTransformResult): v
         op = unary.operator === ts.SyntaxKind.PlusPlusToken ? '+' : '-';
 
     ctx.replacements.push({
-        node: unary,
         generate: (sf) => ts.isPrefixUnaryExpression(unary)
             ? `((_a, _k) => (_a.$set(_k, _a[_k] ${op} 1), _a[_k]))(${array(sf)}, ${index(sf)})`
-            : `((_a, _k, _v) => (_a.$set(_k, _v ${op} 1), _v))(${array(sf)}, ${index(sf)}, ${array(sf)}[${index(sf)}])`
+            : `((_a, _k, _v) => (_a.$set(_k, _v ${op} 1), _v))(${array(sf)}, ${index(sf)}, ${array(sf)}[${index(sf)}])`,
+        node: unary
     });
 }
 
@@ -234,10 +234,10 @@ export default (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: I
             elements = scope.unwrap(assignment.right) as ts.ArrayLiteralExpression;
 
         result.replacements.push({
-            node: assignment,
             generate: (sf) => elements.elements.length > 0
                 ? `${name}.splice(0, ${name}.length, ...${elements.getText(sf)})`
-                : `${name}.splice(0, ${name}.length)`
+                : `${name}.splice(0, ${name}.length)`,
+            node: assignment
         });
     }
 

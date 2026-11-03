@@ -1,5 +1,5 @@
 import { test } from 'vitest';
-import { assert, framework, ReactiveComputed } from './lib/reactive-adapter';
+import { ReactiveComputed, assert, framework } from './lib/reactive-adapter';
 
 
 // Ported from milomg/js-reactivity-benchmark packages/core/src/benches/kairo/* (MIT)
@@ -157,7 +157,7 @@ function diamond() {
 }
 
 function mux() {
-    let heads = new Array(100).fill(null).map(() => framework.signal(0));
+    let heads = Array.from({ length: 100 }, () => framework.signal(0));
 
     let muxed = framework.computed(() => Object.fromEntries(heads.map((h) => h.read()).entries()));
 

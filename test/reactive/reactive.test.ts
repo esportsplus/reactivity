@@ -348,7 +348,7 @@ describe('isReactiveObject', () => {
 describe('reactive()', () => {
     describe('objects', () => {
         it('creates reactive object', () => {
-            let obj = reactive({ name: 'John', age: 25 });
+            let obj = reactive({ age: 25, name: 'John' });
 
             expect((obj as any).name).toBe('John');
             expect((obj as any).age).toBe(25);

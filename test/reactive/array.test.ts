@@ -54,7 +54,7 @@ describe('ReactiveArray', () => {
         });
 
         it('does not overflow the stack for a large array', () => {
-            let arr = new ReactiveArray(new Array(500000).fill(0));
+            let arr = new ReactiveArray(Array.from({ length: 500000 }, () => 0));
 
             expect(arr.length).toBe(500000);
             expect(arr.$length).toBe(500000);
@@ -463,7 +463,7 @@ describe('ReactiveArray', () => {
             arr.on('splice', (e) => { events.push(e); });
             arr.splice(1, 1, 20, 30);
 
-            expect(events).toEqual([{ start: 1, deleteCount: 1, items: [20, 30] }]);
+            expect(events).toEqual([{ deleteCount: 1, items: [20, 30], start: 1 }]);
         });
 
         it('no event when nothing changes', () => {
@@ -499,7 +499,7 @@ describe('ReactiveArray', () => {
 
             expect([...removed]).toEqual([4]);
             expect([...arr]).toEqual([1, 2, 3, 5]);
-            expect(events).toEqual([{ start: 3, deleteCount: 1, items: [] }]);
+            expect(events).toEqual([{ deleteCount: 1, items: [], start: 3 }]);
         });
 
         it('splice dispatches the count actually removed, not the requested count', () => {
@@ -510,7 +510,7 @@ describe('ReactiveArray', () => {
             arr.splice(1, 100);
 
             expect([...arr]).toEqual([1]);
-            expect(events).toEqual([{ start: 1, deleteCount: 2, items: [] }]);
+            expect(events).toEqual([{ deleteCount: 2, items: [], start: 1 }]);
         });
 
         it('splice clamps an out-of-range or fractional start the way Array.prototype.splice does', () => {
@@ -524,9 +524,9 @@ describe('ReactiveArray', () => {
 
             expect([...arr]).toEqual([0, 9, 1, 2, 3, 4]);
             expect(events).toEqual([
-                { start: 3, deleteCount: 0, items: [4] },
-                { start: 0, deleteCount: 0, items: [0] },
-                { start: 1, deleteCount: 0, items: [9] }
+                { deleteCount: 0, items: [4], start: 3 },
+                { deleteCount: 0, items: [0], start: 0 },
+                { deleteCount: 0, items: [9], start: 1 }
             ]);
         });
     });

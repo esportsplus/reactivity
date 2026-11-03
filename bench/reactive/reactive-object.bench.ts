@@ -16,8 +16,8 @@ test('ReactiveObject creation', async ({ bench }) => {
         }),
         bench('create with async computed property', () => {
             new ReactiveObject({
-                value: 1,
-                async: () => Promise.resolve(0)
+                async: () => Promise.resolve(0),
+                value: 1
             });
         })
     );
@@ -29,6 +29,7 @@ test('ReactiveObject read/write', async ({ bench }) => {
         bench('read property (signal-backed)', () => {
             let obj = new ReactiveObject({ a: 1, b: 2, c: 3, d: 4, e: 5 });
 
+            // oxlint-disable-next-line no-unused-expressions -- the getter read is what is measured
             (obj as any).a;
         }),
         bench('write property (signal-backed)', () => {
