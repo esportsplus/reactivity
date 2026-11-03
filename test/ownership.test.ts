@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computed, dispose, effect, flush, hasOwner, onCleanup, read, root, signal, untrack, write } from '~/system';
+import { computed, dispose, effect, flush, hasOwner, onCleanup, owner as current, read, root, signal, untrack, write } from '~/system';
 import type { Computed } from '~/system';
 import { captureUncaught } from './lib/uncaught';
 
@@ -584,3 +584,102 @@ describe('hasOwner', () => {
     });
 });
 
+describe('owner', () => {
+    it('is the running computation, else the running root scope, else null', () => {
+        let running: Computed<unknown> | null = null,
+            scope: Computed<unknown> | null = null,
+            seen: unknown[] = [];
+
+        seen.push(current());
+
+        let stop = root((dispose) => {
+            scope = current();
+
+            effect(() => {
+                running = current();
+                seen.push(untrack(() => current()) === running);
+            });
+
+            return dispose;
+        });
+
+        seen.push(current());
+
+        expect(scope).not.toBeNull();
+        expect(running).not.toBe(scope);
+        // An effect is owned once its first run returns
+        expect(running!.owner).toBe(scope);
+
+        stop();
+
+        expect(seen).toEqual([null, true, null]);
+    });
+});
+
+describe('root with an owner', () => {
+    it('runs fn owned by the given node, its reads untracked', async () => {
+        let cleaned = 0,
+            s = signal(0),
+            node: Computed<unknown> | null = null,
+            runs = 0,
+            stop = root((dispose) => {
+                node = current();
+
+                return dispose;
+            });
+
+        root(() => {
+            runs++;
+            read(s);
+            onCleanup(() => cleaned++);
+            effect(() => { read(s); });
+        }, node);
+
+        expect(hasOwner()).toBe(false);
+        expect(registrations(node!)).toBe(2);
+
+        write(s, 1);
+        await Promise.resolve();
+
+        expect(runs).toBe(1);
+
+        stop();
+
+        expect(cleaned).toBe(1);
+        expect(registrations(node!)).toBe(0);
+    });
+
+    it('creates a child root of the given node instead of whatever is running', () => {
+        let a: Computed<unknown> | null = null,
+            b: Computed<unknown> | null = null,
+            child: Computed<unknown> | null = null,
+            stopA = root((dispose) => { a = current(); return dispose; }),
+            stopB = root((dispose) => { b = current(); return dispose; });
+
+        root(() => {
+            root((dispose) => {
+                child = current();
+
+                return dispose;
+            }, a);
+        }, b);
+
+        expect(child!.owner).toBe(a);
+        expect(registrations(b!)).toBe(0);
+
+        stopA();
+
+        expect(child!.owner).toBe(null);
+
+        stopB();
+    });
+
+    it('throws on a disposed owner', () => {
+        let node: Computed<unknown> | null = null,
+            stop = root((dispose) => { node = current(); return dispose; });
+
+        stop();
+
+        expect(() => root(() => {}, node)).toThrow('@esportsplus/reactivity: root() was given a disposed owner');
+    });
+});

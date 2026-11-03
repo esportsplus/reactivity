@@ -2,7 +2,7 @@ import {
     PACKAGE_NAME,
     SIGNAL,
     STABILIZER_DEFERRED, STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
-    STATE_CHECK, STATE_COMPUTED, STATE_DIRTY, STATE_EFFECT, STATE_ERROR, STATE_IN_HEAP, STATE_NOTIFY_MASK, STATE_RECOMPUTING
+    STATE_CHECK, STATE_COMPUTED, STATE_DIRTY, STATE_DISPOSED, STATE_EFFECT, STATE_ERROR, STATE_IN_HEAP, STATE_NOTIFY_MASK, STATE_RECOMPUTING
 } from './constants';
 import { Computed, ComputedResult, Link, SelectorSignal, Settled, Signal } from './types';
 import { isObject, isPromise } from '@esportsplus/utilities';
@@ -941,6 +941,7 @@ const dispose = <T>(computed: Computed<T>): void => {
     try {
         for (;;) {
             deleteFromHeap(node);
+            node.state |= STATE_DISPOSED;
 
             let dep = node.deps;
 
@@ -1116,9 +1117,21 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
     return node.value;
 };
 
+// The node that owns what is created now: the running computed or effect, else the running root's scope. Walking its
+// .owner chain finds every enclosing owner.
+const owner = (): Computed<unknown> | null => observer || scope;
+
 // Owned before fn runs (nothing can register on the owner meanwhile, so ownerSlot is unchanged): a
 // root disposed inside its own fn then unlinks instead of being parked on the owner as a dead child.
-const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
+//
+// 'parent' replaces whatever is running as the owner, for ownership only: reads in fn stay untracked. With it,
+// root(() => ...) runs fn owned by 'parent' (re-entering it after an await) and root(dispose => ...) creates a
+// child root of 'parent'. A disposed node cannot own anything: nothing would dispose what it took.
+const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T), parent?: Computed<unknown> | null) => {
+    if (parent && parent.state & STATE_DISPOSED) {
+        throw new Error(`${PACKAGE_NAME}: root() was given a disposed owner`);
+    }
+
     let o = observer,
         s = scope,
         tracking = fn.length,
@@ -1129,7 +1142,7 @@ const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
     try {
         if (tracking) {
             let self = makeNode(noop),
-                owner = o || s;
+                owner = parent === undefined ? o || s : parent;
 
             if (owner !== null) {
                 own(owner, self);
@@ -1139,7 +1152,7 @@ const root = <T>(fn: ((dispose: VoidFunction) => T) | (() => T)) => {
             value = (fn as (dispose: VoidFunction) => T)(() => dispose(self));
         }
         else {
-            scope = null;
+            scope = parent ?? null;
             value = (fn as () => T)();
         }
     }
@@ -1269,7 +1282,7 @@ export {
     flush,
     hasOwner,
     isComputed, isSignal,
-    onCleanup,
+    onCleanup, owner,
     peek,
     read, root,
     signal,

@@ -222,7 +222,8 @@ let user = new ReactiveObject_1();
 | `reactive({...})` | Creates a reactive object with signals and computeds |
 | `reactive([...])` | Creates a reactive array |
 | `effect(fn, apply?)` | Runs a function that re-executes when dependencies change. Returns a dispose function. Optional `apply(value, prev)` runs untracked after each run with `fn`'s return value |
-| `root(fn)` | Creates an untracked scope. If `fn` accepts an argument, a dispose function is provided |
+| `root(fn, owner?)` | Creates an untracked scope. If `fn` accepts an argument, a dispose function is provided. With `owner`, the scope belongs to that node instead of whatever is running: `root(() => …, owner)` runs `fn` owned by `owner` (to re-enter it after an `await`), `root((dispose) => …, owner)` creates a child root of `owner`. Reads stay untracked. Throws on a disposed owner |
+| `owner()` | The node that owns what is created now: the running effect/computed, else the running root's scope, else `null`. Its `.owner` chain reaches every enclosing owner |
 | `onCleanup(fn)` | Registers a cleanup function for the current effect/computed |
 
 ### Low-Level Functions
