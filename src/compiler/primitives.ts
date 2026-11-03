@@ -176,9 +176,13 @@ function reference(ctx: TransformContext, node: ts.Expression, kind: TYPES): voi
         return;
     }
 
+    // The binding itself (`count`, `ns.count`, `ns['count']`) holds nothing another rewrite replaces,
+    // so its source is copied as is: text() walks the file's intents on every call
+    let binding = node.getText(ctx.bindings.sourceFile);
+
     if (ts.isShorthandPropertyAssignment(parent)) {
         ctx.replacements.push({
-            generate: (_sourceFile, text) => `${text(node)}: ${NAMESPACE}.read(${text(node)})`,
+            generate: () => `${binding}: ${NAMESPACE}.read(${binding})`,
             node: parent
         });
 
@@ -207,7 +211,7 @@ function reference(ctx: TransformContext, node: ts.Expression, kind: TYPES): voi
 
     if (!writeCtx) {
         ctx.replacements.push({
-            generate: (_sourceFile, text) => `${NAMESPACE}.read(${text(node)})`,
+            generate: () => `${NAMESPACE}.read(${binding})`,
             node
         });
 
@@ -223,7 +227,7 @@ function reference(ctx: TransformContext, node: ts.Expression, kind: TYPES): voi
         let right = parent.right;
 
         ctx.replacements.push({
-            generate: (_sourceFile, text) => `${NAMESPACE}.write(${text(node)}, ${text(right)})`,
+            generate: (_sourceFile, text) => `${NAMESPACE}.write(${binding}, ${text(right)})`,
             node: parent
         });
     }
@@ -232,7 +236,7 @@ function reference(ctx: TransformContext, node: ts.Expression, kind: TYPES): voi
             right = parent.right;
 
         ctx.replacements.push({
-            generate: (_sourceFile, text) => `${NAMESPACE}.write(${text(node)}, ${text(node)}.value ${op} ${text(right)})`,
+            generate: (_sourceFile, text) => `${NAMESPACE}.write(${binding}, ${binding}.value ${op} ${text(right)})`,
             node: parent
         });
     }
@@ -242,13 +246,13 @@ function reference(ctx: TransformContext, node: ts.Expression, kind: TYPES): voi
 
         if (ts.isExpressionStatement(unary.parent)) {
             ctx.replacements.push({
-                generate: (_sourceFile, text) => `${NAMESPACE}.write(${text(node)}, ${text(node)}.value ${delta})`,
+                generate: () => `${NAMESPACE}.write(${binding}, ${binding}.value ${delta})`,
                 node: unary
             });
         }
         else if (ts.isPrefixUnaryExpression(unary)) {
             ctx.replacements.push({
-                generate: (_sourceFile, text) => `(${NAMESPACE}.write(${text(node)}, ${text(node)}.value ${delta}), ${text(node)}.value)`,
+                generate: () => `(${NAMESPACE}.write(${binding}, ${binding}.value ${delta}), ${binding}.value)`,
                 node: unary
             });
         }
@@ -256,7 +260,7 @@ function reference(ctx: TransformContext, node: ts.Expression, kind: TYPES): voi
             let tmp = `_t${ctx.tmpCounter++}`;
 
             ctx.replacements.push({
-                generate: (_sourceFile, text) => `((${tmp}) => (${NAMESPACE}.write(${text(node)}, ${tmp} ${delta}), ${tmp}))(${text(node)}.value)`,
+                generate: () => `((${tmp}) => (${NAMESPACE}.write(${binding}, ${tmp} ${delta}), ${tmp}))(${binding}.value)`,
                 node: unary
             });
         }
