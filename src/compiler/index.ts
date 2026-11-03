@@ -195,7 +195,7 @@ export default {
             }
 
             intents.replacements.push({
-                generate: () => `${NAMESPACE}.reactive(${call.arguments.map(a => a.getText(sourceFile)).join(', ')})`,
+                generate: (_sourceFile, text) => `${NAMESPACE}.reactive(${call.arguments.map(text).join(', ')})`,
                 node: call
             });
         }

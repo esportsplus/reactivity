@@ -9,7 +9,7 @@ interface AnalyzedProperty {
     isStatic: boolean;
     key: string;
     type: TYPES;
-    valueText: string;
+    value: ts.Expression;
 }
 
 type ObjectTransformResult = {
@@ -34,8 +34,6 @@ interface VisitContext {
 
 
 function analyzeProperty(prop: ts.ObjectLiteralElementLike, bindings: Bindings): AnalyzedProperty | null {
-    let sourceFile = bindings.sourceFile;
-
     if (!ts.isPropertyAssignment(prop)) {
         return null;
     }
@@ -50,8 +48,7 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, bindings: Bindings):
     }
 
     let unwrapped = prop.initializer,
-        value = unwrapped,
-        valueText = value.getText(sourceFile);
+        value = unwrapped;
 
     while (ts.isAsExpression(unwrapped) || ts.isTypeAssertion(unwrapped) || ts.isParenthesizedExpression(unwrapped)) {
         unwrapped = unwrapped.expression;
@@ -68,12 +65,12 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, bindings: Bindings):
                 type.typeName.text === 'Array'
             )
         ) {
-            return { isStatic: false, key, type: TYPES.Array, valueText };
+            return { isStatic: false, key, type: TYPES.Array, value };
         }
     }
 
     if (ts.isArrowFunction(unwrapped) || ts.isFunctionExpression(unwrapped)) {
-        return { isStatic: false, key, type: TYPES.Computed, valueText };
+        return { isStatic: false, key, type: TYPES.Computed, value };
     }
 
     if (ts.isArrayLiteralExpression(unwrapped)) {
@@ -86,7 +83,7 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, bindings: Bindings):
             }
         }
 
-        return { isStatic, key, type: TYPES.Array, valueText };
+        return { isStatic, key, type: TYPES.Array, value };
     }
 
     // A non-literal array is typed Reactive<T[]> on the object, so it must become a ReactiveArray
@@ -94,18 +91,18 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, bindings: Bindings):
     let type = isStaticValue(unwrapped) ? undefined : bindings.checker.getTypeAtLocation(value);
 
     if (type && (bindings.checker.isArrayType(type) || bindings.checker.isTupleType(type))) {
-        return { isStatic: false, key, type: TYPES.Array, valueText };
+        return { isStatic: false, key, type: TYPES.Array, value };
     }
 
     return {
         isStatic: isStaticValue(value),
         key,
         type: TYPES.Signal,
-        valueText
+        value
     };
 }
 
-function buildClassCode(classname: string, properties: AnalyzedProperty[], typehint: string | null): string {
+function buildClassCode(classname: string, properties: AnalyzedProperty[], sourceFile: ts.SourceFile, typehint: string | null): string {
     let accessors: string[] = [],
         body: string[] = [],
         constraint: string[] = [],
@@ -115,7 +112,7 @@ function buildClassCode(classname: string, properties: AnalyzedProperty[], typeh
         setters = 0;
 
     for (let i = 0, n = properties.length; i < n; i++) {
-        let { isStatic, key, type, valueText } = properties[i],
+        let { isStatic, key, type, value: initializer } = properties[i],
             generic = typehint ? `T['${key}']` : `T${parameters.length}`,
             parameter = `_p${parameters.length}`;
 
@@ -137,7 +134,8 @@ function buildClassCode(classname: string, properties: AnalyzedProperty[], typeh
                         ${NAMESPACE}.write(this.#${key}, ${value});
                     }
                 `);
-                fields.push(`#${key} = this[${NAMESPACE}.SIGNAL](${valueText});`);
+                // A static value is a literal, which no plugin rewrites, so its source is the output
+                fields.push(`#${key} = this[${NAMESPACE}.SIGNAL](${initializer.getText(sourceFile)});`);
             }
             else {
                 accessors.push(`
@@ -286,13 +284,13 @@ export default (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: I
         let call = ctx.calls[i],
             typehint = call.typehint;
 
-        prepend.push(buildClassCode(call.classname, call.properties, typehint));
+        prepend.push(buildClassCode(call.classname, call.properties, sourceFile, typehint));
         replacements.push({
-            generate: () => {
+            generate: (_sourceFile, text) => {
                 // Every property but a static signal (baked into its field) is a constructor parameter
                 let args = call.properties
                     .filter(({ isStatic, type }) => typehint || !isStatic || type !== TYPES.Signal)
-                    .map(p => p.valueText)
+                    .map(p => text(p.value))
                     .join(', ');
 
                 return typehint

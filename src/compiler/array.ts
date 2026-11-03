@@ -68,8 +68,8 @@ function declare(ctx: { isReactiveCall: IsReactiveCall; replacements: Replacemen
             let typeParam = elementType ? `<${elementType}>` : '';
 
             ctx.replacements.push({
-                generate: (sf) => expression.elements.length > 0
-                    ? ` new ${NAMESPACE}.ReactiveArray${typeParam}(${expression.getText(sf)})`
+                generate: (_sourceFile, text) => expression.elements.length > 0
+                    ? ` new ${NAMESPACE}.ReactiveArray${typeParam}(${text(expression)})`
                     : ` new ${NAMESPACE}.ReactiveArray${typeParam}()`,
                 node
             });
@@ -126,9 +126,9 @@ function length(access: ts.PropertyAccessExpression, replacements: ReplacementIn
         let op = COMPOUND_OPERATORS.get(parent.operatorToken.kind);
 
         replacements.push({
-            generate: (sf) => op === undefined
-                ? `${expr.getText(sf)}.$length = ${parent.right.getText(sf)}`
-                : `${expr.getText(sf)}.$length = ${expr.getText(sf)}.length ${op} ${parent.right.getText(sf)}`,
+            generate: (_sourceFile, text) => op === undefined
+                ? `${text(expr)}.$length = ${text(parent.right)}`
+                : `${text(expr)}.$length = ${text(expr)}.length ${op} ${text(parent.right)}`,
             node: parent
         });
     }
@@ -141,14 +141,14 @@ function length(access: ts.PropertyAccessExpression, replacements: ReplacementIn
         let op = parent.operator === ts.SyntaxKind.PlusPlusToken ? '+' : '-';
 
         replacements.push({
-            generate: (sf) => `${expr.getText(sf)}.$length = ${expr.getText(sf)}.length ${op} 1`,
+            generate: (_sourceFile, text) => `${text(expr)}.$length = ${text(expr)}.length ${op} 1`,
             node: parent
         });
     }
     // Read-only: arr.length -> arr.$length
     else {
         replacements.push({
-            generate: (sf) => `${expr.getText(sf)}.$length`,
+            generate: (_sourceFile, text) => `${text(expr)}.$length`,
             node: access
         });
     }
@@ -156,9 +156,7 @@ function length(access: ts.PropertyAccessExpression, replacements: ReplacementIn
 
 // An element write must notify, so it goes through $set; operands are evaluated once
 function write(access: ts.ElementAccessExpression, ctx: ArrayTransformResult): void {
-    let parent = access.parent!,
-        array = (sf: ts.SourceFile) => access.expression.getText(sf),
-        index = (sf: ts.SourceFile) => access.argumentExpression.getText(sf);
+    let parent = access.parent!;
 
     if (ts.isDeleteExpression(parent)) {
         ctx.failures.push({ message: 'an element of a reactive array cannot be deleted; use splice()', node: parent });
@@ -170,9 +168,9 @@ function write(access: ts.ElementAccessExpression, ctx: ArrayTransformResult): v
             right = parent.right;
 
         ctx.replacements.push({
-            generate: (sf) => op === undefined
-                ? `${array(sf)}.$set(${index(sf)}, ${right.getText(sf)})`
-                : `((_a, _k) => _a.$set(_k, _a[_k] ${op} (${right.getText(sf)})))(${array(sf)}, ${index(sf)})`,
+            generate: (_sourceFile, text) => op === undefined
+                ? `${text(access.expression)}.$set(${text(access.argumentExpression)}, ${text(right)})`
+                : `((_a, _k) => _a.$set(_k, _a[_k] ${op} (${text(right)})))(${text(access.expression)}, ${text(access.argumentExpression)})`,
             node: parent
         });
 
@@ -183,9 +181,14 @@ function write(access: ts.ElementAccessExpression, ctx: ArrayTransformResult): v
         op = unary.operator === ts.SyntaxKind.PlusPlusToken ? '+' : '-';
 
     ctx.replacements.push({
-        generate: (sf) => ts.isPrefixUnaryExpression(unary)
-            ? `((_a, _k) => (_a.$set(_k, _a[_k] ${op} 1), _a[_k]))(${array(sf)}, ${index(sf)})`
-            : `((_a, _k, _v) => (_a.$set(_k, _v ${op} 1), _v))(${array(sf)}, ${index(sf)}, ${array(sf)}[${index(sf)}])`,
+        generate: (_sourceFile, text) => {
+            let array = text(access.expression),
+                index = text(access.argumentExpression);
+
+            return ts.isPrefixUnaryExpression(unary)
+                ? `((_a, _k) => (_a.$set(_k, _a[_k] ${op} 1), _a[_k]))(${array}, ${index})`
+                : `((_a, _k, _v) => (_a.$set(_k, _v ${op} 1), _v))(${array}, ${index}, ${array}[${index}])`;
+        },
         node: unary
     });
 }
@@ -234,8 +237,8 @@ export default (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: I
             elements = scope.unwrap(assignment.right) as ts.ArrayLiteralExpression;
 
         result.replacements.push({
-            generate: (sf) => elements.elements.length > 0
-                ? `${name}.splice(0, ${name}.length, ...${elements.getText(sf)})`
+            generate: (_sourceFile, text) => elements.elements.length > 0
+                ? `${name}.splice(0, ${name}.length, ...${text(elements)})`
                 : `${name}.splice(0, ${name}.length)`,
             node: assignment
         });

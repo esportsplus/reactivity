@@ -175,11 +175,9 @@ function reference(ctx: TransformContext, node: ts.Expression, kind: TYPES): voi
         return;
     }
 
-    let text = node.getText(ctx.bindings.sourceFile);
-
     if (ts.isShorthandPropertyAssignment(parent)) {
         ctx.replacements.push({
-            generate: () => `${text}: ${NAMESPACE}.read(${text})`,
+            generate: (_sourceFile, text) => `${text(node)}: ${NAMESPACE}.read(${text(node)})`,
             node: parent
         });
 
@@ -208,7 +206,7 @@ function reference(ctx: TransformContext, node: ts.Expression, kind: TYPES): voi
 
     if (!writeCtx) {
         ctx.replacements.push({
-            generate: () => `${NAMESPACE}.read(${text})`,
+            generate: (_sourceFile, text) => `${NAMESPACE}.read(${text(node)})`,
             node
         });
 
@@ -224,7 +222,7 @@ function reference(ctx: TransformContext, node: ts.Expression, kind: TYPES): voi
         let right = parent.right;
 
         ctx.replacements.push({
-            generate: (sf) => `${NAMESPACE}.write(${text}, ${right.getText(sf)})`,
+            generate: (_sourceFile, text) => `${NAMESPACE}.write(${text(node)}, ${text(right)})`,
             node: parent
         });
     }
@@ -233,7 +231,7 @@ function reference(ctx: TransformContext, node: ts.Expression, kind: TYPES): voi
             right = parent.right;
 
         ctx.replacements.push({
-            generate: (sf) => `${NAMESPACE}.write(${text}, ${text}.value ${op} ${right.getText(sf)})`,
+            generate: (_sourceFile, text) => `${NAMESPACE}.write(${text(node)}, ${text(node)}.value ${op} ${text(right)})`,
             node: parent
         });
     }
@@ -243,13 +241,13 @@ function reference(ctx: TransformContext, node: ts.Expression, kind: TYPES): voi
 
         if (ts.isExpressionStatement(unary.parent)) {
             ctx.replacements.push({
-                generate: () => `${NAMESPACE}.write(${text}, ${text}.value ${delta})`,
+                generate: (_sourceFile, text) => `${NAMESPACE}.write(${text(node)}, ${text(node)}.value ${delta})`,
                 node: unary
             });
         }
         else if (ts.isPrefixUnaryExpression(unary)) {
             ctx.replacements.push({
-                generate: () => `(${NAMESPACE}.write(${text}, ${text}.value ${delta}), ${text}.value)`,
+                generate: (_sourceFile, text) => `(${NAMESPACE}.write(${text(node)}, ${text(node)}.value ${delta}), ${text(node)}.value)`,
                 node: unary
             });
         }
@@ -257,7 +255,7 @@ function reference(ctx: TransformContext, node: ts.Expression, kind: TYPES): voi
             let tmp = `_t${ctx.tmpCounter++}`;
 
             ctx.replacements.push({
-                generate: () => `((${tmp}) => (${NAMESPACE}.write(${text}, ${tmp} ${delta}), ${tmp}))(${text}.value)`,
+                generate: (_sourceFile, text) => `((${tmp}) => (${NAMESPACE}.write(${text(node)}, ${tmp} ${delta}), ${tmp}))(${text(node)}.value)`,
                 node: unary
             });
         }
