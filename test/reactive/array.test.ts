@@ -652,6 +652,7 @@ describe('ReactiveArray', () => {
             arr.sort((a, b) => a - b);
 
             expect([...arr]).toEqual([1, 2, 2]);
+            expect(order).toEqual([1, 0, 2]);
         });
 
         it('order maps duplicate values stably (first stays first)', () => {

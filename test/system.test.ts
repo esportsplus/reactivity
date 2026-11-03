@@ -1224,7 +1224,7 @@ describe('edge cases', () => {
 
     it('heap auto-resizes for computed chain deeper than 64', async () => {
         let s = signal(0),
-            chain: ReturnType<typeof computed>[] = [computed(() => read(s) + 1)];
+            chain: ReturnType<typeof computed<number>>[] = [computed(() => read(s) + 1)];
 
         for (let i = 1; i < 80; i++) {
             let prev = chain[i - 1];
@@ -1416,7 +1416,7 @@ describe('edge cases', () => {
     });
 
     it('link pool handles >1000 dependencies with disposal and reuse', async () => {
-        let signals: ReturnType<typeof signal>[] = [],
+        let signals: ReturnType<typeof signal<number>>[] = [],
             stops: (() => void)[] = [];
 
         for (let i = 0; i < 1100; i++) {

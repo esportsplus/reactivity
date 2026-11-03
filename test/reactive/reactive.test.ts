@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { computed, effect, onCleanup, read, root, signal, write } from '~/system';
+import { computed, effect, onCleanup, read, signal, write } from '~/system';
 import { SIGNAL } from '~/constants';
 import { ReactiveObject, isReactiveObject } from '~/reactive/object';
 import reactive from '~/reactive/index';
@@ -515,7 +515,7 @@ describe('integration', () => {
 
     it('large dependency chain', async () => {
         let s = signal(0),
-            chain: ReturnType<typeof computed>[] = [computed(() => read(s))];
+            chain: ReturnType<typeof computed<number>>[] = [computed(() => read(s))];
 
         for (let i = 1; i < 50; i++) {
             let prev = chain[i - 1];

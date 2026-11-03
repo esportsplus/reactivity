@@ -137,7 +137,7 @@ describe('untrack ownership', () => {
                     });
                     onCleanup(() => { log.push('c'); });
                 });
-                root((d) => {
+                root((_d) => {
                     onCleanup(() => { log.push('d'); });
                 });
             });
