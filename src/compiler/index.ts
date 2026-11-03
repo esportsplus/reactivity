@@ -69,13 +69,14 @@ function isLowered(site: ts.Node): boolean {
 }
 
 
-// `reactive`, or the member access naming it (`ns.reactive`, `ns['reactive']`)
+// `reactive`, or the member access naming it (`ns.reactive`, `ns['reactive']`); in `list[reactive]`
+// the key is the use
 function siteOf(identifier: ts.Node): ts.Node {
     let parent = identifier.parent!;
 
     if (
         (ts.isPropertyAccessExpression(parent) && parent.name === identifier) ||
-        (ts.isElementAccessExpression(parent) && parent.argumentExpression === identifier)
+        (ts.isElementAccessExpression(parent) && parent.argumentExpression === identifier && (ts.isStringLiteral(identifier) || ts.isNoSubstitutionTemplateLiteral(identifier)))
     ) {
         return parent;
     }

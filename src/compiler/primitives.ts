@@ -144,13 +144,14 @@ function isPatternTarget(node: ts.Node): boolean {
         ((ts.isForOfStatement(parent) || ts.isForInStatement(parent)) && parent.initializer === current);
 }
 
-// A binding read as `ns.count` / `ns['count']` is rewritten as a whole
+// A binding read as `ns.count` / `ns['count']` is rewritten as a whole; in `list[count]` the key is
+// the read
 function readNode(identifier: ts.Node): ts.Expression {
     let parent = identifier.parent!;
 
     if (
         (ts.isPropertyAccessExpression(parent) && parent.name === identifier) ||
-        (ts.isElementAccessExpression(parent) && parent.argumentExpression === identifier)
+        (ts.isElementAccessExpression(parent) && parent.argumentExpression === identifier && (ts.isStringLiteral(identifier) || ts.isNoSubstitutionTemplateLiteral(identifier)))
     ) {
         return parent;
     }

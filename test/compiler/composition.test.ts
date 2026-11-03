@@ -47,6 +47,8 @@ describe('nested rewrites', () => {
         'let arr = reactive([y]);',
         'arr[0] = y;',
         'arr[1] += y;',
+        'arr[y] = 2;',
+        'let at = arr[y];',
         'arr.length = y;',
         'arr = [y];',
         'let o = reactive({ a: y, items: [y] });',
@@ -63,6 +65,8 @@ describe('nested rewrites', () => {
         expect(output).toContain(`let arr =  new ${NAMESPACE}.ReactiveArray([${NAMESPACE}.read(y)]);`);
         expect(output).toContain(`arr.$set(0, ${NAMESPACE}.read(y));`);
         expect(output).toContain(`((_a, _k) => _a.$set(_k, _a[_k] + (${NAMESPACE}.read(y))))(arr, 1);`);
+        expect(output).toContain(`arr.$set(${NAMESPACE}.read(y), 2);`);
+        expect(output).toContain(`let at = arr[${NAMESPACE}.read(y)];`);
         expect(output).toContain(`arr.$length = ${NAMESPACE}.read(y);`);
         expect(output).toContain(`arr.splice(0, arr.length, ...[${NAMESPACE}.read(y)]);`);
     });
