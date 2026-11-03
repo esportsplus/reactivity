@@ -332,13 +332,17 @@ All standard array methods (`push`, `pop`, `shift`, `unshift`, `splice`, `sort`,
 
 ```bash
 pnpm install
-pnpm build   # tsc
-pnpm test    # vitest run
-pnpm bench   # vitest bench --run
+pnpm build       # tsc -p tsconfig.build.json
+pnpm typecheck   # tsc --noEmit over src, test and bench
+pnpm lint        # oxlint, type-aware, warnings denied
+pnpm test        # vitest run
+pnpm bench       # vitest bench --run (add --reporter=verbose to print results when piped)
+pnpm verify      # build, typecheck, lint and test
 ```
 
-`agent:test` (`tsc --noEmit && vitest run`) and `agent:bench` (`vitest bench --run`) are the
-CI-facing aliases of the same build/test/bench commands.
+`agent:test` (`pnpm typecheck && vitest run`) and `agent:bench` (`vitest bench --run`) are the
+CI-facing aliases of the same test/bench commands. `test/compiler/output.test.ts` pins whole
+compiled modules; a compiler change that alters them must update the snapshot deliberately.
 
 ## Changes in 0.35.0
 
