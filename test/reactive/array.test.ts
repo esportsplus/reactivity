@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { effect, read, signal, write } from '~/system';
+import { effect, flush, owner, read, root, signal, write } from '~/system';
 import { ReactiveArray } from '~/reactive/array';
 import { ReactiveObject } from '~/reactive/object';
 import reactive from '~/reactive/index';
@@ -1224,5 +1224,106 @@ describe('ReactiveArray', () => {
             expect(obj.dispose).not.toHaveBeenCalled();
             expect(arr.length).toBe(0);
         });
+    });
+});
+
+describe('ReactiveArray batch', () => {
+    it('delivers every mutation of a task once, in order, in the pass that follows', async () => {
+        let arr = new ReactiveArray([1, 2, 3]),
+            batches: unknown[][] = [];
+
+        arr.on('batch', (ops) => batches.push(ops));
+        arr.push(4);
+        arr.$set(0, 9);
+        arr.splice(1, 1, 7, 8);
+        arr.pop();
+
+        expect(batches).toEqual([]);
+
+        await Promise.resolve();
+
+        expect(batches).toEqual([[
+            { items: [4], op: 'push' },
+            { index: 0, item: 9, op: 'set' },
+            { deleteCount: 1, items: [7, 8], op: 'splice', start: 1 },
+            { item: 4, op: 'pop' }
+        ]]);
+    });
+
+    it('settles through flush()', () => {
+        let arr = new ReactiveArray<number>(),
+            batches: unknown[][] = [];
+
+        arr.on('batch', (ops) => batches.push(ops));
+        arr.push(1, 2);
+        flush();
+
+        expect(batches).toEqual([[{ items: [1, 2], op: 'push' }]]);
+    });
+
+    it('drops the mutations before a clear', () => {
+        let arr = new ReactiveArray([1]),
+            batches: unknown[][] = [];
+
+        arr.on('batch', (ops) => batches.push(ops));
+        arr.push(2);
+        arr.clear();
+        arr.unshift(5);
+        flush();
+
+        expect(batches).toEqual([[{ op: 'clear' }, { items: [5], op: 'unshift' }]]);
+    });
+
+    it('reports the order of a sort, and reverse, shift and concat', () => {
+        let arr = new ReactiveArray([3, 1, 2]),
+            batches: unknown[][] = [];
+
+        arr.on('batch', (ops) => batches.push(ops));
+        arr.sort((a, b) => a - b);
+        arr.reverse();
+        arr.shift();
+        arr.concat([9]);
+        flush();
+
+        expect(batches).toEqual([[
+            { op: 'sort', order: [1, 2, 0] },
+            { op: 'reverse' },
+            { item: 3, op: 'shift' },
+            { items: [9], op: 'concat' }
+        ]]);
+    });
+
+    it('runs listeners outside any owner, and stops delivering once the last one leaves', () => {
+        let arr = new ReactiveArray<number>(),
+            seen: unknown[] = [],
+            stop = arr.on('batch', () => seen.push(owner()));
+
+        arr.push(1);
+        flush();
+        stop();
+        arr.push(2);
+        flush();
+
+        expect(seen).toEqual([null]);
+    });
+
+    it('delivers mutations made inside an effect within the same pass', () => {
+        let arr = new ReactiveArray<number>(),
+            batches: unknown[][] = [],
+            s = signal(0);
+
+        arr.on('batch', (ops) => batches.push(ops));
+
+        let stop = root(() => effect(() => {
+            if (read(s)) {
+                arr.push(read(s));
+            }
+        }));
+
+        write(s, 5);
+        flush();
+        stop();
+
+        expect(batches).toEqual([[{ items: [5], op: 'push' }]]);
     });
 });

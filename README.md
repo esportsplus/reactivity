@@ -302,6 +302,7 @@ All standard array methods (`push`, `pop`, `shift`, `unshift`, `splice`, `sort`,
 
 | Event | Payload | Description |
 |-------|---------|-------------|
+| `batch` | `ArrayOp<T>[]` | Every mutation of a task, in order, each as `{ op, ...payload }` of its event; delivered once inside the reactivity pass that follows (`flush()` settles it), outside any owner. A `clear` drops the mutations before it |
 | `clear` | `undefined` | Array was cleared |
 | `concat` | `{ items: T[] }` | Items were concatenated |
 | `pop` | `{ item: T }` | Item was popped |

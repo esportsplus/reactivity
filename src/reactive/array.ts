@@ -1,11 +1,27 @@
 import { isArray } from '@esportsplus/utilities';
 import { PACKAGE_NAME, REACTIVE_ARRAY } from '~/constants';
-import { read, signal, write } from '~/system';
+import { effect, read, root, signal, write } from '~/system';
 import type { Signal } from '~/types';
 import { isReactiveObject } from './object';
 
 
+// One mutation as the batch event reports it: the matching event's payload, named by 'op'
+type ArrayOp<T> =
+    | { items: T[]; op: 'concat' }
+    | { deleteCount: number; items: T[]; op: 'splice'; start: number }
+    | { items: T[]; op: 'push' }
+    | { index: number; item: T; op: 'set' }
+    | { items: T[]; op: 'unshift' }
+    | { op: 'clear' }
+    | { item: T; op: 'pop' }
+    | { op: 'reverse' }
+    | { item: T; op: 'shift' }
+    | { op: 'sort'; order: number[] };
+
 type Events<T> = {
+    // Every mutation of a task, in order, delivered once inside the reactivity pass that follows it (flush() settles
+    // it); a clear drops the mutations before it
+    batch: ArrayOp<T>[];
     clear: undefined,
     concat: {
         items: T[];
@@ -60,6 +76,9 @@ class ReactiveArray<T> extends Array<T> {
 
     private _length: Signal<number>;
 
+    // The batch listeners' delivery: the mutations not yet delivered, and the effect that delivers them
+    private batched: { ops: ArrayOp<T>[] | null; stop: VoidFunction; tick: Signal<number> } | null = null;
+
     listeners: Listeners<T> = {};
 
 
@@ -110,7 +129,71 @@ class ReactiveArray<T> extends Array<T> {
         }
 
         this.dispatch('set', { index: i, item: value });
+        this.record({ index: i, item: value, op: 'set' });
         dispose(prev);
+    }
+
+
+    // Starts delivering batches: an effect of its own, outside any owner, since the array outlives whoever listens
+    private batch() {
+        let tick = signal(0);
+
+        this.batched = {
+            ops: null,
+            stop: root(() => effect(() => {
+                read(tick);
+
+                let batched = this.batched,
+                    ops = batched?.ops;
+
+                if (!ops) {
+                    return;
+                }
+
+                batched!.ops = null;
+
+                // What listeners build belongs to them, not to this effect
+                root(() => this.dispatch('batch', ops));
+            })),
+            tick
+        };
+    }
+
+    // Trims trailing empty slots; an event left with no listeners is deleted, so e.g. sort() skips computing its order
+    private prune<K extends keyof Events<T>>(event: K, listeners: (AnyListener<T> | null)[]) {
+        while (listeners.length && listeners[listeners.length - 1] === null) {
+            listeners.pop();
+        }
+
+        if (listeners.length === 0 && this.listeners[event] === listeners) {
+            delete this.listeners[event];
+        }
+    }
+
+    private record(op: ArrayOp<T>) {
+        let batched = this.batched;
+
+        if (batched === null) {
+            return;
+        }
+
+        if (op.op === 'clear' || batched.ops === null) {
+            batched.ops = [op];
+        }
+        else {
+            batched.ops.push(op);
+        }
+
+        write(batched.tick, batched.tick.value + 1);
+    }
+
+    private unbatch() {
+        let batched = this.batched;
+
+        if (batched !== null) {
+            this.batched = null;
+            batched.stop();
+        }
     }
 
 
@@ -118,6 +201,7 @@ class ReactiveArray<T> extends Array<T> {
         this.dispose();
         write(this._length, 0);
         this.dispatch('clear');
+        this.record({ op: 'clear' });
     }
 
     concat(...items: ConcatArray<T>[]): ReactiveArray<T>;
@@ -143,6 +227,7 @@ class ReactiveArray<T> extends Array<T> {
         if (added.length) {
             write(this._length, this.length);
             this.dispatch('concat', { items: added });
+            this.record({ items: added, op: 'concat' });
         }
 
         return this;
@@ -185,6 +270,10 @@ class ReactiveArray<T> extends Array<T> {
             this.prune(event, listeners);
         }
 
+        if (event === 'batch' && this.listeners.batch === undefined) {
+            this.unbatch();
+        }
+
         if (errors !== null) {
             let error = errors.length === 1
                 ? errors[0]
@@ -209,6 +298,10 @@ class ReactiveArray<T> extends Array<T> {
     on<K extends keyof Events<T>>(event: K, listener: Listener<Events<T>[K]>): VoidFunction {
         let entry = listener as AnyListener<T>,
             listeners = this.listeners[event];
+
+        if (event === 'batch' && this.batched === null) {
+            this.batch();
+        }
 
         if (listeners === undefined) {
             this.listeners[event] = [entry];
@@ -248,6 +341,10 @@ class ReactiveArray<T> extends Array<T> {
                 current[i] = null;
                 this.prune(event, current);
             }
+
+            if (event === 'batch' && this.listeners.batch === undefined) {
+                this.unbatch();
+            }
         };
     }
 
@@ -255,17 +352,6 @@ class ReactiveArray<T> extends Array<T> {
         listener.once = true;
 
         return this.on(event, listener);
-    }
-
-    // Trims trailing empty slots; an event left with no listeners is deleted, so e.g. sort() skips computing its order
-    private prune<K extends keyof Events<T>>(event: K, listeners: (AnyListener<T> | null)[]) {
-        while (listeners.length && listeners[listeners.length - 1] === null) {
-            listeners.pop();
-        }
-
-        if (listeners.length === 0 && this.listeners[event] === listeners) {
-            delete this.listeners[event];
-        }
     }
 
     pop() {
@@ -278,6 +364,7 @@ class ReactiveArray<T> extends Array<T> {
         dispose(item);
         write(this._length, this.length);
         this.dispatch('pop', { item });
+        this.record({ item, op: 'pop' });
 
         return item;
     }
@@ -292,6 +379,7 @@ class ReactiveArray<T> extends Array<T> {
         write(this._length, length);
 
         this.dispatch('push', { items });
+        this.record({ items, op: 'push' });
 
         return length;
     }
@@ -299,6 +387,7 @@ class ReactiveArray<T> extends Array<T> {
     reverse() {
         super.reverse();
         this.dispatch('reverse');
+        this.record({ op: 'reverse' });
 
         return this;
     }
@@ -313,12 +402,13 @@ class ReactiveArray<T> extends Array<T> {
         dispose(item);
         write(this._length, this.length);
         this.dispatch('shift', { item });
+        this.record({ item, op: 'shift' });
 
         return item;
     }
 
     sort(fn?: (a: T, b: T) => number) {
-        if (this.listeners.sort === undefined) {
+        if (this.listeners.sort === undefined && this.batched === null) {
             super.sort(fn);
         }
         else {
@@ -353,6 +443,7 @@ class ReactiveArray<T> extends Array<T> {
             }
 
             this.dispatch('sort', { order });
+            this.record({ op: 'sort', order });
         }
 
         return this;
@@ -371,13 +462,11 @@ class ReactiveArray<T> extends Array<T> {
 
             // Listeners receive the position and count Array.prototype.splice actually applied
             // (negative, fractional and out-of-range arguments resolved), never the raw arguments
-            let index = Math.trunc(start) || 0;
+            let index = Math.trunc(start) || 0,
+                resolved = index < 0 ? Math.max(length + index, 0) : Math.min(index, length);
 
-            this.dispatch('splice', {
-                deleteCount: removed.length,
-                items,
-                start: index < 0 ? Math.max(length + index, 0) : Math.min(index, length)
-            });
+            this.dispatch('splice', { deleteCount: removed.length, items, start: resolved });
+            this.record({ deleteCount: removed.length, items, op: 'splice', start: resolved });
         }
 
         return removed;
@@ -392,6 +481,7 @@ class ReactiveArray<T> extends Array<T> {
 
         write(this._length, length);
         this.dispatch('unshift', { items });
+        this.record({ items, op: 'unshift' });
 
         return length;
     }
@@ -401,3 +491,4 @@ Object.defineProperty(ReactiveArray.prototype, REACTIVE_ARRAY, { value: true });
 
 
 export { ReactiveArray };
+export type { ArrayOp };
