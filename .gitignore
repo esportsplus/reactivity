@@ -9,4 +9,4 @@
 .idea
 build
 node_modules
-tmpclaude*
+tmpclaude*.tmp

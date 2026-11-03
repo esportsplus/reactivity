@@ -1,0 +1,157 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`compiled output > app.ts 1`] = `null`;
+
+exports[`compiled output > consumer.ts 1`] = `
+"import * as reactivity_u0 from '@esportsplus/reactivity';
+import { count as renamed, later, make, total } from './app';
+import * as app from './app';
+export let a = reactivity_u0.signal(0);
+export let b = () => reactivity_u0.read(renamed) + reactivity_u0.read(total) + reactivity_u0.read(later);
+export let c = () => reactivity_u0.read(app.count) + app.list.$length;
+export let d = () => reactivity_u0.read(app['count']);
+export let e = () => { app.list.$set(0, 1); };"
+`;
+
+exports[`compiled output > forms.ts 1`] = `
+"import * as reactivity_u0 from '@esportsplus/reactivity';
+
+        class ReactiveObject_1x8s4en0<T0 extends unknown[], T1 extends reactivity_u0.Computed<ReturnType<T1>>['fn'], T2 extends unknown[]> extends reactivity_u0.ReactiveObject<any> {
+            #a = this[reactivity_u0.SIGNAL](1);
+#b = this[reactivity_u0.SIGNAL]('x');
+#items;
+#sum;
+#neg = this[reactivity_u0.SIGNAL](-1);
+#source;
+#flag = this[reactivity_u0.SIGNAL](true);
+
+            constructor(_p0: T0, _p1: T1, _p2: T2) {
+                super(null);
+                this.#items = this[reactivity_u0.REACTIVE_ARRAY](_p0);
+this.#sum = this[reactivity_u0.COMPUTED](_p1);
+this.#source = this[reactivity_u0.REACTIVE_ARRAY](_p2);
+            }
+
+            
+                    get a() {
+                        return reactivity_u0.read(this.#a);
+                    }
+                    set a(_v0) {
+                        reactivity_u0.write(this.#a, _v0);
+                    }
+                
+
+                    get b() {
+                        return reactivity_u0.read(this.#b);
+                    }
+                    set b(_v1) {
+                        reactivity_u0.write(this.#b, _v1);
+                    }
+                
+
+                get items() {
+                    return this.#items;
+                }
+            
+
+                get sum() {
+                    return reactivity_u0.read(this.#sum);
+                }
+            
+
+                    get neg() {
+                        return reactivity_u0.read(this.#neg);
+                    }
+                    set neg(_v2) {
+                        reactivity_u0.write(this.#neg, _v2);
+                    }
+                
+
+                get source() {
+                    return this.#source;
+                }
+            
+
+                    get flag() {
+                        return reactivity_u0.read(this.#flag);
+                    }
+                    set flag(_v3) {
+                        reactivity_u0.write(this.#flag, _v3);
+                    }
+                
+        }
+    
+
+        class ReactiveObject_1x8s4en1<T extends { 'a'?: unknown, 'items'?: unknown[] }> extends reactivity_u0.ReactiveObject<any> {
+            #a;
+#items;
+
+            constructor(_p0: T['a'], _p1: T['items']) {
+                super(null);
+                this.#a = this[reactivity_u0.SIGNAL](_p0);
+this.#items = this[reactivity_u0.REACTIVE_ARRAY](_p1);
+            }
+
+            
+                    get a() {
+                        return reactivity_u0.read(this.#a) as T['a'];
+                    }
+                    set a(_v0) {
+                        reactivity_u0.write(this.#a, _v0);
+                    }
+                
+
+                get items() {
+                    return this.#items;
+                }
+            
+        }
+    
+
+declare function total(): number;
+declare let list: number[];
+declare let n: number;
+let count = reactivity_u0.signal(0);
+let doubled = reactivity_u0.computed(() => reactivity_u0.read(count) * 2);
+let typed = reactivity_u0.signal(n);
+let fn = reactivity_u0.computed(total);
+let runtime = reactivity_u0.reactive(list);
+let obj =  new ReactiveObject_1x8s4en0([1, 2], () => 3, list);
+let shorthand = reactivity_u0.reactive({ list });
+let hinted =  new ReactiveObject_1x8s4en1<{ a: number; items: number[] }>(1, []);
+let spread = reactivity_u0.reactive({ ...{ a: 1 }, b: 2 });
+let method = reactivity_u0.reactive({ m() { return 1; } });
+let arr =  new reactivity_u0.ReactiveArray([1, 2, 3]);
+let empty =  new reactivity_u0.ReactiveArray<string>();
+let declared: number[] =  new reactivity_u0.ReactiveArray<number>([4]);
+reactivity_u0.write(count, 5);
+reactivity_u0.write(count, count.value + 2);
+reactivity_u0.write(count, count.value || 3);
+reactivity_u0.write(count, count.value + 1);
+reactivity_u0.write(count, count.value - 1);
+let p = ((_t0) => (reactivity_u0.write(count, _t0 + 1), _t0))(count.value);
+let q = (reactivity_u0.write(count, count.value + 1), count.value);
+let o = { count: reactivity_u0.read(count) };
+let t = typeof reactivity_u0.read(count);
+arr.$set(0, 4);
+((_a, _k) => _a.$set(_k, _a[_k] + (2)))(arr, 1);
+((_a, _k, _v) => (_a.$set(_k, _v + 1), _v))(arr, 2, arr[2]);
+let r = ((_a, _k) => (_a.$set(_k, _a[_k] + 1), _a[_k]))(arr, 0);
+let size = arr.$length;
+arr.$length = 1;
+arr.$length = arr.length + 1;
+arr.$length = arr.length + 1;
+arr.splice(0, arr.length, ...[5, 6]);
+arr.splice(0, arr.length);
+export { count, doubled, typed, fn, runtime, obj, shorthand, hinted, spread, method, empty, declared, p, q, o, t, r, size };
+export default reactivity_u0.signal(0);"
+`;
+
+exports[`compiled output > state.ts 1`] = `
+"import * as reactivity_u0 from '@esportsplus/reactivity';
+export let count = reactivity_u0.signal(0);
+export let list =  new reactivity_u0.ReactiveArray([1, 2]);
+export let later: number;
+later = reactivity_u0.signal(1);
+export default reactivity_u0.computed(() => 2);"
+`;
