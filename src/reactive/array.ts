@@ -79,6 +79,8 @@ class ReactiveArray<T> extends Array<T> {
     // The batch listeners' delivery: the mutations not yet delivered, and the effect that delivers them
     private batched: { ops: ArrayOp<T>[] | null; stop: VoidFunction; tick: Signal<number> } | null = null;
 
+    private delivering = false;
+
     listeners: Listeners<T> = {};
 
 
@@ -151,9 +153,25 @@ class ReactiveArray<T> extends Array<T> {
                 }
 
                 batched!.ops = null;
+                this.delivering = true;
 
-                // What listeners build belongs to them, not to this effect
-                root(() => this.dispatch('batch', ops));
+                try {
+                    // What listeners build belongs to them, not to this effect
+                    root(() => this.dispatch('batch', ops));
+                }
+                finally {
+                    this.delivering = false;
+                }
+
+                // Disposing this effect inside its own run corrupts its dependency links, so the stop waits for the
+                // run to end; a listener that joins meanwhile keeps it
+                if (this.listeners.batch === undefined) {
+                    queueMicrotask(() => {
+                        if (this.listeners.batch === undefined) {
+                            this.unbatch();
+                        }
+                    });
+                }
             })),
             tick
         };
@@ -270,7 +288,7 @@ class ReactiveArray<T> extends Array<T> {
             this.prune(event, listeners);
         }
 
-        if (event === 'batch' && this.listeners.batch === undefined) {
+        if (event === 'batch' && !this.delivering && this.listeners.batch === undefined) {
             this.unbatch();
         }
 
@@ -342,7 +360,7 @@ class ReactiveArray<T> extends Array<T> {
                 this.prune(event, current);
             }
 
-            if (event === 'batch' && this.listeners.batch === undefined) {
+            if (event === 'batch' && !this.delivering && this.listeners.batch === undefined) {
                 this.unbatch();
             }
         };

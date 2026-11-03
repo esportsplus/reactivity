@@ -1228,6 +1228,15 @@ describe('ReactiveArray', () => {
 });
 
 describe('ReactiveArray batch', () => {
+    // Disposed links go back to a shared pool; a node disposed mid-run then walks pooled links
+    let pool = () => {
+        let a = signal(0),
+            b = signal(0),
+            c = signal(0);
+
+        root(() => effect(() => read(a) + read(b) + read(c)))();
+    };
+
     it('delivers every mutation of a task once, in order, in the pass that follows', async () => {
         let arr = new ReactiveArray([1, 2, 3]),
             batches: unknown[][] = [];
@@ -1325,5 +1334,75 @@ describe('ReactiveArray batch', () => {
         stop();
 
         expect(batches).toEqual([[{ items: [5], op: 'push' }]]);
+    });
+
+    it('keeps delivering to later listeners after the last one throws and is dropped', async () => {
+        pool();
+
+        let arr = new ReactiveArray<number>(),
+            batches: unknown[][] = [],
+            lengths: number[] = [],
+            stop = root(() => effect(() => { lengths.push(arr.$length); }));
+
+        let captured = await captureUncaught(() => {
+            arr.on('batch', () => { throw new Error('reactivity: batch'); });
+            arr.push(1);
+            flush();
+        });
+
+        arr.on('batch', (ops) => batches.push(ops));
+        arr.push(2);
+        flush();
+        stop();
+
+        expect(captured.map((e) => (e as Error).message)).toEqual(['reactivity: batch']);
+        expect(batches).toEqual([[{ items: [2], op: 'push' }]]);
+        expect(lengths).toEqual([0, 1, 2]);
+    });
+
+    it('keeps delivering to later listeners after the last one unsubscribes itself during dispatch', async () => {
+        pool();
+
+        let arr = new ReactiveArray<number>(),
+            batches: unknown[][] = [],
+            first: unknown[][] = [],
+            lengths: number[] = [],
+            stop = root(() => effect(() => { lengths.push(arr.$length); })),
+            unsubscribe = arr.on('batch', (ops) => {
+                first.push(ops);
+                unsubscribe();
+            });
+
+        arr.push(1);
+        flush();
+        await Promise.resolve();
+
+        arr.push(2);
+        flush();
+
+        arr.on('batch', (ops) => batches.push(ops));
+        arr.push(3);
+        flush();
+        stop();
+
+        expect(first).toEqual([[{ items: [1], op: 'push' }]]);
+        expect(batches).toEqual([[{ items: [3], op: 'push' }]]);
+        expect(lengths).toEqual([0, 1, 2, 3]);
+    });
+
+    it('keeps the delivering effect when a listener joins before the stop runs', () => {
+        let arr = new ReactiveArray<number>(),
+            batches: unknown[][] = [],
+            unsubscribe = arr.on('batch', () => {
+                unsubscribe();
+                arr.on('batch', (ops) => batches.push(ops));
+            });
+
+        arr.push(1);
+        flush();
+        arr.push(2);
+        flush();
+
+        expect(batches).toEqual([[{ items: [2], op: 'push' }]]);
     });
 });
