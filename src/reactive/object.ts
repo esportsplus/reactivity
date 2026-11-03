@@ -1,8 +1,8 @@
 import { defineProperty, isArray } from '@esportsplus/utilities';
-import { COMPUTED, REACTIVE_ARRAY, REACTIVE_OBJECT, SIGNAL } from '~/constants';
-import { computed, dispose, read, root, signal, write } from '~/system';
-import { Computed } from '~/types';
+import { COMPUTED, REACTIVE_ARRAY, REACTIVE_OBJECT, SIGNAL } from '../constants';
+import { computed, dispose, read, root, signal, write } from '../system';
 import { ReactiveArray } from './array';
+import type { Computed } from '../types';
 
 
 class ReactiveObject<T extends Record<PropertyKey, unknown>> {

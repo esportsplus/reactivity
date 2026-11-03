@@ -1,9 +1,9 @@
 import { isArray, isObject } from '@esportsplus/utilities';
-import { PACKAGE_NAME } from '~/constants';
-import { onCleanup, root } from '~/system';
-import type { Reactive } from '~/types';
+import { PACKAGE_NAME } from '../constants';
+import { onCleanup, root } from '../system';
 import { ReactiveArray } from './array';
 import { ReactiveObject } from './object';
+import type { Reactive } from '../types';
 
 
 type Guard<T> =

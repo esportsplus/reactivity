@@ -1,8 +1,8 @@
 import { isArray } from '@esportsplus/utilities';
-import { PACKAGE_NAME, REACTIVE_ARRAY } from '~/constants';
-import { effect, read, root, signal, write } from '~/system';
-import type { Signal } from '~/types';
+import { PACKAGE_NAME, REACTIVE_ARRAY } from '../constants';
+import { effect, read, root, signal, write } from '../system';
 import { isReactiveObject } from './object';
+import type { Signal } from '../types';
 
 
 // One mutation as the batch event reports it: the matching event's payload, named by 'op'
