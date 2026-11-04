@@ -119,6 +119,29 @@ function place<T>(array: T[], start: number, count: number, items: T[]) {
     }
 }
 
+// Array.prototype.sort's steps: present values sorted apart (a plain array sorts on the fast path), written
+// back in order, holes left at the end
+function rank<T>(array: T[], fn?: (a: T, b: T) => number) {
+    let n = array.length,
+        values: T[] = [];
+
+    for (let i = 0; i < n; i++) {
+        if (i in array) {
+            values.push(array[i]);
+        }
+    }
+
+    values.sort(fn);
+
+    for (let i = 0, m = values.length; i < m; i++) {
+        array[i] = values[i];
+    }
+
+    for (let i = values.length; i < n; i++) {
+        // oxlint-disable-next-line typescript/no-array-delete -- holes sort to the end, as the builtin leaves them
+        delete array[i];
+    }
+}
 
 // Derived arrays (splice removals, map/filter/slice) must be plain Arrays: species-creating a
 // ReactiveArray runs the reactive constructor per call and seeds _length from the length argument.
@@ -500,7 +523,7 @@ class ReactiveArray<T> extends Array<T> {
 
     sort(fn?: (a: T, b: T) => number) {
         if (this.listeners.sort === undefined && this.batched === null) {
-            super.sort(fn);
+            rank(this, fn);
         }
         else {
             let n = this.length,
@@ -511,7 +534,7 @@ class ReactiveArray<T> extends Array<T> {
                 before[i] = this[i];
             }
 
-            super.sort(fn);
+            rank(this, fn);
 
             let buckets = new Map<T, { indices: number[]; next: number }>(),
                 // oxlint-disable-next-line unicorn/no-new-array -- preallocated to n, every slot is written next
