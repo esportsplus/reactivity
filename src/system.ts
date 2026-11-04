@@ -1045,10 +1045,6 @@ const flush = (): void => {
     }
 };
 
-// Whether an onCleanup() made now would land on an owner (a running computed/effect, also inside
-// untrack, or a root's scope)
-const hasOwner = (): boolean => observer !== null || scope !== null;
-
 const isComputed = (value: unknown): value is Computed<unknown> => {
     return isObject(value) && !!((value as unknown as Computed<unknown>).state & STATE_COMPUTED);
 };
@@ -1327,7 +1323,6 @@ export {
     dispose,
     effect,
     flush,
-    hasOwner,
     isComputed, isSignal,
     onCleanup, owner,
     pause, peek,

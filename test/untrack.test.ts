@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computed, dispose, effect, hasOwner, onCleanup, peek, read, root, signal, untrack, write } from '~/system';
+import { computed, dispose, effect, onCleanup, owner, peek, read, root, signal, untrack, write } from '~/system';
 import type { Computed } from '~/system';
 
 
@@ -264,7 +264,7 @@ describe('untrack ownership', () => {
             read(a);
         });
 
-        expect(untrack(() => hasOwner())).toBe(false);
+        expect(untrack(() => owner() !== null)).toBe(false);
 
         write(a, 1);
         await Promise.resolve();

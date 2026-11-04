@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computed, owner as current, dispose, effect, flush, hasOwner, onCleanup, read, root, signal, untrack, write } from '~/system';
+import { computed, owner as current, dispose, effect, flush, onCleanup, read, root, signal, untrack, write } from '~/system';
 import type { Computed } from '~/system';
 import { captureUncaught } from './lib/uncaught';
 
@@ -550,19 +550,19 @@ describe('ownership throwing cleanup', () => {
 });
 
 
-describe('hasOwner', () => {
+describe('owner() as an ownership probe', () => {
     it('is true inside a tracking root or a run (also untracked), false outside and in a detached root', () => {
         let seen: boolean[] = [],
             stop = effect(() => {
-                seen.push(hasOwner());
-                seen.push(untrack(() => hasOwner()));
-                seen.push(untrack(() => root(() => hasOwner())));
+                seen.push(current() !== null);
+                seen.push(untrack(() => current() !== null));
+                seen.push(untrack(() => root(() => current() !== null)));
             });
 
-        seen.push(hasOwner());
-        seen.push(untrack(() => hasOwner()));
-        root((d) => { seen.push(hasOwner()); d(); });
-        root(() => { seen.push(hasOwner()); });
+        seen.push(current() !== null);
+        seen.push(untrack(() => current() !== null));
+        root((d) => { seen.push(current() !== null); d(); });
+        root(() => { seen.push(current() !== null); });
         dispose(stop);
 
         expect(seen).toEqual([true, true, false, false, false, true, false]);
@@ -573,7 +573,7 @@ describe('hasOwner', () => {
             seen: boolean[] = [],
             stop = effect(() => {
                 read(s);
-                seen.push(untrack(() => hasOwner()));
+                seen.push(untrack(() => current() !== null));
             });
 
         write(s, 1);
@@ -635,7 +635,7 @@ describe('root with an owner', () => {
             effect(() => { read(s); });
         }, node);
 
-        expect(hasOwner()).toBe(false);
+        expect(current() !== null).toBe(false);
         expect(registrations(node!)).toBe(2);
 
         write(s, 1);
