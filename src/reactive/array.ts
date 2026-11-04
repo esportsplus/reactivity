@@ -69,6 +69,56 @@ function dispose(value: unknown) {
     }
 }
 
+// One element move of Array.prototype's algorithms: a hole moves as a hole
+function move<T>(array: T[], from: number, to: number) {
+    if (from in array) {
+        array[to] = array[from];
+    }
+    else {
+        // oxlint-disable-next-line typescript/no-array-delete -- a hole must move as a hole, as the builtin does
+        delete array[to];
+    }
+}
+
+// Array.prototype.splice's element steps after the removal: `count` slots at `start` become `items`. Slots
+// past the end are filled in ascending order, so a packed array stays packed.
+function place<T>(array: T[], start: number, count: number, items: T[]) {
+    let length = array.length,
+        n = items.length,
+        total = length - count + n;
+
+    if (n < count) {
+        for (let i = start + count; i < length; i++) {
+            move(array, i, i - count + n);
+        }
+    }
+    else if (n > count) {
+        let shift = n - count;
+
+        for (let i = length; i < total; i++) {
+            if (i < start + n) {
+                array[i] = items[i - start];
+            }
+            else {
+                move(array, i - shift, i);
+            }
+        }
+
+        for (let i = length - 1; i >= start + n; i--) {
+            move(array, i - shift, i);
+        }
+    }
+
+    for (let i = 0; i < n; i++) {
+        array[start + i] = items[i];
+    }
+
+    // Trims what moved down, or restores a length a hole moved past the old end could not set
+    if (array.length !== total) {
+        array.length = total;
+    }
+}
+
 
 // Derived arrays (splice removals, map/filter/slice) must be plain Arrays: species-creating a
 // ReactiveArray runs the reactive constructor per call and seeds _length from the length argument.
@@ -423,8 +473,9 @@ class ReactiveArray<T> extends Array<T> {
             return undefined;
         }
 
-        let item = super.shift() as T;
+        let item = this[0];
 
+        place(this, 0, 1, []);
         dispose(item);
         write(this._length, this.length);
         this.dispatch('shift', { item });
@@ -478,23 +529,32 @@ class ReactiveArray<T> extends Array<T> {
     }
 
     splice(start: number, deleteCount: number = this.length, ...items: T[]) {
+        // Arguments resolve as Array.prototype.splice resolves them (negative, fractional and out-of-range
+        // values clamped); listeners receive the resolved position and count, never the raw arguments
         let length = this.length,
-            removed = super.splice(start, deleteCount, ...items);
+            index = Math.trunc(start) || 0,
+            resolved = index < 0 ? Math.max(length + index, 0) : Math.min(index, length),
+            count = Math.min(Math.max(Math.trunc(deleteCount) || 0, 0), length - resolved),
+            removed: T[] = [];
 
-        if (items.length > 0 || removed.length > 0) {
+        for (let i = 0; i < count; i++) {
+            if (resolved + i in this) {
+                removed[i] = this[resolved + i];
+            }
+        }
+
+        removed.length = count;
+
+        if (items.length > 0 || count > 0) {
+            place(this, resolved, count, items);
             write(this._length, this.length);
 
-            for (let i = 0, n = removed.length; i < n; i++) {
+            for (let i = 0; i < count; i++) {
                 dispose(removed[i]);
             }
 
-            // Listeners receive the position and count Array.prototype.splice actually applied
-            // (negative, fractional and out-of-range arguments resolved), never the raw arguments
-            let index = Math.trunc(start) || 0,
-                resolved = index < 0 ? Math.max(length + index, 0) : Math.min(index, length);
-
-            this.dispatch('splice', { deleteCount: removed.length, items, start: resolved });
-            this.record({ deleteCount: removed.length, items, op: 'splice', start: resolved });
+            this.dispatch('splice', { deleteCount: count, items, start: resolved });
+            this.record({ deleteCount: count, items, op: 'splice', start: resolved });
         }
 
         return removed;
@@ -505,7 +565,9 @@ class ReactiveArray<T> extends Array<T> {
             return this.length;
         }
 
-        let length = super.unshift(...items);
+        place(this, 0, 0, items);
+
+        let length = this.length;
 
         write(this._length, length);
         this.dispatch('unshift', { items });
