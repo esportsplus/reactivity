@@ -72,6 +72,8 @@ function dispose(value: unknown) {
 
 // Derived arrays (splice removals, map/filter/slice) must be plain Arrays: species-creating a
 // ReactiveArray runs the reactive constructor per call and seeds _length from the length argument.
+// V8 runs Array.prototype mutators on its generic path for an instance whose prototype is not
+// Array.prototype, so mutations are spelled out as indexed reads and stores, which stay fast.
 class ReactiveArray<T> extends Array<T> {
 
     private _length: Signal<number>;
@@ -232,13 +234,15 @@ class ReactiveArray<T> extends Array<T> {
 
             if (isArray(item)) {
                 for (let j = 0, o = item.length; j < o; j++) {
-                    added.push(item[j]);
-                    super.push(item[j]);
+                    let value = item[j];
+
+                    added.push(value);
+                    this[this.length] = value;
                 }
             }
             else {
                 added.push(item as T);
-                super.push(item as T);
+                this[this.length] = item as T;
             }
         }
 
@@ -392,7 +396,11 @@ class ReactiveArray<T> extends Array<T> {
             return this.length;
         }
 
-        let length = super.push(...items);
+        let length = this.length;
+
+        for (let i = 0, n = items.length; i < n; i++) {
+            this[length++] = items[i];
+        }
 
         write(this._length, length);
 
