@@ -3,6 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { coordinator, languageService } from '@esportsplus/typescript/compiler';
+import type { ts } from '@esportsplus/typescript';
 
 import pipeline from '~/compiler/index';
 
@@ -72,13 +73,22 @@ writeFileSync(config, JSON.stringify({
 }));
 
 
-// Each pass hands the coordinator a checker it has not seen, so its memo starts empty and every
-// query a transform needs reaches tsgo, as when a build transforms each module once
-function transform(name: string): string {
-    let id = directory + '/' + name,
-        { checker, program } = languageService.update(config, id, FILES[name]);
+// One build pass: every module is transformed against one program and one checker, as tsc and vite
+// hand them in, so the coordinator's memo is shared across the pass. Each pass wraps the checker
+// anew, so its memo starts empty and every query the pass needs reaches tsgo once.
+function build(names: string[]): string[] {
+    let checker: ts.Checker | null = null,
+        code: string[] = [];
 
-    return coordinator.transform([pipeline], FILES[name], program.getSourceFile(id)!, { checker: new Proxy(checker, {}), program }, directory, new Map()).code;
+    for (let i = 0, n = names.length; i < n; i++) {
+        let id = directory + '/' + names[i],
+            project = languageService.update(config, id, FILES[names[i]]);
+
+        checker ??= new Proxy(project.checker, {});
+        code.push(coordinator.transform([pipeline], FILES[names[i]], project.program.getSourceFile(id)!, { checker, program: project.program }, directory, new Map()).code);
+    }
+
+    return code;
 }
 
 
@@ -91,13 +101,10 @@ afterAll(() => {
 test('compiler transform', async ({ bench }) => {
     await bench.compare(
         bench('every module of the app', () => {
-            for (let i = 0, n = NAMES.length; i < n; i++) {
-                transform(NAMES[i]);
-            }
+            build(NAMES);
         }),
         bench('modules without reactive (no import, unrelated import)', () => {
-            transform('helpers.ts');
-            transform('plain.ts');
+            build(['helpers.ts', 'plain.ts']);
         })
     );
 });
@@ -105,7 +112,7 @@ test('compiler transform', async ({ bench }) => {
 test('compiled output', async ({ bench }) => {
     let file = directory + '/runtime.compiled.ts';
 
-    writeFileSync(file, transform('runtime.ts'));
+    writeFileSync(file, build(['runtime.ts'])[0]);
 
     let { run } = await import(pathToFileURL(file).href) as { run: () => number };
 
