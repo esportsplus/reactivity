@@ -7,29 +7,26 @@ import type { Bindings } from './types';
 
 type Assignment = { call: ts.CallExpression; target: ts.Identifier };
 
-// Per program snapshot: answers about declarations and types hold for the snapshot's lifetime. `arrays`
-// and `kinds` hold answers built from queries the shared checker does not memoize (getPropertyOfType,
-// getNonNullableType, isArrayType), so dropping them costs a round-trip per array candidate or read
-type Caches = {
-    arrays: Map<number, boolean>;
-    assignments: Map<string, Map<string, Assignment[]>>;
-    kinds: Map<string, TYPES | null>;
-};
-
-
 const ARRAY_BRAND = 'once';
 
 const REACTIVE_ARRAY = 'ReactiveArray';
 
 
-let caches = new WeakMap<ts.Program, Caches>();
+// Per program snapshot, keyed by file name: an AST index, which the shared checker memo cannot hold
+let caches = new WeakMap<ts.Program, Map<string, Map<string, Assignment[]>>>();
 
 
 // `x = reactive(...)` assignments in a file, keyed by the assigned name: a variable declared
 // without a reactive initializer becomes a binding through one of these
 function assignments(bindings: Bindings, file: ts.SourceFile): Map<string, Assignment[]> {
-    let cache = cachesOf(bindings.program).assignments,
-        found = cache.get(file.fileName);
+    let cache = caches.get(bindings.program);
+
+    if (!cache) {
+        cache = new Map();
+        caches.set(bindings.program, cache);
+    }
+
+    let found = cache.get(file.fileName);
 
     if (found) {
         return found;
@@ -63,17 +60,6 @@ function assignments(bindings: Bindings, file: ts.SourceFile): Map<string, Assig
     cache.set(file.fileName, result);
 
     return result;
-}
-
-function cachesOf(program: ts.Program): Caches {
-    let found = caches.get(program);
-
-    if (!found) {
-        found = { arrays: new Map(), assignments: new Map(), kinds: new Map() };
-        caches.set(program, found);
-    }
-
-    return found;
 }
 
 // Every member of a union must agree: `number | undefined` is a signal, `number[] | undefined` is
@@ -151,8 +137,7 @@ const arrays = (bindings: Bindings, nodes: ts.Node[]): Set<ts.Node> => {
         return result;
     }
 
-    let cache = cachesOf(bindings.program).arrays,
-        types = bindings.checker.getTypeAtLocation(nodes);
+    let types = bindings.checker.getTypeAtLocation(nodes);
 
     for (let i = 0, n = nodes.length; i < n; i++) {
         let type = types[i];
@@ -161,16 +146,9 @@ const arrays = (bindings: Bindings, nodes: ts.Node[]): Set<ts.Node> => {
             continue;
         }
 
-        let branded = cache.get(type.id);
+        let property = bindings.checker.getPropertyOfType(bindings.checker.getNonNullableType(type) ?? type, ARRAY_BRAND);
 
-        if (branded === undefined) {
-            let property = bindings.checker.getPropertyOfType(bindings.checker.getNonNullableType(type) ?? type, ARRAY_BRAND);
-
-            branded = property?.declarations?.some(declaration => files.has(declaration.path)) === true;
-            cache.set(type.id, branded);
-        }
-
-        if (branded) {
+        if (property?.declarations?.some(declaration => files.has(declaration.path))) {
             result.add(nodes[i]);
         }
     }
@@ -252,17 +230,8 @@ const kind = (bindings: Bindings, found: Origin | null): TYPES | null => {
         return null;
     }
 
-    let cache = cachesOf(bindings.program).kinds,
-        key = references.key(declaration),
-        known = cache.get(key);
-
-    if (known !== undefined) {
-        return known;
-    }
-
-    cache.set(key, null);
-
-    let node = declaration.resolve() as ts.Node | undefined,
+    let key = references.key(declaration),
+        node = declaration.resolve() as ts.Node | undefined,
         result: TYPES | null = null;
 
     if (node && ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
@@ -291,8 +260,6 @@ const kind = (bindings: Bindings, found: Origin | null): TYPES | null => {
             result = classify(bindings, expression);
         }
     }
-
-    cache.set(key, result);
 
     return result;
 };
