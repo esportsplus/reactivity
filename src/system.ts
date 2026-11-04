@@ -2,7 +2,7 @@ import {
     PACKAGE_NAME,
     SIGNAL,
     STABILIZER_DEFERRED, STABILIZER_IDLE, STABILIZER_RESCHEDULE, STABILIZER_RUNNING, STABILIZER_SCHEDULED,
-    STATE_CHECK, STATE_COMPUTED, STATE_DIRTY, STATE_DISPOSED, STATE_EFFECT, STATE_ERROR, STATE_IN_HEAP, STATE_NOTIFY_MASK, STATE_RECOMPUTING
+    STATE_CHECK, STATE_COMPUTED, STATE_DIRTY, STATE_DISPOSED, STATE_EFFECT, STATE_ERROR, STATE_IN_HEAP, STATE_NOTIFY_MASK, STATE_PAUSED, STATE_RECOMPUTING, STATE_STALE
 } from './constants';
 import { Computed, ComputedResult, Link, SelectorSignal, Settled, Signal } from './types';
 import { isObject, isPromise } from '@esportsplus/utilities';
@@ -428,6 +428,11 @@ function recompute<T>(computed: Computed<T>) {
         deleteFromHeap(computed);
     }
 
+    if (computed.state & STATE_PAUSED) {
+        computed.state |= STATE_STALE;
+        return;
+    }
+
     if (computed.cleanup !== null || computed.owned !== null) {
         // A failing PREVIOUS generation's teardown must not poison this recompute or the stabilize pass
         try {
@@ -468,7 +473,7 @@ function recompute<T>(computed: Computed<T>) {
     version++;
     observer = o;
     // fn may have re-queued this node (a tracked read drains pending writes), so heap membership survives
-    computed.state = STATE_COMPUTED | flags | (computed.state & STATE_IN_HEAP);
+    computed.state = STATE_COMPUTED | flags | (computed.state & (STATE_IN_HEAP | STATE_PAUSED));
     // Entry snapshot, not current writes: a node whose fn wrote mid-run must stay gv < writes and validate normally
     computed.gv = w;
 
@@ -476,16 +481,23 @@ function recompute<T>(computed: Computed<T>) {
         remove = depsTail ? depsTail.nextDep : computed.deps;
 
     if (remove) {
-        do {
-            remove = unlink(remove);
-        }
-        while (remove);
-
-        if (depsTail) {
-            depsTail.nextDep = null;
+        // A run that paused its own effect read only part of what it depends on: the rest stays linked and the run
+        // counts as skipped, so resume() replays it
+        if (computed.state & STATE_PAUSED) {
+            computed.state |= STATE_STALE;
         }
         else {
-            computed.deps = null;
+            do {
+                remove = unlink(remove);
+            }
+            while (remove);
+
+            if (depsTail) {
+                depsTail.nextDep = null;
+            }
+            else {
+                computed.deps = null;
+            }
         }
     }
 
@@ -1121,6 +1133,41 @@ const read = <T>(node: Signal<T> | Computed<T>): T => {
 // .owner chain finds every enclosing owner.
 const owner = (): Computed<unknown> | null => observer || scope;
 
+// Effects only: a computed must stay derivable on read, which a skipped run would leave stale
+const pause = <T>(node: Computed<T>): void => {
+    let state = node.state;
+
+    if (state & STATE_DISPOSED) {
+        return;
+    }
+
+    if (!(state & STATE_EFFECT)) {
+        throw new Error(`${PACKAGE_NAME}: pause() expects an effect`);
+    }
+
+    node.state = state | STATE_PAUSED;
+};
+
+// A run skipped while paused is replayed once through the heap, so it lands in a normal stabilize pass
+const resume = <T>(node: Computed<T>): void => {
+    let state = node.state;
+
+    if (state & STATE_DISPOSED) {
+        return;
+    }
+
+    if (!(state & STATE_EFFECT)) {
+        throw new Error(`${PACKAGE_NAME}: resume() expects an effect`);
+    }
+
+    node.state = state & ~(STATE_PAUSED | STATE_STALE);
+
+    if (state & STATE_STALE) {
+        insertIntoHeap(node);
+        schedule();
+    }
+};
+
 // Owned before fn runs (nothing can register on the owner meanwhile, so ownerSlot is unchanged): a
 // root disposed inside its own fn then unlinks instead of being parked on the owner as a dead child.
 //
@@ -1283,8 +1330,8 @@ export {
     hasOwner,
     isComputed, isSignal,
     onCleanup, owner,
-    peek,
-    read, root,
+    pause, peek,
+    read, resume, root,
     signal,
     untrack,
     write

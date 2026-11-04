@@ -241,6 +241,8 @@ These operate directly on signal/computed nodes — the transformer emits them, 
 | `batch(fn)` | Groups writes so dependent effects defer until `fn` returns; pair with `flush()` for a synchronous transaction |
 | `flush()` | Synchronously settles all pending computed/effect updates |
 | `dispose(node)` | Disposes a computed or effect node and its dependencies |
+| `pause(effect)` | Stops an effect from running: a change that reaches it marks it stale instead. Called from inside the effect's own run, it abandons that run and keeps the dependencies the run had not read. Throws for a computed; a no-op on a disposed effect |
+| `resume(effect)` | Lets a paused effect run again. If a change reached it while paused it runs once (on the next microtask, or now with `flush()`); otherwise nothing runs. Throws for a computed; a no-op on a disposed effect |
 | `computed.invalidate(computed)` | Forces re-derivation of a computed on next read (re-dispatches an async computed's promise for a refetch) |
 | `signal.selector(signal, key)` | Per-key selector: within a tracking scope, subscribes to whether `signal`'s value equals `key`, so only key-matching observers re-run on write (O(1) fan-out) |
 
