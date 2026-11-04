@@ -26,14 +26,16 @@ interface ReactiveObjectCall {
 }
 
 interface VisitContext {
-    bindings: Bindings;
     calls: ReactiveObjectCall[];
     isReactiveCall: IsReactiveCall;
     sourceFile: ts.SourceFile;
+    typed: AnalyzedProperty[];
 }
 
 
-function analyzeProperty(prop: ts.ObjectLiteralElementLike, bindings: Bindings): AnalyzedProperty | null {
+// Syntax decides every property except a non-literal value, recorded in `typed` as a signal until
+// its type says whether it is an array
+function analyzeProperty(prop: ts.ObjectLiteralElementLike, typed: AnalyzedProperty[]): AnalyzedProperty | null {
     if (!ts.isPropertyAssignment(prop)) {
         return null;
     }
@@ -86,20 +88,18 @@ function analyzeProperty(prop: ts.ObjectLiteralElementLike, bindings: Bindings):
         return { isStatic, key, type: TYPES.Array, value };
     }
 
-    // A non-literal array is typed Reactive<T[]> on the object, so it must become a ReactiveArray
-    // exactly like a literal one
-    let type = isStaticValue(unwrapped) ? undefined : bindings.checker.getTypeAtLocation(value);
+    let property: AnalyzedProperty = {
+            isStatic: isStaticValue(value),
+            key,
+            type: TYPES.Signal,
+            value
+        };
 
-    if (type && (bindings.checker.isArrayType(type) || bindings.checker.isTupleType(type))) {
-        return { isStatic: false, key, type: TYPES.Array, value };
+    if (!isStaticValue(unwrapped)) {
+        typed.push(property);
     }
 
-    return {
-        isStatic: isStaticValue(value),
-        key,
-        type: TYPES.Signal,
-        value
-    };
+    return property;
 }
 
 function buildClassCode(classname: string, properties: AnalyzedProperty[], sourceFile: ts.SourceFile, typehint: string | null): string {
@@ -243,7 +243,7 @@ function visit(ctx: VisitContext, node: ts.Node): void {
                     return;
                 }
 
-                let analyzed = analyzeProperty(prop, ctx.bindings);
+                let analyzed = analyzeProperty(prop, ctx.typed);
 
                 if (!analyzed) {
                     node.forEachChild(n => visit(ctx, n));
@@ -269,13 +269,28 @@ function visit(ctx: VisitContext, node: ts.Node): void {
 
 export default (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: IsReactiveCall): ObjectTransformResult => {
     let ctx: VisitContext = {
-            bindings,
             calls: [],
             isReactiveCall,
-            sourceFile
+            sourceFile,
+            typed: []
         };
 
     visit(ctx, sourceFile);
+
+    // A non-literal array is typed Reactive<T[]> on the object, so it must become a ReactiveArray
+    // exactly like a literal one; every such value in the file is typed in one request
+    if (ctx.typed.length > 0) {
+        let types = bindings.checker.getTypeAtLocation(ctx.typed.map(property => property.value));
+
+        for (let i = 0, n = ctx.typed.length; i < n; i++) {
+            let type = types[i];
+
+            if (type && (bindings.checker.isArrayType(type) || bindings.checker.isTupleType(type))) {
+                ctx.typed[i].isStatic = false;
+                ctx.typed[i].type = TYPES.Array;
+            }
+        }
+    }
 
     let prepend: string[] = [],
         replacements: ReplacementIntent[] = [];
