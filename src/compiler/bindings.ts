@@ -7,26 +7,27 @@ import type { Bindings } from './types';
 
 type Assignment = { call: ts.CallExpression; target: ts.Identifier };
 
+// Per program snapshot. `kinds` saves no checker round-trip (the shared memo answers every query it
+// makes), but kind() runs on every read of a binding and re-deriving it per read dominates a warm transform
+type Caches = {
+    assignments: Map<string, Map<string, Assignment[]>>;
+    kinds: Map<string, TYPES | null>;
+};
+
+
 const ARRAY_BRAND = 'once';
 
 const REACTIVE_ARRAY = 'ReactiveArray';
 
 
-// Per program snapshot, keyed by file name: an AST index, which the shared checker memo cannot hold
-let caches = new WeakMap<ts.Program, Map<string, Map<string, Assignment[]>>>();
+let caches = new WeakMap<ts.Program, Caches>();
 
 
 // `x = reactive(...)` assignments in a file, keyed by the assigned name: a variable declared
 // without a reactive initializer becomes a binding through one of these
 function assignments(bindings: Bindings, file: ts.SourceFile): Map<string, Assignment[]> {
-    let cache = caches.get(bindings.program);
-
-    if (!cache) {
-        cache = new Map();
-        caches.set(bindings.program, cache);
-    }
-
-    let found = cache.get(file.fileName);
+    let cache = cachesOf(bindings.program).assignments,
+        found = cache.get(file.fileName);
 
     if (found) {
         return found;
@@ -60,6 +61,17 @@ function assignments(bindings: Bindings, file: ts.SourceFile): Map<string, Assig
     cache.set(file.fileName, result);
 
     return result;
+}
+
+function cachesOf(program: ts.Program): Caches {
+    let found = caches.get(program);
+
+    if (!found) {
+        found = { assignments: new Map(), kinds: new Map() };
+        caches.set(program, found);
+    }
+
+    return found;
 }
 
 // Every member of a union must agree: `number | undefined` is a signal, `number[] | undefined` is
@@ -230,8 +242,17 @@ const kind = (bindings: Bindings, found: Origin | null): TYPES | null => {
         return null;
     }
 
-    let key = references.key(declaration),
-        node = declaration.resolve() as ts.Node | undefined,
+    let cache = cachesOf(bindings.program).kinds,
+        key = references.key(declaration),
+        known = cache.get(key);
+
+    if (known !== undefined) {
+        return known;
+    }
+
+    cache.set(key, null);
+
+    let node = declaration.resolve() as ts.Node | undefined,
         result: TYPES | null = null;
 
     if (node && ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
@@ -260,6 +281,8 @@ const kind = (bindings: Bindings, found: Origin | null): TYPES | null => {
             result = classify(bindings, expression);
         }
     }
+
+    cache.set(key, result);
 
     return result;
 };
