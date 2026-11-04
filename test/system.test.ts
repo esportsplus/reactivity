@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { computed, dispose, effect, flush, isComputed, isSignal, onCleanup, peek, read, root, signal, write } from '~/system';
+import type { Computed } from '~/system';
 import { waitFor } from './lib/wait-for';
 
 
@@ -310,7 +311,7 @@ describe('effect', () => {
 
         expect(calls).toBe(1);
 
-        stop();
+        dispose(stop);
 
         write(s, 1);
         await Promise.resolve();
@@ -395,7 +396,7 @@ describe('onCleanup', () => {
 
         expect(cleaned).toBe(false);
 
-        stop();
+        dispose(stop);
 
         expect(cleaned).toBe(true);
     });
@@ -1061,7 +1062,7 @@ describe('edge cases', () => {
 
         expect(innerDisposed).toBe(false);
 
-        stop();
+        dispose(stop);
 
         expect(innerDisposed).toBe(true);
     });
@@ -1248,14 +1249,14 @@ describe('edge cases', () => {
 
     it('system remains functional under high effect churn', async () => {
         let s = signal(0),
-            stops: (() => void)[] = [];
+            stops: Computed<unknown>[] = [];
 
         for (let i = 0; i < 200; i++) {
             stops.push(effect(() => { read(s); }));
         }
 
         for (let i = 0, n = stops.length; i < n; i++) {
-            stops[i]();
+            dispose(stops[i]);
         }
 
         stops.length = 0;
@@ -1276,7 +1277,7 @@ describe('edge cases', () => {
         }
 
         for (let i = 0, n = stops.length; i < n; i++) {
-            stops[i]();
+            dispose(stops[i]);
         }
 
         write(s, 99);
@@ -1416,7 +1417,7 @@ describe('edge cases', () => {
 
     it('link pool handles >1000 dependencies with disposal and reuse', async () => {
         let signals: ReturnType<typeof signal<number>>[] = [],
-            stops: (() => void)[] = [];
+            stops: Computed<unknown>[] = [];
 
         for (let i = 0; i < 1100; i++) {
             signals.push(signal(i));
@@ -1430,7 +1431,7 @@ describe('edge cases', () => {
         }));
 
         // Dispose to return links to pool
-        stops[0]();
+        dispose(stops[0]);
         stops.length = 0;
 
         // Create new effects reusing pooled links
@@ -1456,7 +1457,7 @@ describe('edge cases', () => {
         expect(sum).toBe(1325);
 
         for (let i = 0, n = stops.length; i < n; i++) {
-            stops[i]();
+            dispose(stops[i]);
         }
     });
 });

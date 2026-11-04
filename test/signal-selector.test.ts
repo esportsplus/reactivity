@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computed, effect, onCleanup, read, signal, write } from '~/system';
+import { computed, dispose, effect, onCleanup, read, signal, write } from '~/system';
 
 // signal.selector(node, key) rides a Map for entry lookup — SameValueZero semantics: NaN keys match
 // themselves and ±0 collapse, slightly wider than the settled === for those two cases. Object keys
@@ -81,10 +81,10 @@ describe('signal.selector per-key selector', () => {
 
         expect(s.keys!.size).toBe(2);
 
-        stop1();
+        dispose(stop1);
         expect(s.keys!.size).toBe(1);
 
-        stop2();
+        dispose(stop2);
         expect(s.keys).toBe(null);
     });
 
@@ -107,7 +107,7 @@ describe('signal.selector per-key selector', () => {
         expect(cleaned).toBe(0);
 
         // Disposing the effect unlinks c's last subscriber → c still auto-disposes and its cleanup fires.
-        stop();
+        dispose(stop);
         expect(cleaned).toBe(1);
     });
 

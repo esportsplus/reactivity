@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computed, effect, flush, peek, read, signal, write } from '~/system';
+import { computed, dispose, effect, flush, peek, read, signal, write } from '~/system';
 
 
 // Depth chosen well past the V8 call-stack frame limit (~10-15k): a recursive notify/update/dispose
@@ -44,7 +44,7 @@ describe('deep graphs', () => {
 
         expect(seen).toBe(DEPTH + 2);
 
-        stop();
+        dispose(stop);
     }, 30000);
 
     it('a wide fan-out with deep branches settles (notify sibling traversal)', () => {
@@ -90,7 +90,7 @@ describe('deep graphs', () => {
 
         expect(observed).toBe(width * (2 + branchDepth));
 
-        stop();
+        dispose(stop);
     });
 
     it('a diamond recomputes the sink once per source change (glitch-free, no redundant checks)', () => {
@@ -134,7 +134,7 @@ describe('deep graphs', () => {
         expect(cRuns).toBe(2);
         expect(peek(c)).toBe(7);
 
-        stop();
+        dispose(stop);
     });
 
     it('a dynamic conditional dep does not over-recompute (DIRTY-break)', () => {
@@ -174,7 +174,7 @@ describe('deep graphs', () => {
 
         expect(cRuns).toBe(2);
 
-        stop();
+        dispose(stop);
     });
 
     it('teardown of a 200k-deep chain completes without overflow; cleanup fires once per node', () => {
@@ -202,7 +202,7 @@ describe('deep graphs', () => {
             read(chain[DEPTH - 1]);
         });
 
-        stop();
+        dispose(stop);
 
         expect(cleanups).toBe(DEPTH);
 

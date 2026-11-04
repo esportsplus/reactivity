@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computed, effect, read, root, signal, write } from '~/system';
+import { computed, dispose, effect, read, root, signal, write } from '~/system';
 import { tick, waitFor } from './lib/wait-for';
 import type { Computed } from '~/system';
 
@@ -61,7 +61,7 @@ describe('asyncComputed outside root', () => {
         expect(read(node)).toBe(1);
         expect(calls).toBe(1);
 
-        stop();
+        dispose(stop);
 
         write(s, 2);
         await tick();

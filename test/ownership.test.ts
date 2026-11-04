@@ -74,7 +74,7 @@ describe('ownership unlink', () => {
 
     it('child effect disposed early unlinks from its owner', () => {
         let runs = 0,
-            stops: VoidFunction[] = [],
+            stops: Computed<unknown>[] = [],
             parent = owner(() => {
                 for (let i = 0; i < 3; i++) {
                     stops.push(effect(() => {
@@ -85,12 +85,12 @@ describe('ownership unlink', () => {
 
         expect(registrations(parent)).toBe(3);
 
-        stops[0]();
+        dispose(stops[0]);
         expect(registrations(parent)).toBe(2);
         expect(parent.owned!.owner).toBe(parent);
 
-        stops[2]();
-        stops[1]();
+        dispose(stops[2]);
+        dispose(stops[1]);
         expect(registrations(parent)).toBe(0);
 
         dispose(parent);
@@ -155,9 +155,9 @@ describe('ownership churn', () => {
     it('10k child effects created + disposed leave no registrations behind', () => {
         let parent = owner(() => {
                 for (let i = 0; i < 10000; i++) {
-                    effect(() => {
+                    dispose(effect(() => {
                         onCleanup(() => {});
-                    })();
+                    }));
                 }
             });
 
@@ -266,7 +266,7 @@ describe('ownership ordering', () => {
     it('an early-disposed child leaves the remaining order intact', () => {
         let log: string[] = [],
             s = signal(0),
-            stop: VoidFunction | null = null;
+            stop: Computed<unknown> | null = null;
 
         effect(() => {
             if (read(s) === 0) {
@@ -285,7 +285,7 @@ describe('ownership ordering', () => {
         });
 
         flush();
-        stop!();
+        dispose(stop!);
         expect(log).toEqual(['y']);
 
         write(s, 1);
@@ -322,7 +322,7 @@ describe('ownership ordering', () => {
 describe('ownership double dispose', () => {
     it('disposing a child twice is a no-op and leaves siblings registered', () => {
         let runs = 0,
-            stop: VoidFunction | null = null,
+            stop: Computed<unknown> | null = null,
             parent = owner(() => {
                 effect(() => {});
                 stop = effect(() => {
@@ -331,8 +331,8 @@ describe('ownership double dispose', () => {
                 effect(() => {});
             });
 
-        stop!();
-        stop!();
+        dispose(stop!);
+        dispose(stop!);
 
         expect(runs).toBe(1);
         expect(registrations(parent)).toBe(2);
@@ -364,7 +364,7 @@ describe('ownership double dispose', () => {
 describe('ownership dispose mid-drain', () => {
     it('a child cleanup disposing its parent and a sibling runs every cleanup once', () => {
         let counts = { a: 0, b: 0, c: 0, parent: 0 },
-            stopB: VoidFunction | null = null,
+            stopB: Computed<unknown> | null = null,
             stopParent: VoidFunction | null = null;
 
         root((d) => {
@@ -373,7 +373,7 @@ describe('ownership dispose mid-drain', () => {
             effect(() => {
                 onCleanup(() => {
                     counts.a++;
-                    stopB!();
+                    dispose(stopB!);
                     stopParent!();
                 });
             });
@@ -393,7 +393,7 @@ describe('ownership dispose mid-drain', () => {
     it('a child disposing its parent from its own cleanup unlinks first', () => {
         let counts = { child: 0, parent: 0, sibling: 0 },
             parent: Computed<unknown> | null = null,
-            stop: VoidFunction | null = null;
+            stop: Computed<unknown> | null = null;
 
         parent = owner(() => {
             onCleanup(() => { counts.parent++; });
@@ -408,7 +408,7 @@ describe('ownership dispose mid-drain', () => {
             });
         });
 
-        stop!();
+        dispose(stop!);
 
         expect(counts).toEqual({ child: 1, parent: 1, sibling: 1 });
         expect(registrations(parent)).toBe(0);
@@ -417,14 +417,14 @@ describe('ownership dispose mid-drain', () => {
     it('a re-run where one child disposes a later sibling skips it', () => {
         let log: string[] = [],
             s = signal(0),
-            stopY: VoidFunction | null = null;
+            stopY: Computed<unknown> | null = null;
 
         effect(() => {
             if (read(s) === 0) {
                 effect(() => {
                     onCleanup(() => {
                         log.push('x');
-                        stopY!();
+                        dispose(stopY!);
                     });
                 });
                 stopY = effect(() => {
@@ -563,7 +563,7 @@ describe('hasOwner', () => {
         seen.push(untrack(() => hasOwner()));
         root((d) => { seen.push(hasOwner()); d(); });
         root(() => { seen.push(hasOwner()); });
-        stop();
+        dispose(stop);
 
         expect(seen).toEqual([true, true, false, false, false, true, false]);
     });
@@ -578,7 +578,7 @@ describe('hasOwner', () => {
 
         write(s, 1);
         await Promise.resolve();
-        stop();
+        dispose(stop);
 
         expect(seen).toEqual([true, true]);
     });

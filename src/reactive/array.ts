@@ -1,8 +1,8 @@
 import { isArray } from '@esportsplus/utilities';
 import { PACKAGE_NAME, REACTIVE_ARRAY } from '../constants';
-import { effect, read, root, signal, write } from '../system';
+import { dispose as disposeNode, effect, read, root, signal, write } from '../system';
 import { isReactiveObject } from './object';
-import type { Signal } from '../types';
+import type { Computed, Signal } from '../types';
 
 
 // One mutation as the batch event reports it: the matching event's payload, named by 'op'
@@ -152,7 +152,7 @@ class ReactiveArray<T> extends Array<T> {
     private _length: Signal<number>;
 
     // The batch listeners' delivery: the mutations not yet delivered, and the effect that delivers them
-    private batched: { ops: ArrayOp<T>[] | null; stop: VoidFunction; tick: Signal<number> } | null = null;
+    private batched: { ops: ArrayOp<T>[] | null; stop: Computed<unknown>; tick: Signal<number> } | null = null;
 
     private delivering = false;
 
@@ -285,7 +285,7 @@ class ReactiveArray<T> extends Array<T> {
 
         if (batched !== null) {
             this.batched = null;
-            batched.stop();
+            disposeNode(batched.stop);
         }
     }
 

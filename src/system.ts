@@ -785,7 +785,7 @@ function makeAsyncComputed<T>(factory: Computed<Promise<T> | AsyncIterable<T> | 
     wrapper.pending = pending;
 
     asyncFactory.set(wrapper as Computed<unknown>, factory as Computed<unknown>);
-    wrapper.disposal = stop;
+    wrapper.disposal = () => dispose(stop);
 
     return wrapper;
 }
@@ -1023,9 +1023,7 @@ const effect = <T>(fn: Computed<T>['fn'], apply?: (value: T, prev: T | undefined
         });
     }
 
-    return () => {
-        dispose(c);
-    };
+    return c;
 };
 
 // A no-op while a pass is running: re-entering stabilize() would corrupt heap_i.

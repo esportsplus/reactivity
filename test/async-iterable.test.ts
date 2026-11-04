@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computed, effect, read, root, signal, write } from '~/system';
+import { computed, dispose, effect, read, root, signal, write } from '~/system';
 import { tick } from './lib/wait-for';
 import type { Computed } from '~/system';
 
@@ -128,7 +128,7 @@ describe('asyncComputed AsyncIterable support', () => {
         expect(read(node)).toBe(1);
 
         // Mid-iteration: dispose while the generator is suspended awaiting its second gate.
-        keeper();
+        dispose(keeper);
         stopRoot();
 
         allGates[0][1].resolve();
@@ -248,7 +248,7 @@ describe('asyncComputed AsyncIterable support', () => {
 
             await tick();
 
-            keeper();
+            dispose(keeper);
             stopRoot();
 
             await tick();

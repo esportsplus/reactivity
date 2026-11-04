@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { effect, flush, owner, read, root, signal, write } from '~/system';
+import { dispose, effect, flush, owner, read, root, signal, write } from '~/system';
 import { ReactiveArray } from '~/reactive/array';
 import { ReactiveObject } from '~/reactive/object';
 import reactive from '~/reactive/index';
@@ -1235,7 +1235,7 @@ describe('ReactiveArray batch', () => {
             b = signal(0),
             c = signal(0);
 
-        root(() => effect(() => read(a) + read(b) + read(c)))();
+        dispose(root(() => effect(() => read(a) + read(b) + read(c))));
     };
 
     it('delivers every mutation of a task once, in order, in the pass that follows', async () => {
@@ -1332,7 +1332,7 @@ describe('ReactiveArray batch', () => {
 
         write(s, 5);
         flush();
-        stop();
+        dispose(stop);
 
         expect(batches).toEqual([[{ items: [5], op: 'push' }]]);
     });
@@ -1354,7 +1354,7 @@ describe('ReactiveArray batch', () => {
         arr.on('batch', (ops) => batches.push(ops));
         arr.push(2);
         flush();
-        stop();
+        dispose(stop);
 
         expect(captured.map((e) => (e as Error).message)).toEqual(['reactivity: batch']);
         expect(batches).toEqual([[{ items: [2], op: 'push' }]]);
@@ -1384,7 +1384,7 @@ describe('ReactiveArray batch', () => {
         arr.on('batch', (ops) => batches.push(ops));
         arr.push(3);
         flush();
-        stop();
+        dispose(stop);
 
         expect(first).toEqual([[{ items: [1], op: 'push' }]]);
         expect(batches).toEqual([[{ items: [3], op: 'push' }]]);

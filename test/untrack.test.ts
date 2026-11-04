@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computed, effect, hasOwner, onCleanup, peek, read, root, signal, untrack, write } from '~/system';
+import { computed, dispose, effect, hasOwner, onCleanup, peek, read, root, signal, untrack, write } from '~/system';
 import type { Computed } from '~/system';
 
 
@@ -99,7 +99,7 @@ describe('untrack ownership', () => {
         // Only generation 1's inner effect is alive; generation 0's was disposed by the re-run
         expect(innerRuns).toEqual(['0:0', '1:0', '1:1']);
 
-        stop();
+        dispose(stop);
         write(inner, 2);
         await Promise.resolve();
 
@@ -120,7 +120,7 @@ describe('untrack ownership', () => {
 
         expect(log).toEqual([0]);
 
-        stop();
+        dispose(stop);
 
         expect(log).toEqual([0, 1]);
     });
@@ -147,7 +147,7 @@ describe('untrack ownership', () => {
 
         expect(log).toEqual(['a', 'b', 'c', 'd']);
 
-        stop();
+        dispose(stop);
 
         // dispose() drains owned children after the owner's own cleanups, exactly as for tracked children
         expect(log.slice(4).sort()).toEqual(['a', 'b', 'c', 'd']);
@@ -186,7 +186,7 @@ describe('untrack ownership', () => {
 
         expect(c.owner).toBe(null);
 
-        stop();
+        dispose(stop);
 
         expect(log).toEqual(['effect']);
     });
@@ -218,7 +218,7 @@ describe('untrack ownership', () => {
 
         write(s, 1);
         await Promise.resolve();
-        stop();
+        dispose(stop);
 
         expect(log).toEqual([0, 1]);
     });
@@ -239,7 +239,7 @@ describe('untrack ownership', () => {
 
         write(s, 1);
         await Promise.resolve();
-        stop();
+        dispose(stop);
 
         // Neither the root's cleanup (no owner) nor its effects are torn down by the outer effect
         expect(log).toEqual([]);
@@ -289,7 +289,7 @@ describe('untrack ownership', () => {
 
         expect(log).toEqual(['factory 0']);
 
-        stop();
+        dispose(stop);
 
         expect(log).toEqual(['factory 0', 'factory 1']);
     });

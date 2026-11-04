@@ -1,6 +1,10 @@
 import { test } from 'vitest';
-import { computed, dispose, effect, onCleanup, read, root, signal, write } from '~/system';
+import { computed, dispose as disposeNode, effect, onCleanup, read, root, signal, write } from '~/system';
 import type { Computed } from '~/system';
+
+// Vitest's module runner turns each imported call into a namespace getter read; one local binding keeps that
+// out of the measured loops
+const dispose = disposeNode;
 
 
 test('signal', async ({ bench }) => {
@@ -93,7 +97,7 @@ test('effect', async ({ bench }) => {
         bench('create + dispose effect', () => {
             let stop = effect(() => {});
 
-            stop();
+            dispose(stop);
         }),
         bench('effect with 1 signal', () => {
             let s = signal(0);
@@ -102,7 +106,7 @@ test('effect', async ({ bench }) => {
                 read(s);
             });
 
-            stop();
+            dispose(stop);
         }),
         bench('effect with 10 signals', () => {
             let signals: ReturnType<typeof signal<number>>[] = [];
@@ -117,7 +121,7 @@ test('effect', async ({ bench }) => {
                 }
             });
 
-            stop();
+            dispose(stop);
         })
     );
 });
@@ -245,7 +249,7 @@ test('effect stress', async ({ bench }) => {
         for (let i = 0; i < 1000; i++) {
             let stop = effect(() => {});
 
-            stop();
+            dispose(stop);
         }
     }).run();
 });

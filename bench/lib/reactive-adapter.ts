@@ -21,7 +21,7 @@ const framework = {
             read: () => read(node)
         };
     },
-    effect: (fn: () => void): VoidFunction => effect(fn),
+    effect: (fn: () => void) => effect(fn),
     signal: <T>(value: T): ReactiveSignal<T> => {
         let node = signal(value);
 

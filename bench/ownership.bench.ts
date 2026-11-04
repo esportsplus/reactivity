@@ -1,6 +1,10 @@
 import { test } from 'vitest';
-import { computed, dispose, effect, flush, onCleanup, read, root, signal, write } from '~/system';
+import { computed, dispose as disposeNode, effect, flush, onCleanup, read, root, signal, write } from '~/system';
 import type { Computed } from '~/system';
+
+// Vitest's module runner turns each imported call into a namespace getter read; one local binding keeps that
+// out of the measured loops
+const dispose = disposeNode;
 
 
 const CHURN = 1000;
@@ -41,9 +45,9 @@ test('ownership churn', async ({ bench }) => {
         bench(`${CHURN} child effects created + disposed under one owner`, () => {
             let owner = computed(() => {
                 for (let i = 0; i < CHURN; i++) {
-                    effect(() => {
+                    dispose(effect(() => {
                         onCleanup(noop);
-                    })();
+                    }));
                 }
 
                 return 0;
@@ -110,7 +114,7 @@ test('ownership effect re-run', async ({ bench }) => {
         })
     );
 
-    stop();
+    dispose(stop);
 });
 
 
@@ -208,5 +212,5 @@ test('ownership single cleanup', async ({ bench }) => {
         })
     );
 
-    stop();
+    dispose(stop);
 });

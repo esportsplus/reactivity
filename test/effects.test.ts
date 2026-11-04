@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computed, effect, onCleanup, read, root, signal, write } from '~/system';
+import { computed, dispose, effect, onCleanup, read, root, signal, write } from '~/system';
 import { ReactiveArray } from '~/reactive/array';
 import { ReactiveObject } from '~/reactive/object';
 import { waitFor } from './lib/wait-for';
@@ -14,7 +14,7 @@ describe('effect patterns', () => {
             let s = signal(0),
                 runs = 0;
 
-            let dispose = effect(() => {
+            let node = effect(() => {
                 read(s);
                 runs++;
             });
@@ -32,7 +32,7 @@ describe('effect patterns', () => {
 
             expect(runs).toBe(4);
 
-            dispose();
+            dispose(node);
 
             write(s, 4);
             write(s, 5);
@@ -49,7 +49,7 @@ describe('effect patterns', () => {
                 cleanupCalls = 0,
                 effectValues: number[] = [];
 
-            let dispose = effect(() => {
+            let node = effect(() => {
                 let current = read(s);
 
                 effectValues.push(current);
@@ -74,7 +74,7 @@ describe('effect patterns', () => {
             expect(effectValues).toEqual([0, 1, 2]);
             expect(cleanupCalls).toBe(2);
 
-            dispose();
+            dispose(node);
 
             expect(cleanupCalls).toBe(3);
         });

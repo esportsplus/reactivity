@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computed, effect, read, signal, write } from '~/system';
+import { computed, dispose, effect, read, signal, write } from '~/system';
 import { tick } from './lib/wait-for';
 
 
@@ -146,7 +146,7 @@ describe('effect error contract', () => {
         expect(captured.length).toBe(1);
         expect((captured[0] as Error).message).toBe('effect boom');
 
-        stop();
+        dispose(stop);
     });
 
     it('effect rethrows on every failure, not just the first', async () => {
@@ -171,7 +171,7 @@ describe('effect error contract', () => {
         expect((captured[0] as Error).message).toBe('boom 1');
         expect((captured[1] as Error).message).toBe('boom 3');
 
-        stop();
+        dispose(stop);
     });
 
     it('effect catching its own error internally rethrows nothing', async () => {
@@ -196,6 +196,6 @@ describe('effect error contract', () => {
         expect(errors.length).toBe(1);
         expect((errors[0] as Error).message).toBe('handled');
 
-        stop();
+        dispose(stop);
     });
 });

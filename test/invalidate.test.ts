@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { computed, effect, flush, peek, read, signal, write } from '~/system';
+import { computed, dispose, effect, flush, peek, read, signal, write } from '~/system';
 import { waitFor } from './lib/wait-for';
 
 
@@ -85,7 +85,7 @@ describe('invalidate()', () => {
         expect(fetches).toBe(2);
         expect(read(node)).toBe(2);
 
-        stop();
+        dispose(stop);
     });
 
     it('forces a side-effecting computed (the public effect encoding) to re-run without propagating', () => {

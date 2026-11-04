@@ -112,18 +112,18 @@ state.userId = 2;
 ### Effects
 
 ```typescript
-import { effect, reactive } from '@esportsplus/reactivity';
+import { dispose, effect, reactive } from '@esportsplus/reactivity';
 
 let count = reactive(0);
 
-let cleanup = effect(() => {
+let node = effect(() => {
     console.log('Count is:', count);
 });
 
 count = 1;  // logs: Count is: 1
 count = 2;  // logs: Count is: 2
 
-cleanup();  // stops the effect
+dispose(node);  // stops the effect
 ```
 
 ## Transformer Plugins
@@ -221,7 +221,7 @@ let user = new ReactiveObject_1();
 | `reactive(() => expr)` | Creates a computed value (compile-time only) |
 | `reactive({...})` | Creates a reactive object with signals and computeds |
 | `reactive([...])` | Creates a reactive array |
-| `effect(fn, apply?)` | Runs a function that re-executes when dependencies change. Returns a dispose function. Optional `apply(value, prev)` runs untracked after each run with `fn`'s return value |
+| `effect(fn, apply?)` | Runs a function that re-executes when dependencies change. Returns the effect's node (`Computed<T>`); stop it with `dispose(node)`. Optional `apply(value, prev)` runs untracked after each run with `fn`'s return value |
 | `root(fn, owner?)` | Creates an untracked scope. If `fn` accepts an argument, a dispose function is provided. With `owner`, the scope belongs to that node instead of whatever is running: `root(() => …, owner)` runs `fn` owned by `owner` (to re-enter it after an `await`), `root((dispose) => …, owner)` creates a child root of `owner`. Reads stay untracked. Throws on a disposed owner |
 | `owner()` | The node that owns what is created now: the running effect/computed, else the running root's scope, else `null`. Its `.owner` chain reaches every enclosing owner |
 | `onCleanup(fn)` | Registers a cleanup function for the current effect/computed |
@@ -240,7 +240,7 @@ These operate directly on signal/computed nodes — the transformer emits them, 
 | `untrack(fn)` | Runs `fn` without tracking dependencies; returns `fn`'s result. Ownership is unchanged: effects, computeds, child roots and `onCleanup` created inside are owned by the running effect/computed (or the enclosing `root((dispose) => …)`) and torn down on its next re-run or dispose. Use a zero-arg `root(() => …)` for deliberately detached work |
 | `batch(fn)` | Groups writes so dependent effects defer until `fn` returns; pair with `flush()` for a synchronous transaction |
 | `flush()` | Synchronously settles all pending computed/effect updates |
-| `dispose(computed)` | Disposes a computed and its dependencies |
+| `dispose(node)` | Disposes a computed or effect node and its dependencies |
 | `computed.invalidate(computed)` | Forces re-derivation of a computed on next read (re-dispatches an async computed's promise for a refetch) |
 | `signal.selector(signal, key)` | Per-key selector: within a tracking scope, subscribes to whether `signal`'s value equals `key`, so only key-matching observers re-run on write (O(1) fan-out) |
 

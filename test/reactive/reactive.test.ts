@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { computed, effect, onCleanup, read, signal, write } from '~/system';
+import { computed, dispose, effect, onCleanup, read, signal, write } from '~/system';
 import { SIGNAL } from '~/constants';
 import { isReactiveObject, ReactiveObject } from '~/reactive/object';
 import reactive from '~/reactive/index';
@@ -408,7 +408,7 @@ describe('reactive()', () => {
 
             expect(runs).toBe(1);
 
-            stop();
+            dispose(stop);
 
             write(s, 2);
             await Promise.resolve();
@@ -423,7 +423,7 @@ describe('reactive()', () => {
                     reactive([inner]);
                 });
 
-            stop();
+            dispose(stop);
 
             expect(spy).toHaveBeenCalledTimes(1);
         });

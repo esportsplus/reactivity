@@ -1,6 +1,10 @@
 import { test } from 'vitest';
 import { ReactiveArray } from '~/reactive/array';
-import { effect } from '~/system';
+import { dispose as disposeNode, effect } from '~/system';
+
+// Vitest's module runner turns each imported call into a namespace getter read; one local binding keeps that
+// out of the measured loops
+const dispose = disposeNode;
 
 
 test('ReactiveArray creation', async ({ bench }) => {
@@ -235,6 +239,6 @@ test('ReactiveArray reactive length', async ({ bench }) => {
             arr.$length;
         });
 
-        stop();
+        dispose(stop);
     }).run();
 });
