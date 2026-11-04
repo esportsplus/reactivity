@@ -461,7 +461,21 @@ class ReactiveArray<T> extends Array<T> {
     }
 
     reverse() {
-        super.reverse();
+        for (let lower = 0, upper = this.length - 1; lower < upper; lower++, upper--) {
+            let value = this[lower],
+                within = lower in this;
+
+            move(this, upper, lower);
+
+            if (within) {
+                this[upper] = value;
+            }
+            else {
+                // oxlint-disable-next-line typescript/no-array-delete -- a hole must move as a hole, as the builtin does
+                delete this[upper];
+            }
+        }
+
         this.dispatch('reverse');
         this.record({ op: 'reverse' });
 
