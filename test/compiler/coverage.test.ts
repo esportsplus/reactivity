@@ -88,8 +88,8 @@ afterEach(() => {
 
 
 describe('compiler coverage', () => {
-    it('compiles reads of bindings imported by name, namespace, default, barrel and string key', () => {
-        let output = project(FILES).transform('reads.ts')!.code;
+    it('compiles reads of bindings imported by name, namespace, default, barrel and string key', async () => {
+        let output = (await project(FILES).transform('reads.ts'))!.code;
 
         expect(output).toContain(`export let a = () => ${NAMESPACE}.read(count) + 1;`);
         expect(output).toContain(`export let b = () => ${NAMESPACE}.read(S.count) + 1;`);
@@ -101,8 +101,8 @@ describe('compiler coverage', () => {
         expect(output).toContain(`export let h = () => ${NAMESPACE}.read(S['count']) + 1;`);
     });
 
-    it('compiles reactive() reached through renames, namespaces, string keys and const aliases', () => {
-        let output = project(FILES).transform('entries.ts')!.code;
+    it('compiles reactive() reached through renames, namespaces, string keys and const aliases', async () => {
+        let output = (await project(FILES).transform('entries.ts'))!.code;
 
         for (let name of ['a', 'b', 'c', 'd', 'e', 'f']) {
             expect(output).toMatch(new RegExp(`export let ${name} = ${NAMESPACE}\\.signal\\(0\\);`));
@@ -111,13 +111,13 @@ describe('compiler coverage', () => {
         expect(output).toContain(`${NAMESPACE}.read(a) + ${NAMESPACE}.read(b)`);
     });
 
-    it('passes every array property of a reactive object to its constructor', () => {
-        let output = project(FILES).transform('state.ts')!.code;
+    it('passes every array property of a reactive object to its constructor', async () => {
+        let output = (await project(FILES).transform('state.ts'))!.code;
 
         expect(output).toMatch(/export let store = +new ReactiveObject_\w+\(\[1\]\);/);
     });
 
-    it('fails the build on every use of reactive that cannot be compiled, with its location', () => {
+    it('fails the build on every use of reactive that cannot be compiled, with its location', async () => {
         let files = {
                 'escape.ts': [
                     "import { reactive } from '@esportsplus/reactivity';",
@@ -128,24 +128,24 @@ describe('compiler coverage', () => {
             },
             { transform } = project(files);
 
-        expect(() => transform('escape.ts')).toThrow(/escape\.ts:3:6[\s\S]*escape\.ts:4:6/);
+        await expect(transform('escape.ts')).rejects.toThrow(/escape\.ts:3:6[\s\S]*escape\.ts:4:6/);
     });
 
-    it('fails the build when a signal is destructured out of a module namespace', () => {
+    it('fails the build when a signal is destructured out of a module namespace', async () => {
         let files = {
                 'copy.ts': "import * as S from './state';\nconst { count } = S;\nexport let n = count;",
                 'state.ts': "import { reactive } from '@esportsplus/reactivity';\nexport let count = reactive(0);"
             },
             { transform } = project(files);
 
-        expect(() => transform('copy.ts')).toThrow(/copy\.ts:2:9.*destructured/);
+        await expect(transform('copy.ts')).rejects.toThrow(/copy\.ts:2:9.*destructured/);
     });
 
-    it('reports the modules a compile relied on so hosts can recompile it when they change', () => {
+    it('reports the modules a compile relied on so hosts can recompile it when they change', async () => {
         let { directory, plugin, transform } = project(FILES),
             dependent = { id: directory + '/reads.ts' };
 
-        transform('reads.ts');
+        await transform('reads.ts');
 
         let result = plugin.handleHotUpdate({
             file: directory + '/state.ts',

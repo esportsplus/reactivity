@@ -90,23 +90,28 @@ function siteOf(identifier: ts.Node): ts.Node {
 // resolved against the program and compiled exactly where its values resolve to reactive declarations
 export default {
     name: PACKAGE_NAME,
-    transform: (ctx: TransformContext) => {
+    transform: async (ctx: TransformContext) => {
         if (!REGEX_IMPORT.test(ctx.code)) {
             return {};
         }
 
         let { checker, program, sourceFile } = ctx,
-            bindings = scope.create(checker, program, sourceFile),
+            bindings = await scope.create(checker, program, sourceFile),
             calls = new Set<ts.CallExpression>(),
             dependencies = new Set<string>(),
             entries = new Set<ts.Node>(),
             failures: Failure[] = [],
+            origins = [...bindings.origins],
             self = sourceFile.fileName.toLowerCase();
 
-        for (let [identifier, found] of bindings.origins) {
-            if (!scope.holds(bindings, found)) {
+        let held = await Promise.all(origins.map(([, found]) => scope.holds(bindings, found)));
+
+        for (let i = 0, n = origins.length; i < n; i++) {
+            if (!held[i]) {
                 continue;
             }
+
+            let identifier = origins[i][0];
 
             entries.add(identifier);
 
@@ -129,10 +134,14 @@ export default {
         }
 
         // Every call is known before any binding is classified, so their argument types arrive in one request
-        scope.prefetch(bindings, [...calls]);
+        await scope.prefetch(bindings, [...calls]);
 
-        for (let [identifier, found] of bindings.origins) {
-            if (!entries.has(identifier) && scope.kind(bindings, found) === null) {
+        let kinds = await Promise.all(origins.map(async ([identifier, found]) => entries.has(identifier) ? null : scope.kind(bindings, found)));
+
+        for (let i = 0, n = origins.length; i < n; i++) {
+            let [identifier, found] = origins[i];
+
+            if (!entries.has(identifier) && kinds[i] === null) {
                 continue;
             }
 
@@ -151,30 +160,32 @@ export default {
             };
 
         // Signals and computeds first: every call is classified and every binding read is rewritten
-        let lowered = primitives(sourceFile, bindings, isReactiveCall);
+        let lowered = await primitives(sourceFile, bindings, isReactiveCall);
 
         failures.push(...lowered.failures);
         intents.replacements.push(...lowered.replacements);
 
-        let objects = object(sourceFile, bindings, isReactiveCall);
+        let objects = await object(sourceFile, bindings, isReactiveCall);
 
         intents.prepend.push(...objects.prepend);
         intents.replacements.push(...objects.replacements);
 
-        let arrays = array(sourceFile, bindings, isReactiveCall);
+        let arrays = await array(sourceFile, bindings, isReactiveCall);
 
         failures.push(...arrays.failures);
         intents.replacements.push(...arrays.replacements);
 
         // An array is reactive because of where it was declared; that module shapes this compile
-        for (let i = 0, n = arrays.reactive.length; i < n; i++) {
-            let root = arrays.reactive[i];
-
+        let declared = await Promise.all(arrays.reactive.map(async (root) => {
             while (ts.isPropertyAccessExpression(root) || ts.isElementAccessExpression(root) || ts.isParenthesizedExpression(root)) {
                 root = root.expression;
             }
 
-            let found = ts.isIdentifier(root) ? scope.origin(bindings, root) : null;
+            return ts.isIdentifier(root) ? scope.origin(bindings, root) : null;
+        }));
+
+        for (let i = 0, n = declared.length; i < n; i++) {
+            let found = declared[i];
 
             if (found && found.declaration.path.toLowerCase() !== self) {
                 dependencies.add(found.declaration.path);

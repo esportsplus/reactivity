@@ -76,35 +76,36 @@ writeFileSync(config, JSON.stringify({
 // One build pass: every module is transformed against one program and one checker, as tsc and vite
 // hand them in, so the coordinator's memo is shared across the pass. Each pass wraps the checker
 // anew, so its memo starts empty and every query the pass needs reaches tsgo once.
-function build(names: string[]): string[] {
+async function build(names: string[]): Promise<string[]> {
     let checker: ts.Checker | null = null,
         code: string[] = [];
 
     for (let i = 0, n = names.length; i < n; i++) {
         let id = directory + '/' + names[i],
-            project = languageService.update(config, id, FILES[names[i]]);
+            project = await languageService.update(config, id, FILES[names[i]]);
 
         checker ??= new Proxy(project.checker, {});
-        code.push(coordinator.transform([pipeline], FILES[names[i]], project.program.getSourceFile(id)!, { checker, program: project.program }, directory, new Map()).code);
+        code.push((await coordinator.transform([pipeline], FILES[names[i]], (await project.program.getSourceFile(id))!, { checker, program: project.program }, directory, new Map())).code);
+        project.release();
     }
 
     return code;
 }
 
 
-afterAll(() => {
-    languageService.dispose();
+afterAll(async () => {
+    await languageService.dispose();
     rmSync(directory, { force: true, recursive: true });
 });
 
 
 test('compiler transform', async ({ bench }) => {
     await bench.compare(
-        bench('every module of the app', () => {
-            build(NAMES);
+        bench('every module of the app', async () => {
+            await build(NAMES);
         }),
-        bench('modules without reactive (no import, unrelated import)', () => {
-            build(['helpers.ts', 'plain.ts']);
+        bench('modules without reactive (no import, unrelated import)', async () => {
+            await build(['helpers.ts', 'plain.ts']);
         })
     );
 });
@@ -112,7 +113,7 @@ test('compiler transform', async ({ bench }) => {
 test('compiled output', async ({ bench }) => {
     let file = directory + '/runtime.compiled.ts';
 
-    writeFileSync(file, build(['runtime.ts'])[0]);
+    writeFileSync(file, (await build(['runtime.ts']))[0]);
 
     let { run } = await import(pathToFileURL(file).href) as { run: () => number };
 

@@ -8,10 +8,11 @@ import type { Bindings } from './types';
 type Assignment = { call: ts.CallExpression; target: ts.Identifier };
 
 // Per program snapshot. `kinds` saves no checker round-trip (the shared memo answers every query it
-// makes), but kind() runs on every read of a binding and re-deriving it per read dominates a warm transform
+// makes), but kind() runs on every read of a binding and re-deriving it per read dominates a warm
+// transform; concurrent transforms reading one binding await the one derivation
 type Caches = {
     assignments: Map<string, Map<string, Assignment[]>>;
-    kinds: Map<string, TYPES | null>;
+    kinds: Map<string, Promise<TYPES | null>>;
 };
 
 
@@ -74,14 +75,55 @@ function cachesOf(program: ts.Program): Caches {
     return found;
 }
 
+// Kind of the binding a declaration introduces (see kind())
+async function derive(bindings: Bindings, declaration: Origin['declaration'], key: string): Promise<TYPES | null> {
+    let node = await declaration.resolve() as ts.Node | undefined;
+
+    if (node && ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
+        let initializer = node.initializer && unwrap(node.initializer);
+
+        if (initializer && await isReactiveCall(bindings, initializer)) {
+            return classify(bindings, initializer as ts.CallExpression);
+        }
+
+        let candidates = assignments(bindings, node.getSourceFile()).get(node.name.text) ?? [];
+
+        for (let i = 0, n = candidates.length; i < n; i++) {
+            let { call, target } = candidates[i],
+                assigned = await origin(bindings, target);
+
+            if (assigned && references.key(assigned.declaration) === key && await isReactiveCall(bindings, call)) {
+                let result = await classify(bindings, call);
+
+                if (result !== null) {
+                    return result;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    if (node && ts.isExportAssignment(node)) {
+        let expression = unwrap(node.expression);
+
+        if (await isReactiveCall(bindings, expression)) {
+            return classify(bindings, expression as ts.CallExpression);
+        }
+    }
+
+    return null;
+}
+
 // Every member of a union must agree: `number | undefined` is a signal, `number[] | undefined` is
 // neither a signal nor an array at runtime
-function kindOf(checker: ts.Checker, type: ts.Type): TYPES | null {
-    let members = (type.flags & ts.TypeFlags.Union) !== 0 ? (type as ts.UnionType).getTypes() : [type],
+async function kindOf(checker: ts.Checker, type: ts.Type): Promise<TYPES | null> {
+    let members = (type.flags & ts.TypeFlags.Union) !== 0 ? await (type as ts.UnionType).getTypes() ?? [] : [type],
+        kinds = await Promise.all(members.map((member) => kindOfType(checker, member))),
         result: TYPES | null = null;
 
-    for (let i = 0, n = members.length; i < n; i++) {
-        let kind = kindOfType(checker, members[i]);
+    for (let i = 0, n = kinds.length; i < n; i++) {
+        let kind = kinds[i];
 
         if (kind === null || (result !== null && result !== kind)) {
             return null;
@@ -94,9 +136,9 @@ function kindOf(checker: ts.Checker, type: ts.Type): TYPES | null {
 }
 
 // Kind of one non-union type as a reactive() argument; null when the type cannot say
-function kindOfType(checker: ts.Checker, type: ts.Type): TYPES | null {
+async function kindOfType(checker: ts.Checker, type: ts.Type): Promise<TYPES | null> {
     if ((type.flags & ts.TypeFlags.TypeParameter) !== 0) {
-        let constraint = checker.getBaseConstraintOfType(type);
+        let constraint = await checker.getBaseConstraintOfType(type);
 
         return constraint && constraint !== type ? kindOf(checker, constraint) : null;
     }
@@ -120,11 +162,11 @@ function kindOfType(checker: ts.Checker, type: ts.Type): TYPES | null {
         return TYPES.Signal;
     }
 
-    if (checker.isArrayType(type) || checker.isTupleType(type)) {
+    if (await checker.isArrayType(type) || await checker.isTupleType(type)) {
         return TYPES.Array;
     }
 
-    if (checker.getSignaturesOfType(type, ts.SignatureKind.Call).length > 0) {
+    if ((await checker.getSignaturesOfType(type, ts.SignatureKind.Call)).length > 0) {
         return TYPES.Computed;
     }
 
@@ -136,31 +178,24 @@ function kindOfType(checker: ts.Checker, type: ts.Type): TYPES | null {
 // Expressions whose type is a ReactiveArray (`Reactive<T[]>` carries the class's members), resolved
 // in one checker round-trip. Found by type, a reactive array is recognized wherever it flows:
 // imports, object properties, parameters, return values.
-const arrays = (bindings: Bindings, nodes: ts.Node[]): Set<ts.Node> => {
+const arrays = async (bindings: Bindings, nodes: ts.Node[]): Promise<Set<ts.Node>> => {
     let result = new Set<ts.Node>();
 
     if (nodes.length === 0) {
         return result;
     }
 
-    let files = new Set(references.exported(bindings.checker, bindings.program, PACKAGE_NAME, REACTIVE_ARRAY).map(declaration => declaration.path));
+    let files = new Set((await references.exported(bindings.checker, bindings.program, PACKAGE_NAME, REACTIVE_ARRAY)).map(declaration => declaration.path));
 
     if (files.size === 0) {
         return result;
     }
 
-    let types = bindings.checker.getTypeAtLocation(nodes);
+    let types = await bindings.checker.getTypeAtLocation(nodes),
+        properties = await Promise.all(types.map(async (type) => type && bindings.checker.getPropertyOfType(await bindings.checker.getNonNullableType(type) ?? type, ARRAY_BRAND)));
 
     for (let i = 0, n = nodes.length; i < n; i++) {
-        let type = types[i];
-
-        if (!type) {
-            continue;
-        }
-
-        let property = bindings.checker.getPropertyOfType(bindings.checker.getNonNullableType(type) ?? type, ARRAY_BRAND);
-
-        if (property?.declarations?.some(declaration => files.has(declaration.path))) {
+        if (properties[i]?.declarations?.some(declaration => files.has(declaration.path))) {
             result.add(nodes[i]);
         }
     }
@@ -170,7 +205,7 @@ const arrays = (bindings: Bindings, nodes: ts.Node[]): Set<ts.Node> => {
 
 // Kind of a reactive() call from its argument: literal syntax first, the argument's type otherwise.
 // Null when no kind is provable (no/extra arguments, `any`, `unknown`, a mixed union).
-const classify = (bindings: Bindings, call: ts.CallExpression): TYPES | null => {
+const classify = async (bindings: Bindings, call: ts.CallExpression): Promise<TYPES | null> => {
     let arg = call.arguments[0];
 
     if (!arg || call.arguments.length !== 1 || ts.isSpreadElement(arg)) {
@@ -191,46 +226,50 @@ const classify = (bindings: Bindings, call: ts.CallExpression): TYPES | null => 
         return TYPES.Object;
     }
 
-    let type = bindings.checker.getTypeAtLocation(arg);
+    let type = await bindings.checker.getTypeAtLocation(arg);
 
     return type ? kindOf(bindings.checker, type) : null;
 };
 
 // Memoized per program (an already memoized checker is kept as is), so batched and repeated queries
 // share one cache whoever hands the checker in
-const create = (queries: ts.Checker, program: ts.Program, sourceFile: ts.SourceFile): Bindings => {
-    let memoized = checker.cached(queries, program);
+const create = async (queries: ts.Checker, program: ts.Program, sourceFile: ts.SourceFile): Promise<Bindings> => {
+    let memoized = checker.cached(queries, program),
+        [exported, origins] = await Promise.all([
+            references.exported(memoized, program, PACKAGE_NAME, ENTRYPOINT),
+            references.origins(memoized, program, sourceFile)
+        ]);
 
     return {
         checker: memoized,
-        entries: new Set(references.exported(memoized, program, PACKAGE_NAME, ENTRYPOINT).map(references.key)),
-        origins: references.origins(memoized, program, sourceFile),
+        entries: new Set(exported.map(references.key)),
+        origins,
         program,
         sourceFile
     };
 };
 
 // Whether a callee expression denotes `reactive`: `reactive`, an alias, `ns.reactive`, `ns['reactive']`
-const denotes = (bindings: Bindings, expression: ts.Expression): boolean => {
+const denotes = (bindings: Bindings, expression: ts.Expression): Promise<boolean> => {
     return references.denotes(bindings.checker, bindings.program, expression, bindings.entries);
 };
 
 // Whether a value holds `reactive`: the export itself, reached through any import, re-export or
 // namespace, or a const binding (`const r = reactive`, `const { reactive: r } = ns`) holding it
-const holds = (bindings: Bindings, found: Origin | null): boolean => {
+const holds = (bindings: Bindings, found: Origin | null): Promise<boolean> => {
     return references.holds(bindings.checker, bindings.program, found, bindings.entries);
 };
 
-const isReactiveCall = (bindings: Bindings, node: ts.Node): node is ts.CallExpression => {
+const isReactiveCall = async (bindings: Bindings, node: ts.Node): Promise<boolean> => {
     return ts.isCallExpression(node) && denotes(bindings, node.expression);
 };
 
 // Reactive kind of the binding a declaration introduces, wherever it is read from: a variable
 // initialized (or assigned) with reactive(), or a module's `export default reactive(...)`.
 // Ambient declarations (.d.ts) never are: a published package's signals ship as Signal-typed.
-const kind = (bindings: Bindings, found: Origin | null): TYPES | null => {
+const kind = (bindings: Bindings, found: Origin | null): Promise<TYPES | null> => {
     if (!found) {
-        return null;
+        return Promise.resolve(null);
     }
 
     let declaration = found.declaration;
@@ -239,61 +278,28 @@ const kind = (bindings: Bindings, found: Origin | null): TYPES | null => {
         (declaration.kind !== ts.SyntaxKind.VariableDeclaration && declaration.kind !== ts.SyntaxKind.ExportAssignment) ||
         declaration.path.endsWith('.d.ts')
     ) {
-        return null;
+        return Promise.resolve(null);
     }
 
     let cache = cachesOf(bindings.program).kinds,
         key = references.key(declaration),
         known = cache.get(key);
 
-    if (known !== undefined) {
-        return known;
+    if (known === undefined) {
+        known = derive(bindings, declaration, key);
+        cache.set(key, known);
     }
 
-    cache.set(key, null);
-
-    let node = declaration.resolve() as ts.Node | undefined,
-        result: TYPES | null = null;
-
-    if (node && ts.isVariableDeclaration(node) && ts.isIdentifier(node.name)) {
-        let initializer = node.initializer && unwrap(node.initializer);
-
-        if (initializer && isReactiveCall(bindings, initializer)) {
-            result = classify(bindings, initializer);
-        }
-        else {
-            let candidates = assignments(bindings, node.getSourceFile()).get(node.name.text) ?? [];
-
-            for (let i = 0, n = candidates.length; i < n && result === null; i++) {
-                let { call, target } = candidates[i],
-                    assigned = origin(bindings, target);
-
-                if (assigned && references.key(assigned.declaration) === key && isReactiveCall(bindings, call)) {
-                    result = classify(bindings, call);
-                }
-            }
-        }
-    }
-    else if (node && ts.isExportAssignment(node)) {
-        let expression = unwrap(node.expression);
-
-        if (isReactiveCall(bindings, expression)) {
-            result = classify(bindings, expression);
-        }
-    }
-
-    cache.set(key, result);
-
-    return result;
+    return known;
 };
 
-const origin = (bindings: Bindings, node: ts.Node): Origin | null => {
+const origin = async (bindings: Bindings, node: ts.Node): Promise<Origin | null> => {
     return bindings.origins.get(node) ?? references.origin(bindings.checker, bindings.program, node);
 };
 
 // Types of the arguments classify() reads from the checker, requested in one round-trip; the
 // memoized checker then answers each classify() from that request
-const prefetch = (bindings: Bindings, calls: ts.CallExpression[]): void => {
+const prefetch = async (bindings: Bindings, calls: ts.CallExpression[]): Promise<void> => {
     let nodes: ts.Node[] = [];
 
     for (let i = 0, n = calls.length; i < n; i++) {
@@ -318,7 +324,7 @@ const prefetch = (bindings: Bindings, calls: ts.CallExpression[]): void => {
     }
 
     if (nodes.length > 0) {
-        bindings.checker.getTypeAtLocation(nodes);
+        await bindings.checker.getTypeAtLocation(nodes);
     }
 };
 

@@ -23,14 +23,35 @@ type TransformContext = {
     tmpCounter: number;
 };
 
+// A binding element of a pattern destructuring `initializer`
+type Unpacked = {
+    element: ts.BindingElement;
+    initializer: ts.Expression;
+};
+
+
+// Every reactive() call, in source order
+function calls(ctx: TransformContext, node: ts.Node, found: ts.CallExpression[]): void {
+    if (ctx.isReactiveCall(node)) {
+        found.push(node);
+    }
+
+    node.forEachChild(child => calls(ctx, child, found));
+}
 
 // Pass 1: lower every reactive() call. A signal or computed is only ever reached through the
 // variable it initializes (every read of that variable is rewritten), so anywhere else its signal
 // would leak unread and the call is rejected.
-function declare(ctx: TransformContext, node: ts.Node): void {
-    if (ctx.isReactiveCall(node)) {
-        let call = node,
-            kind = scope.classify(ctx.bindings, call);
+async function declare(ctx: TransformContext, sourceFile: ts.SourceFile): Promise<void> {
+    let found: ts.CallExpression[] = [];
+
+    calls(ctx, sourceFile, found);
+
+    let kinds = await Promise.all(found.map((call) => scope.classify(ctx.bindings, call)));
+
+    for (let i = 0, n = found.length; i < n; i++) {
+        let call = found[i],
+            kind = kinds[i];
 
         ctx.calls.push(call);
 
@@ -68,8 +89,6 @@ function declare(ctx: TransformContext, node: ts.Node): void {
             }
         }
     }
-
-    node.forEachChild(child => declare(ctx, child));
 }
 
 // `let x = reactive(...)`, `x = reactive(...)` or `export default reactive(...)`
@@ -101,7 +120,7 @@ function isBound(call: ts.CallExpression): boolean {
 }
 
 // A module namespace object: `import * as ns` (or an alias of it) or an `await import(...)`
-function isNamespace(bindings: Bindings, expression: ts.Expression): boolean {
+async function isNamespace(bindings: Bindings, expression: ts.Expression): Promise<boolean> {
     let value = scope.unwrap(expression);
 
     if (ts.isAwaitExpression(value)) {
@@ -112,7 +131,7 @@ function isNamespace(bindings: Bindings, expression: ts.Expression): boolean {
         return value.expression.kind === ts.SyntaxKind.ImportKeyword;
     }
 
-    return ts.isIdentifier(value) && scope.origin(bindings, value)?.declaration.kind === ts.SyntaxKind.SourceFile;
+    return ts.isIdentifier(value) && (await scope.origin(bindings, value))?.declaration.kind === ts.SyntaxKind.SourceFile;
 }
 
 // Destructuring assignment targets (`({ count } = o)`, `[count] = xs`) write through a pattern
@@ -270,11 +289,14 @@ function reference(ctx: TransformContext, node: ts.Expression, kind: TYPES): voi
 // Pass 2: rewrite every read and write of a signal or computed binding, resolved by declaration so
 // a binding imported from another module (named, default, namespace, through a barrel) compiles
 // exactly like a local one. Destructuring one out of a module namespace would copy its signal.
-function rewrite(ctx: TransformContext): void {
-    let { bindings } = ctx;
+async function rewrite(ctx: TransformContext): Promise<void> {
+    let { bindings } = ctx,
+        origins = [...bindings.origins],
+        kinds = await Promise.all(origins.map(([, found]) => scope.kind(bindings, found)));
 
-    for (let [identifier, found] of bindings.origins) {
-        let kind = scope.kind(bindings, found);
+    for (let i = 0, n = origins.length; i < n; i++) {
+        let [identifier] = origins[i],
+            kind = kinds[i];
 
         if (kind !== TYPES.Signal && kind !== TYPES.Computed) {
             continue;
@@ -290,29 +312,43 @@ function rewrite(ctx: TransformContext): void {
         reference(ctx, readNode(identifier), kind);
     }
 
-    unpacked(ctx, bindings.sourceFile);
+    let elements: Unpacked[] = [];
+
+    unpacked(bindings.sourceFile, elements);
+
+    let copied = await Promise.all(elements.map(async ({ element, initializer }) => {
+        if (!(await isNamespace(bindings, initializer))) {
+            return false;
+        }
+
+        let kind = await scope.kind(bindings, await scope.origin(bindings, element));
+
+        return kind === TYPES.Signal || kind === TYPES.Computed;
+    }));
+
+    for (let i = 0, n = elements.length; i < n; i++) {
+        if (copied[i]) {
+            ctx.failures.push({ message: 'a reactive binding cannot be destructured (it would copy its signal); read it through the namespace', node: elements[i].element });
+        }
+    }
 }
 
 // `const { count } = ns` names no property to resolve, so each element of a pattern destructuring
-// a module namespace is resolved as the export it copies
-function unpacked(ctx: TransformContext, node: ts.Node): void {
+// an initializer (a module namespace, once resolved) is resolved as the export it copies
+function unpacked(node: ts.Node, found: Unpacked[]): void {
     if (ts.isBindingElement(node) && !node.propertyName && ts.isObjectBindingPattern(node.parent)) {
         let initializer = (node.parent.parent as { initializer?: ts.Expression }).initializer;
 
-        if (initializer && isNamespace(ctx.bindings, initializer)) {
-            let kind = scope.kind(ctx.bindings, scope.origin(ctx.bindings, node));
-
-            if (kind === TYPES.Signal || kind === TYPES.Computed) {
-                ctx.failures.push({ message: 'a reactive binding cannot be destructured (it would copy its signal); read it through the namespace', node });
-            }
+        if (initializer) {
+            found.push({ element: node, initializer });
         }
     }
 
-    node.forEachChild(child => unpacked(ctx, child));
+    node.forEachChild(child => unpacked(child, found));
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: IsReactiveCall): PrimitivesTransformResult => {
+export default async (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: IsReactiveCall): Promise<PrimitivesTransformResult> => {
     let ctx: TransformContext = {
             bindings,
             calls: [],
@@ -322,8 +358,8 @@ export default (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: I
             tmpCounter: 0
         };
 
-    declare(ctx, sourceFile);
-    rewrite(ctx);
+    await declare(ctx, sourceFile);
+    await rewrite(ctx);
 
     return { calls: ctx.calls, failures: ctx.failures, replacements: ctx.replacements };
 };

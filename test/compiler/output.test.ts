@@ -76,7 +76,7 @@ const FILES: Record<string, string> = {
 let fixtures: string[] = [];
 
 
-function compile(name: string): string | null {
+async function compile(name: string): Promise<string | null> {
     let directory = mkdtempSync(join(process.cwd(), '.fixture-output-')).replace(/\\/g, '/');
 
     fixtures.push(directory);
@@ -94,7 +94,7 @@ function compile(name: string): string | null {
 
     plugin.configResolved({ command: 'build', root: directory });
 
-    return plugin.transform.handler(FILES[name], directory + '/' + name)?.code ?? null;
+    return (await plugin.transform.handler(FILES[name], directory + '/' + name))?.code ?? null;
 }
 
 
@@ -109,8 +109,8 @@ afterEach(() => {
 
 describe('compiled output', () => {
     for (let name of Object.keys(FILES)) {
-        it(name, () => {
-            expect(compile(name)).toMatchSnapshot();
+        it(name, async () => {
+            expect(await compile(name)).toMatchSnapshot();
         });
     }
 });

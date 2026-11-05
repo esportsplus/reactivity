@@ -267,7 +267,7 @@ function visit(ctx: VisitContext, node: ts.Node): void {
 }
 
 
-export default (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: IsReactiveCall): ObjectTransformResult => {
+export default async (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: IsReactiveCall): Promise<ObjectTransformResult> => {
     let ctx: VisitContext = {
             calls: [],
             isReactiveCall,
@@ -280,12 +280,11 @@ export default (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: I
     // A non-literal array is typed Reactive<T[]> on the object, so it must become a ReactiveArray
     // exactly like a literal one; every such value in the file is typed in one request
     if (ctx.typed.length > 0) {
-        let types = bindings.checker.getTypeAtLocation(ctx.typed.map(property => property.value));
+        let types = await bindings.checker.getTypeAtLocation(ctx.typed.map(property => property.value)),
+            arrays = await Promise.all(types.map(async (type) => !!type && (await bindings.checker.isArrayType(type) || await bindings.checker.isTupleType(type))));
 
         for (let i = 0, n = ctx.typed.length; i < n; i++) {
-            let type = types[i];
-
-            if (type && (bindings.checker.isArrayType(type) || bindings.checker.isTupleType(type))) {
+            if (arrays[i]) {
                 ctx.typed[i].isStatic = false;
                 ctx.typed[i].type = TYPES.Array;
             }

@@ -196,7 +196,7 @@ function write(access: ts.ElementAccessExpression, ctx: ArrayTransformResult): v
 
 // Reactive arrays are recognized by type, so `.length` and element writes compile wherever the
 // array came from: a local reactive([...]), an import, an object property, a parameter
-export default (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: IsReactiveCall): ArrayTransformResult => {
+export default async (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: IsReactiveCall): Promise<ArrayTransformResult> => {
     let candidates: Candidates = { lengths: [], reassignments: [], writes: [] },
         result: ArrayTransformResult = { failures: [], namespaced: false, reactive: [], replacements: [] };
 
@@ -205,7 +205,7 @@ export default (sourceFile: ts.SourceFile, bindings: Bindings, isReactiveCall: I
     result.namespaced = result.replacements.length > 0;
     collect(sourceFile, candidates);
 
-    let reactive = scope.arrays(bindings, [
+    let reactive = await scope.arrays(bindings, [
             ...candidates.lengths.map(access => access.expression),
             ...candidates.reassignments.map(assignment => assignment.left),
             ...candidates.writes.map(access => access.expression)

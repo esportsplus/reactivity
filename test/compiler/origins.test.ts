@@ -67,7 +67,7 @@ const FILES: Record<string, string> = {
 let fixtures: string[] = [];
 
 
-function compile(name: string, files: Record<string, string> = FILES): string {
+async function compile(name: string, files: Record<string, string> = FILES): Promise<string> {
     let directory = mkdtempSync(join(process.cwd(), '.fixture-origins-')).replace(/\\/g, '/');
 
     fixtures.push(directory);
@@ -85,7 +85,7 @@ function compile(name: string, files: Record<string, string> = FILES): string {
 
     plugin.configResolved({ command: 'build', root: directory });
 
-    return plugin.transform.handler(files[name], directory + '/' + name)?.code ?? files[name];
+    return (await plugin.transform.handler(files[name], directory + '/' + name))?.code ?? files[name];
 }
 
 
@@ -99,58 +99,58 @@ afterEach(() => {
 
 
 describe('origins reached under any name', () => {
-    it('compiles reactive() imported under a local alias, and leaves a parameter shadowing it', () => {
-        let output = compile('local.ts');
+    it('compiles reactive() imported under a local alias, and leaves a parameter shadowing it', async () => {
+        let output = await compile('local.ts');
 
         expect(output).toContain(`export let count = ${NAMESPACE}.signal(1);`);
         expect(output).toContain(`export let next = ${NAMESPACE}.read(count) + 1;`);
         expect(output).toContain('export function shadow(x: (n: number) => number) { return x(1); }');
     });
 
-    it('reads a let assigned with reactive() later, before and after the assignment', () => {
-        let output = compile('local.ts');
+    it('reads a let assigned with reactive() later, before and after the assignment', async () => {
+        let output = await compile('local.ts');
 
         expect(output).toContain(`export function before() { return ${NAMESPACE}.read(late); }`);
         expect(output).toContain(`late = ${NAMESPACE}.signal(0);`);
         expect(output).toContain(`export let after = ${NAMESPACE}.read(late) + 1;`);
     });
 
-    it('reads a let assigned with reactive() in another module', () => {
-        let output = compile('consumer.ts');
+    it('reads a let assigned with reactive() in another module', async () => {
+        let output = await compile('consumer.ts');
 
         expect(output).toContain(`${NAMESPACE}.read(later)`);
         expect(output).toContain(`${NAMESPACE}.read(app.later)`);
     });
 
-    it('compiles reactive() re-exported renamed through a central module, by name and through its namespace', () => {
-        let output = compile('consumer.ts');
+    it('compiles reactive() re-exported renamed through a central module, by name and through its namespace', async () => {
+        let output = await compile('consumer.ts');
 
         for (let name of ['a', 'b', 'c', 'd']) {
             expect(output).toContain(`export let ${name} = ${NAMESPACE}.signal(0);`);
         }
     });
 
-    it('compiles reactive() held by an exported const', () => {
-        expect(compile('consumer.ts')).toContain(`export let e = ${NAMESPACE}.signal(0);`);
+    it('compiles reactive() held by an exported const', async () => {
+        expect(await compile('consumer.ts')).toContain(`export let e = ${NAMESPACE}.signal(0);`);
     });
 
-    it('reads a default export re-exported renamed, and bindings through export * two deep', () => {
-        let output = compile('consumer.ts');
+    it('reads a default export re-exported renamed, and bindings through export * two deep', async () => {
+        let output = await compile('consumer.ts');
 
         expect(output).toContain(`export let f = () => ${NAMESPACE}.read(fallback) + ${NAMESPACE}.read(deepCount) + ${NAMESPACE}.read(later);`);
         expect(output).toContain(`export let g = () => ${NAMESPACE}.read(app.later) + ${NAMESPACE}.read(app.deepCount);`);
     });
 
-    it('compiles reactive() reached through export * two deep', () => {
-        let output = compile('star.ts');
+    it('compiles reactive() reached through export * two deep', async () => {
+        let output = await compile('star.ts');
 
         expect(output).toContain(`export let s = ${NAMESPACE}.signal(0);`);
         expect(output).toContain(`export let t = ${NAMESPACE}.read(s) + 1;`);
     });
 
-    it('leaves a module that imports nothing untouched', () => {
+    it('leaves a module that imports nothing untouched', async () => {
         let code = 'let reactive = (n: number) => n;\nexport let x = reactive(1);';
 
-        expect(compile('plain.ts', { ...FILES, 'plain.ts': code })).toBe(code);
+        expect(await compile('plain.ts', { ...FILES, 'plain.ts': code })).toBe(code);
     });
 });
