@@ -424,13 +424,16 @@ function propagate<T>(computed: Computed<T>) {
 }
 
 function recompute<T>(computed: Computed<T>) {
-    if (computed.state & STATE_IN_HEAP) {
-        deleteFromHeap(computed);
-    }
+    // One test on the common path: a node neither queued nor paused goes straight to its run
+    if (computed.state & (STATE_IN_HEAP | STATE_PAUSED)) {
+        if (computed.state & STATE_IN_HEAP) {
+            deleteFromHeap(computed);
+        }
 
-    if (computed.state & STATE_PAUSED) {
-        computed.state |= STATE_STALE;
-        return;
+        if (computed.state & STATE_PAUSED) {
+            computed.state |= STATE_STALE;
+            return;
+        }
     }
 
     if (computed.cleanup !== null || computed.owned !== null) {
